@@ -9,6 +9,7 @@ import type {
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import OpenVialDialog from "../components/OpenVialDialog";
+import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
 
 export default function StoragePage() {
@@ -113,15 +114,16 @@ export default function StoragePage() {
     setTimeout(() => scanRef.current?.focus(), 100);
   };
 
-  const handleStock = async () => {
-    if (!barcode.trim() || !selectedGrid) return;
+  const handleStock = async (override?: string) => {
+    const code = (override ?? barcode).trim();
+    if (!code || !selectedGrid) return;
     setMessage(null);
     setError(null);
 
     try {
       const res = await api.post(
         `/storage/units/${selectedGrid.unit.id}/stock`,
-        { barcode: barcode.trim() }
+        { barcode: code }
       );
       const cell = res.data;
       const vialInfo = cell.vial;
@@ -322,6 +324,14 @@ export default function StoragePage() {
                   onKeyDown={handleKeyDown}
                   disabled={!nextEmptyCell}
                   autoFocus
+                />
+                <BarcodeScannerButton
+                  label="Scan"
+                  disabled={!nextEmptyCell}
+                  onDetected={(value) => {
+                    setBarcode(value);
+                    handleStock(value);
+                  }}
                 />
                 <button
                   onClick={handleStock}

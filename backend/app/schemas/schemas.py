@@ -86,6 +86,10 @@ class FluorochromeCreate(BaseModel):
     color: str
 
 
+class FluorochromeUpdate(BaseModel):
+    color: str
+
+
 class FluorochromeOut(BaseModel):
     id: UUID
     lab_id: UUID
@@ -107,11 +111,13 @@ class AntibodyCreate(BaseModel):
     catalog_number: str | None = None
     stability_days: int | None = None
     low_stock_threshold: int | None = None
+    is_testing: bool = False
 
 
 class AntibodyUpdate(BaseModel):
     stability_days: int | None = None
     low_stock_threshold: int | None = None
+    is_testing: bool | None = None
 
 
 class AntibodyOut(BaseModel):
@@ -124,6 +130,7 @@ class AntibodyOut(BaseModel):
     catalog_number: str | None
     stability_days: int | None
     low_stock_threshold: int | None
+    is_testing: bool
     is_active: bool
     created_at: datetime
 
@@ -139,6 +146,10 @@ class LotCreate(BaseModel):
     lot_number: str
     vendor_barcode: str | None = None
     expiration_date: date | None = None
+
+
+class LotArchiveRequest(BaseModel):
+    note: str | None = None
 
 
 class LotOut(BaseModel):

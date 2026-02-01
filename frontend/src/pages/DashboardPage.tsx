@@ -1,35 +1,22 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../api/client";
-import type { Antibody, Lot, Vial, VialCounts, Lab, Fluorochrome } from "../api/types";
+import type { Antibody, Lot, Lab, Fluorochrome } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 
 const EXPIRY_WARN_DAYS = 30;
 
-interface AntibodyInventory {
-  antibody_id: string;
-  target: string;
-  fluorochrome: string;
-  lots: number;
-  sealed: number;
-  opened: number;
-  depleted: number;
-  total: number;
-}
-
 export default function DashboardPage() {
   const { user, labSettings, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
-  const [stats, setStats] = useState({
-    antibodies: 0,
-    lots: 0,
-    sealedVials: 0,
-    openedVials: 0,
-    pendingQC: 0,
-  });
+  const [antibodies, setAntibodies] = useState<Antibody[]>([]);
+  const [selectedCard, setSelectedCard] = useState<"pending" | "low" | "expiring" | null>(null);
+  const [pendingLots, setPendingLots] = useState<Lot[]>([]);
   const [expiringLots, setExpiringLots] = useState<Lot[]>([]);
-  const [inventory, setInventory] = useState<AntibodyInventory[]>([]);
   const [lowStock, setLowStock] = useState<Antibody[]>([]);
+  const [sealedCounts, setSealedCounts] = useState<Record<string, number>>({});
   const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
 
   useEffect(() => {
@@ -51,30 +38,33 @@ export default function DashboardPage() {
     Promise.all([
       api.get<Antibody[]>("/antibodies/", { params }),
       api.get<Lot[]>("/lots/", { params }),
-      api.get<Vial[]>("/vials/", { params: { status: "sealed", ...params } }),
-      api.get<Vial[]>("/vials/", { params: { status: "opened", ...params } }),
       api.get<Antibody[]>("/antibodies/low-stock", { params }),
       api.get<Fluorochrome[]>("/fluorochromes/", { params }),
-    ]).then(([abRes, lotRes, sealedRes, openedRes, lowStockRes, fluoroRes]) => {
+    ]).then(([abRes, lotRes, lowStockRes, fluoroRes]) => {
       const antibodies = abRes.data;
       const lots = lotRes.data;
+      const testingIds = new Set(
+        antibodies.filter((ab) => ab.is_testing).map((ab) => ab.id)
+      );
+      const countableLots = lots.filter((lot) => !testingIds.has(lot.antibody_id));
 
-      setStats({
-        antibodies: antibodies.length,
-        lots: lots.length,
-        sealedVials: sealedRes.data.length,
-        openedVials: openedRes.data.length,
-        pendingQC: lots.filter((l) => l.qc_status === "pending").length,
-      });
-
+      setAntibodies(antibodies);
       setLowStock(lowStockRes.data);
       setFluorochromes(fluoroRes.data);
+      setPendingLots(countableLots.filter((l) => l.qc_status === "pending"));
+
+      const sealedMap: Record<string, number> = {};
+      for (const lot of countableLots) {
+        const sealed = lot.vial_counts?.sealed ?? 0;
+        sealedMap[lot.antibody_id] = (sealedMap[lot.antibody_id] || 0) + sealed;
+      }
+      setSealedCounts(sealedMap);
 
       // Expiring lots
       const now = new Date();
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() + EXPIRY_WARN_DAYS);
-      const expiring = lots
+      const expiring = countableLots
         .filter((l) => {
           if (!l.expiration_date) return false;
           const exp = new Date(l.expiration_date);
@@ -85,7 +75,7 @@ export default function DashboardPage() {
             new Date(a.expiration_date!).getTime() -
             new Date(b.expiration_date!).getTime()
         );
-      const expired = lots
+      const expired = countableLots
         .filter((l) => {
           if (!l.expiration_date) return false;
           return new Date(l.expiration_date) < now;
@@ -96,42 +86,6 @@ export default function DashboardPage() {
             new Date(b.expiration_date!).getTime()
         );
       setExpiringLots([...expired, ...expiring]);
-      // Per-antibody inventory breakdown
-      const abMap = new Map<string, AntibodyInventory>();
-      for (const ab of antibodies) {
-        abMap.set(ab.id, {
-          antibody_id: ab.id,
-          target: ab.target,
-          fluorochrome: ab.fluorochrome,
-          lots: 0,
-          sealed: 0,
-          opened: 0,
-          depleted: 0,
-          total: 0,
-        });
-      }
-      for (const lot of lots) {
-        const entry = abMap.get(lot.antibody_id);
-        if (!entry) continue;
-        const c: VialCounts = lot.vial_counts || {
-          sealed: 0,
-          opened: 0,
-          depleted: 0,
-          total: 0,
-        };
-        entry.lots += 1;
-        entry.sealed += c.sealed;
-        entry.opened += c.opened;
-        entry.depleted += c.depleted;
-        entry.total += c.total;
-      }
-      setInventory(
-        Array.from(abMap.values()).sort((a, b) =>
-          `${a.target}-${a.fluorochrome}`.localeCompare(
-            `${b.target}-${b.fluorochrome}`
-          )
-        )
-      );
     });
   }, [user, selectedLab]);
 
@@ -149,6 +103,36 @@ export default function DashboardPage() {
   for (const f of fluorochromes) {
     fluoroMap.set(f.name.toLowerCase(), f.color);
   }
+  const antibodyMap = new Map(antibodies.map((ab) => [ab.id, ab]));
+  const lotLabel = (lot: Lot) => {
+    if (lot.antibody_target && lot.antibody_fluorochrome) {
+      return `${lot.antibody_target}-${lot.antibody_fluorochrome}`;
+    }
+    const ab = antibodyMap.get(lot.antibody_id);
+    return ab ? `${ab.target}-${ab.fluorochrome}` : "—";
+  };
+  const lotVendor = (lot: Lot) => antibodyMap.get(lot.antibody_id)?.vendor || "—";
+  const cards = [
+    { key: "pending", label: "Pending QC", count: pendingLots.length, className: "warn" },
+    { key: "low", label: "Low Stock", count: lowStock.length, className: "danger" },
+    { key: "expiring", label: "Expiring Lots", count: expiringLots.length, className: "warn" },
+  ] as const;
+
+  const navigateToInventory = (antibodyId: string) => {
+    const params = new URLSearchParams();
+    params.set("antibodyId", antibodyId);
+    if (user?.role === "super_admin" && selectedLab) {
+      params.set("labId", selectedLab);
+    }
+    navigate(`/inventory?${params.toString()}`);
+  };
+
+  const handleRowKey = (e: React.KeyboardEvent, antibodyId: string) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      navigateToInventory(antibodyId);
+    }
+  };
 
   return (
     <div>
@@ -170,162 +154,218 @@ export default function DashboardPage() {
         )}
       </div>
       <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-value">{stats.antibodies}</div>
-          <div className="stat-label">Antibodies</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats.lots}</div>
-          <div className="stat-label">Lots</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats.sealedVials}</div>
-          <div className="stat-label">Sealed Vials</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats.openedVials}</div>
-          <div className="stat-label">Opened Vials</div>
-        </div>
-        <div className="stat-card warn">
-          <div className="stat-value">{stats.pendingQC}</div>
-          <div className="stat-label">Pending QC</div>
-        </div>
+        {cards.map((card) => (
+          <button
+            key={card.key}
+            type="button"
+            className={`stat-card priority-card ${card.className} ${
+              selectedCard === card.key ? "selected" : ""
+            }`}
+            onClick={() =>
+              setSelectedCard(selectedCard === card.key ? null : card.key)
+            }
+          >
+            <div className="stat-value">{card.count}</div>
+            <div className="stat-label">{card.label}</div>
+          </button>
+        ))}
       </div>
 
-      {lowStock.length > 0 && (
+      {selectedCard === "pending" && (
+        <div className="dashboard-section">
+          <h2>Pending QC Lots</h2>
+          {pendingLots.length === 0 ? (
+            <p className="page-desc">No pending QC lots.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Antibody</th>
+                  <th>Vendor</th>
+                  <th>Lot #</th>
+                  <th>Expiration</th>
+                  <th>Sealed</th>
+                  <th>Opened</th>
+                  <th>Total</th>
+                  <th>Vendor Barcode</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingLots.map((lot) => {
+                  const counts = lot.vial_counts || {
+                    sealed: 0,
+                    opened: 0,
+                    depleted: 0,
+                    total: 0,
+                    opened_for_qc: 0,
+                  };
+                  const label = lotLabel(lot);
+                  const color = lot.antibody_fluorochrome
+                    ? fluoroMap.get(lot.antibody_fluorochrome.toLowerCase())
+                    : undefined;
+                  return (
+                    <tr
+                      key={lot.id}
+                      className="clickable-row"
+                      onClick={() => navigateToInventory(lot.antibody_id)}
+                      onKeyDown={(e) => handleRowKey(e, lot.antibody_id)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <td>
+                        {color && (
+                          <div className="color-dot" style={{ backgroundColor: color }} />
+                        )}
+                        {label}
+                      </td>
+                      <td>{lotVendor(lot)}</td>
+                      <td>{lot.lot_number}</td>
+                      <td>
+                        {lot.expiration_date
+                          ? new Date(lot.expiration_date).toLocaleDateString()
+                          : "—"}
+                      </td>
+                      <td>{counts.sealed}</td>
+                      <td>{counts.opened}</td>
+                      <td>{counts.total}</td>
+                      <td>{lot.vendor_barcode || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {selectedCard === "low" && (
         <div className="dashboard-section">
           <h2>Low Stock Antibodies</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Antibody</th>
-                <th>Threshold</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lowStock.map((ab) => (
-                <tr key={ab.id}>
-                  <td>
-                    {fluoroMap.get(ab.fluorochrome.toLowerCase()) && (
-                      <div
-                        className="color-dot"
-                        style={{
-                          backgroundColor: fluoroMap.get(
-                            ab.fluorochrome.toLowerCase()
-                          ),
-                        }}
-                      />
-                    )}
-                    {ab.target}-{ab.fluorochrome}
-                  </td>
-                  <td>
-                    <span className="badge badge-red">
-                      {ab.low_stock_threshold}
-                    </span>
-                  </td>
+          {lowStock.length === 0 ? (
+            <p className="page-desc">No low stock antibodies.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Antibody</th>
+                  <th>Vendor</th>
+                  <th>Catalog #</th>
+                  <th>On Hand</th>
+                  <th>Threshold</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {lowStock.map((ab) => {
+                  const sealedCount = sealedCounts[ab.id] ?? 0;
+                  const color = fluoroMap.get(ab.fluorochrome.toLowerCase());
+                  return (
+                    <tr
+                      key={ab.id}
+                      className="clickable-row"
+                      onClick={() => navigateToInventory(ab.id)}
+                      onKeyDown={(e) => handleRowKey(e, ab.id)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <td>
+                        {color && (
+                          <div className="color-dot" style={{ backgroundColor: color }} />
+                        )}
+                        {ab.target}-{ab.fluorochrome}
+                      </td>
+                      <td>{ab.vendor || "—"}</td>
+                      <td>{ab.catalog_number || "—"}</td>
+                      <td>
+                        <span className="badge">{sealedCount}</span>
+                      </td>
+                      <td>
+                        <span className="badge badge-red">
+                          {ab.low_stock_threshold}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
-      {expiringLots.length > 0 && (
+      {selectedCard === "expiring" && (
         <div className="dashboard-section">
           <h2>Expiring Lots</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Antibody</th>
-                <th>Lot #</th>
-                <th>Expiration</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expiringLots.map((lot) => {
-                const isExpired =
-                  new Date(lot.expiration_date!) < new Date();
-                return (
-                  <tr key={lot.id}>
-                    <td>
-                      {lot.antibody_fluorochrome &&
-                        fluoroMap.get(
-                          lot.antibody_fluorochrome.toLowerCase()
-                        ) && (
-                          <div
-                            className="color-dot"
-                            style={{
-                              backgroundColor: fluoroMap.get(
-                                lot.antibody_fluorochrome.toLowerCase()
-                              ),
-                            }}
-                          />
-                        )}
-                      {lot.antibody_target
-                        ? `${lot.antibody_target}-${lot.antibody_fluorochrome}`
-                        : "—"}
-                    </td>
-                    <td>{lot.lot_number}</td>
-                    <td>{lot.expiration_date}</td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          isExpired ? "badge-red" : "badge-yellow"
-                        }`}
-                      >
-                        {isExpired
-                          ? "Expired"
-                          : daysUntil(lot.expiration_date!)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {inventory.length > 0 && (
-        <div className="dashboard-section">
-          <h2>Inventory by Antibody</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Antibody</th>
-                <th>Lots</th>
-                <th>Sealed</th>
-                <th>Opened</th>
-                <th>Depleted</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inventory.map((row) => (
-                <tr key={row.antibody_id}>
-                  <td>
-                    {fluoroMap.get(row.fluorochrome.toLowerCase()) && (
-                      <div
-                        className="color-dot"
-                        style={{
-                          backgroundColor: fluoroMap.get(
-                            row.fluorochrome.toLowerCase()
-                          ),
-                        }}
-                      />
-                    )}
-                    {row.target}-{row.fluorochrome}
-                  </td>
-                  <td>{row.lots}</td>
-                  <td>{row.sealed}</td>
-                  <td>{row.opened}</td>
-                  <td>{row.depleted}</td>
-                  <td>{row.total}</td>
+          {expiringLots.length === 0 ? (
+            <p className="page-desc">No expiring lots.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Antibody</th>
+                  <th>Vendor</th>
+                  <th>Lot #</th>
+                  <th>Expiration</th>
+                  <th>Status</th>
+                  <th>Sealed</th>
+                  <th>Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {expiringLots.map((lot) => {
+                  const isExpired =
+                    new Date(lot.expiration_date!) < new Date();
+                  const counts = lot.vial_counts || {
+                    sealed: 0,
+                    opened: 0,
+                    depleted: 0,
+                    total: 0,
+                    opened_for_qc: 0,
+                  };
+                  const label = lotLabel(lot);
+                  const color = lot.antibody_fluorochrome
+                    ? fluoroMap.get(lot.antibody_fluorochrome.toLowerCase())
+                    : undefined;
+                  return (
+                    <tr
+                      key={lot.id}
+                      className="clickable-row"
+                      onClick={() => navigateToInventory(lot.antibody_id)}
+                      onKeyDown={(e) => handleRowKey(e, lot.antibody_id)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <td>
+                        {color && (
+                          <div className="color-dot" style={{ backgroundColor: color }} />
+                        )}
+                        {label}
+                      </td>
+                      <td>{lotVendor(lot)}</td>
+                      <td>{lot.lot_number}</td>
+                      <td>
+                        {lot.expiration_date
+                          ? new Date(lot.expiration_date).toLocaleDateString()
+                          : "—"}
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${
+                            isExpired ? "badge-red" : "badge-yellow"
+                          }`}
+                        >
+                          {isExpired
+                            ? "Expired"
+                            : daysUntil(lot.expiration_date!)}
+                        </span>
+                      </td>
+                      <td>{counts.sealed}</td>
+                      <td>{counts.total}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

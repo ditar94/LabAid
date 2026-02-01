@@ -41,6 +41,7 @@ export interface Antibody {
   catalog_number: string | null;
   stability_days: number | null;
   low_stock_threshold: number | null;
+  is_testing: boolean;
   is_active: boolean;
   created_at: string;
 }

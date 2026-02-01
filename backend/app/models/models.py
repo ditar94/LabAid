@@ -102,6 +102,7 @@ class Antibody(Base):
     catalog_number = Column(String(100))
     stability_days = Column(Integer, nullable=True)  # secondary expiration after opening
     low_stock_threshold = Column(Integer, nullable=True)
+    is_testing = Column(Boolean, default=False, nullable=False, server_default="false")
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

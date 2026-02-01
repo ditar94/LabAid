@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, subqueryload
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import Antibody, Lot, QCStatus, User, UserRole, Vial, VialStatus
-from app.schemas.schemas import LotCreate, LotOut, LotUpdateQC, LotWithCounts, VialCounts, VialOut
+from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotUpdateQC, LotWithCounts, VialCounts, VialOut
 from app.services.audit import log_audit, snapshot_lot
 from app.services.vial_service import deplete_all_opened, deplete_all_lot
 
@@ -201,6 +201,7 @@ def deplete_entire_lot(
 @router.patch("/{lot_id}/archive", response_model=LotOut)
 def archive_lot(
     lot_id: UUID,
+    body: LotArchiveRequest | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(
         UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR
@@ -225,6 +226,7 @@ def archive_lot(
         entity_id=lot.id,
         before_state=before,
         after_state=snapshot_lot(lot),
+        note=body.note if body else None,
     )
 
     db.commit()

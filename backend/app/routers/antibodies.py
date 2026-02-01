@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.models import Antibody, Lot, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
+from app.models.models import Antibody, Fluorochrome, Lot, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
 from app.schemas.schemas import (
     AntibodyCreate,
     AntibodyOut,
@@ -20,6 +20,7 @@ from app.schemas.schemas import (
 from app.services.audit import log_audit
 
 router = APIRouter(prefix="/api/antibodies", tags=["antibodies"])
+_DEFAULT_FLUORO_COLOR = "#9ca3af"
 
 
 @router.get("/", response_model=list[AntibodyOut])
@@ -48,7 +49,24 @@ def create_antibody(
     if current_user.role == UserRole.SUPER_ADMIN and lab_id:
         target_lab_id = lab_id
 
-    ab = Antibody(lab_id=target_lab_id, **body.model_dump())
+    fluoro_name = body.fluorochrome.strip()
+    existing_fluoro = (
+        db.query(Fluorochrome)
+        .filter(Fluorochrome.lab_id == target_lab_id)
+        .filter(func.lower(Fluorochrome.name) == func.lower(fluoro_name))
+        .first()
+    )
+    if not existing_fluoro:
+        db.add(
+            Fluorochrome(
+                lab_id=target_lab_id,
+                name=fluoro_name,
+                color=_DEFAULT_FLUORO_COLOR,
+            )
+        )
+
+    ab_data = body.model_dump(exclude={"fluorochrome"})
+    ab = Antibody(lab_id=target_lab_id, **ab_data, fluorochrome=fluoro_name)
     db.add(ab)
     db.flush()
 
@@ -240,7 +258,11 @@ def update_antibody(
     if not ab:
         raise HTTPException(status_code=404, detail="Antibody not found")
 
-    before = {"stability_days": ab.stability_days, "low_stock_threshold": ab.low_stock_threshold}
+    before = {
+        "stability_days": ab.stability_days,
+        "low_stock_threshold": ab.low_stock_threshold,
+        "is_testing": ab.is_testing,
+    }
 
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(ab, field, value)
@@ -253,7 +275,11 @@ def update_antibody(
         entity_type="antibody",
         entity_id=ab.id,
         before_state=before,
-        after_state={"stability_days": ab.stability_days, "low_stock_threshold": ab.low_stock_threshold},
+        after_state={
+            "stability_days": ab.stability_days,
+            "low_stock_threshold": ab.low_stock_threshold,
+            "is_testing": ab.is_testing,
+        },
     )
 
     db.commit()
@@ -296,7 +322,8 @@ def get_low_stock_antibodies(
         .filter(
             Antibody.lab_id == target_lab_id,
             Antibody.low_stock_threshold.isnot(None),
-            func.coalesce(sealed_vials_subquery.c.sealed_vial_count, 0) < Antibody.low_stock_threshold
+            Antibody.is_testing.is_(False),
+            func.coalesce(sealed_vials_subquery.c.sealed_vial_count, 0) <= Antibody.low_stock_threshold
         )
         .all()
     )

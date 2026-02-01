@@ -166,21 +166,25 @@ docker compose exec backend alembic upgrade head
 - [x] Register lots (lot number, vendor barcode, expiration date, linked to antibody)
 - [x] QC approval/rejection by Lab Admin or Super Admin
 - [x] Receive inventory — enter quantity, optionally assign to storage unit
-- [ ] Inventory UI: combine Antibodies + Lots into an "Inventory" tab with cards
-- [ ] Inventory UI: click antibody card to view lots list for that antibody (and add new lots there)
-- [ ] Inventory UI: add new antibodies inline from the same screen
-- [ ] Inventory UI: select fluorochrome color inline; update all antibodies using that fluorochrome
-- [ ] Fluorochromes tab auto-populates from antibodies and stores lab color selections
-- [ ] Add-antibody flow: choose from existing fluorochromes or create a new one (auto-add to fluorochrome list)
+- [x] Inventory UI: combine Antibodies + Lots into an "Inventory" tab with cards
+- [x] Inventory UI: click antibody card to view lots list for that antibody (and add new lots there)
+- [x] Inventory UI: add new antibodies inline from the same screen
+- [x] Inventory UI: select fluorochrome color inline; update all antibodies using that fluorochrome
+- [x] Fluorochromes tab auto-populates from antibodies and stores lab color selections
+- [x] Add-antibody flow: choose from existing fluorochromes or create a new one (auto-add to fluorochrome list)
+- [ ] Antibody archive flow on Antibodies screen — top-right Active/Inactive switch on each card; toggle opens optional-note dialog; write to audit log
+- [ ] Inactive antibodies list at bottom of Antibodies screen (shows all inactive)
+- [ ] Current lot + New lot badges — default current lot is oldest lot; auto-update when lot is archived or depleted
 
 ### Dashboard & Reporting
+- [x] Dashboard: show only priority cards (Pending QC, Low Stock, Expiring Lots); clicking a card shows the relevant antibody list with all needed info
 - [x] Dashboard with counts: antibodies, lots, sealed vials, opened vials, pending QC
 - [x] Expiring-soon alerts — lots approaching expiration date
 - [x] Per-antibody inventory breakdown (sealed/opened/depleted across all lots)
 - [x] Low-stock warnings — Supervisors+ can set a low-stock threshold per antibody (min on-hand vials across all lots); when below threshold, alert on dashboard
-- [ ] Low-stock warning should trigger when <= threshold (not just <)
-- [ ] Dashboard cards: when selecting an antibody, show counts specific to that antibody (sequential cards)
-- [ ] Pending QC card remains global total; when an antibody is selected, show its pending QC count
+- [x] Low-stock warning should trigger when <= threshold (not just <)
+- [x] Dashboard cards: when selecting an antibody, show counts specific to that antibody (sequential cards)
+- [x] Pending QC card remains global total; when an antibody is selected, show its pending QC count
 
 ### Infrastructure
 - [x] Docker Compose — Postgres + Backend + Frontend, one command startup
@@ -188,9 +192,12 @@ docker compose exec backend alembic upgrade head
 - [x] Frontend Vite dev server with HMR
 - [x] CORS configured for local dev
 - [ ] Payment/account automation: track billing status and trigger lab suspension/reactivation without data loss
+- [ ] Storage templates/racks: ability to remove
 
 ### Storage Grid Visual Language
 > Each grid cell should communicate vial state at a glance through a layered system of color dots, shading, and borders. No ambiguity — a user should be able to read the grid without clicking anything.
+
+- [ ] Storage screen: make rack smaller so the full grid fits on screen without scrolling
 
 **Cell content (occupied cells)**
 - [x] Show antibody target name **and** fluorochrome in each cell (not just target)

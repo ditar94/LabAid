@@ -7,6 +7,7 @@ import type {
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import OpenVialDialog from "../components/OpenVialDialog";
+import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
 
 export default function SearchPage() {
@@ -33,15 +34,16 @@ export default function SearchPage() {
     inputRef.current?.focus();
   }, []);
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  const handleSearch = async (override?: string) => {
+    const q = (override ?? query).trim();
+    if (!q) return;
     setLoading(true);
     setSelectedResult(null);
     setGrids(new Map());
     setSearched(true);
     try {
       const res = await api.get("/antibodies/search", {
-        params: { q: query.trim() },
+        params: { q },
       });
       setResults(res.data);
     } catch {
@@ -122,7 +124,14 @@ export default function SearchPage() {
           onKeyDown={handleKeyDown}
           autoFocus
         />
-        <button onClick={handleSearch} disabled={loading}>
+        <BarcodeScannerButton
+          onDetected={(value) => {
+            setQuery(value);
+            handleSearch(value);
+          }}
+          disabled={loading}
+        />
+        <button onClick={() => handleSearch()} disabled={loading}>
           {loading ? "Searching..." : "Search"}
         </button>
       </div>

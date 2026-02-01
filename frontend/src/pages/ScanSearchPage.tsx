@@ -13,9 +13,13 @@ import type {
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import OpenVialDialog from "../components/OpenVialDialog";
+import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
 
 type ResultMode = "idle" | "scan" | "search" | "register";
+const NEW_ANTIBODY_VALUE = "__new__";
+const NEW_FLUORO_VALUE = "__new_fluoro__";
+const DEFAULT_FLUORO_COLOR = "#9ca3af";
 
 export default function ScanSearchPage() {
   const { user, labSettings } = useAuth();
@@ -47,9 +51,21 @@ export default function ScanSearchPage() {
   const [regForm, setRegForm] = useState({
     antibody_id: "",
     lot_number: "",
+    vendor_barcode: "",
     expiration_date: "",
-    quantity: 1,
+    quantity: "1",
     storage_unit_id: "",
+  });
+  const [newAbForm, setNewAbForm] = useState({
+    target: "",
+    fluorochrome_choice: "",
+    new_fluorochrome: "",
+    new_fluoro_color: DEFAULT_FLUORO_COLOR,
+    clone: "",
+    vendor: "",
+    catalog_number: "",
+    stability_days: "",
+    low_stock_threshold: "",
   });
 
   // ── Search state ────────────────────────────────────────────────────
@@ -108,8 +124,8 @@ export default function ScanSearchPage() {
   };
 
   // ── Main lookup: try scan first, then search ──────────────────────
-  const handleLookup = async () => {
-    const q = input.trim();
+  const handleLookup = async (override?: string) => {
+    const q = (override ?? input).trim();
     if (!q) return;
     resetAll();
     setLoading(true);
@@ -132,13 +148,33 @@ export default function ScanSearchPage() {
             // Neither scan nor search found results — offer registration
             setScannedBarcode(q);
             setMode("register");
-            setRegForm({ antibody_id: "", lot_number: "", expiration_date: "", quantity: 1, storage_unit_id: "" });
-            const [abRes, suRes] = await Promise.all([
+            setRegForm({
+              antibody_id: "",
+              lot_number: "",
+              vendor_barcode: q,
+              expiration_date: "",
+              quantity: "1",
+              storage_unit_id: "",
+            });
+            setNewAbForm({
+              target: "",
+              fluorochrome_choice: "",
+              new_fluorochrome: "",
+              new_fluoro_color: DEFAULT_FLUORO_COLOR,
+              clone: "",
+              vendor: "",
+              catalog_number: "",
+              stability_days: "",
+              low_stock_threshold: "",
+            });
+            const [abRes, suRes, fluoroRes] = await Promise.all([
               api.get("/antibodies/"),
               api.get("/storage/units"),
+              api.get("/fluorochromes/"),
             ]);
             setAntibodies(abRes.data);
             setStorageUnits(suRes.data);
+            setFluorochromes(fluoroRes.data);
           }
         } catch {
           setError("Search failed");
@@ -293,18 +329,70 @@ export default function ScanSearchPage() {
     setError(null);
     setLoading(true);
     try {
+      const quantity = regForm.quantity.trim() ? parseInt(regForm.quantity, 10) : NaN;
+      if (!Number.isFinite(quantity) || quantity < 1) {
+        setError("Please enter a valid vial quantity.");
+        setLoading(false);
+        return;
+      }
+      let antibodyId = regForm.antibody_id;
+      if (antibodyId === NEW_ANTIBODY_VALUE) {
+        const target = newAbForm.target.trim();
+        let fluoroName = newAbForm.fluorochrome_choice;
+        if (fluoroName === NEW_FLUORO_VALUE) {
+          const name = newAbForm.new_fluorochrome.trim();
+          if (!name) {
+            setError("Please enter a fluorochrome name.");
+            setLoading(false);
+            return;
+          }
+          const existing = fluorochromes.find(
+            (f) => f.name.toLowerCase() === name.toLowerCase()
+          );
+          if (!existing) {
+            await api.post("/fluorochromes/", {
+              name,
+              color: newAbForm.new_fluoro_color,
+            });
+          } else if (existing.color !== newAbForm.new_fluoro_color) {
+            await api.patch(`/fluorochromes/${existing.id}`, {
+              color: newAbForm.new_fluoro_color,
+            });
+          }
+          fluoroName = name;
+        }
+        if (!target || !fluoroName) {
+          setError("Please enter antibody name and select a fluorochrome.");
+          setLoading(false);
+          return;
+        }
+        const abRes = await api.post("/antibodies/", {
+          target,
+          fluorochrome: fluoroName,
+          clone: newAbForm.clone.trim() || null,
+          vendor: newAbForm.vendor.trim() || null,
+          catalog_number: newAbForm.catalog_number.trim() || null,
+          stability_days: newAbForm.stability_days.trim()
+            ? parseInt(newAbForm.stability_days, 10)
+            : null,
+          low_stock_threshold: newAbForm.low_stock_threshold.trim()
+            ? parseInt(newAbForm.low_stock_threshold, 10)
+            : null,
+        });
+        antibodyId = abRes.data.id;
+      }
       const lotRes = await api.post("/lots/", {
-        antibody_id: regForm.antibody_id,
+        antibody_id: antibodyId,
         lot_number: regForm.lot_number,
-        vendor_barcode: scannedBarcode,
+        vendor_barcode: regForm.vendor_barcode.trim() || scannedBarcode,
         expiration_date: regForm.expiration_date || null,
       });
       await api.post("/vials/receive", {
         lot_id: lotRes.data.id,
-        quantity: regForm.quantity,
+        quantity,
         storage_unit_id: regForm.storage_unit_id || null,
       });
-      setMessage(`Lot "${regForm.lot_number}" registered with ${regForm.quantity} vial(s). Barcode: ${scannedBarcode}`);
+      setMessage(`Lot "${regForm.lot_number}" registered with ${quantity} vial(s). Barcode: ${scannedBarcode}`);
       setMode("idle");
       setInput("");
       inputRef.current?.focus();
@@ -403,7 +491,14 @@ export default function ScanSearchPage() {
           onKeyDown={handleKeyDown}
           autoFocus
         />
-        <button onClick={handleLookup} disabled={loading}>
+        <BarcodeScannerButton
+          onDetected={(value) => {
+            setInput(value);
+            handleLookup(value);
+          }}
+          disabled={loading}
+        />
+        <button onClick={() => handleLookup()} disabled={loading}>
           {loading ? "Looking up..." : "Go"}
         </button>
         {mode !== "idle" && (
@@ -431,19 +526,150 @@ export default function ScanSearchPage() {
               <label>Antibody</label>
               <select value={regForm.antibody_id} onChange={(e) => setRegForm({ ...regForm, antibody_id: e.target.value })} required>
                 <option value="">Select Antibody</option>
+                <option value={NEW_ANTIBODY_VALUE}>+ New Antibody</option>
                 {antibodies.map((ab) => (
                   <option key={ab.id} value={ab.id}>{ab.target} - {ab.fluorochrome}{ab.clone ? ` (${ab.clone})` : ""}</option>
                 ))}
               </select>
             </div>
+            {regForm.antibody_id === NEW_ANTIBODY_VALUE && (
+              <>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>New Antibody</label>
+                    <input
+                      placeholder="Target (e.g., CD3)"
+                      value={newAbForm.target}
+                      onChange={(e) => setNewAbForm({ ...newAbForm, target: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Fluorochrome</label>
+                    <select
+                      value={newAbForm.fluorochrome_choice}
+                      onChange={(e) =>
+                        setNewAbForm({ ...newAbForm, fluorochrome_choice: e.target.value })
+                      }
+                      required
+                    >
+                      <option value="">Select Fluorochrome</option>
+                      <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
+                      {fluorochromes.map((f) => (
+                        <option key={f.id} value={f.name}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {newAbForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>New Fluorochrome</label>
+                      <input
+                        placeholder="e.g., FITC"
+                        value={newAbForm.new_fluorochrome}
+                        onChange={(e) =>
+                          setNewAbForm({ ...newAbForm, new_fluorochrome: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Color</label>
+                      <input
+                        type="color"
+                        value={newAbForm.new_fluoro_color}
+                        onChange={(e) =>
+                          setNewAbForm({ ...newAbForm, new_fluoro_color: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Clone</label>
+                    <input
+                      placeholder="Clone"
+                      value={newAbForm.clone}
+                      onChange={(e) => setNewAbForm({ ...newAbForm, clone: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Vendor</label>
+                    <input
+                      placeholder="Vendor"
+                      value={newAbForm.vendor}
+                      onChange={(e) => setNewAbForm({ ...newAbForm, vendor: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Catalog #</label>
+                    <input
+                      placeholder="Catalog #"
+                      value={newAbForm.catalog_number}
+                      onChange={(e) => setNewAbForm({ ...newAbForm, catalog_number: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Stability (days)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="Stability (days)"
+                      value={newAbForm.stability_days}
+                      onChange={(e) => setNewAbForm({ ...newAbForm, stability_days: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Low Stock Threshold</label>
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="Low stock threshold"
+                      value={newAbForm.low_stock_threshold}
+                      onChange={(e) => setNewAbForm({ ...newAbForm, low_stock_threshold: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
             <div className="form-group">
               <label>Lot Number</label>
               <input placeholder="e.g., 12345" value={regForm.lot_number} onChange={(e) => setRegForm({ ...regForm, lot_number: e.target.value })} required />
             </div>
+            <div className="form-group">
+              <label>Vendor Barcode</label>
+              <div className="input-with-scan">
+                <input
+                  placeholder="Vendor barcode"
+                  value={regForm.vendor_barcode}
+                  onChange={(e) => setRegForm({ ...regForm, vendor_barcode: e.target.value })}
+                />
+                <BarcodeScannerButton
+                  label="Scan"
+                  onDetected={(value) => setRegForm({ ...regForm, vendor_barcode: value })}
+                />
+              </div>
+            </div>
             <div className="form-row">
               <div className="form-group">
                 <label>Vials Received</label>
-                <input type="number" min={1} max={100} value={regForm.quantity} onChange={(e) => setRegForm({ ...regForm, quantity: parseInt(e.target.value) || 1 })} required />
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={regForm.quantity}
+                  onChange={(e) => setRegForm({ ...regForm, quantity: e.target.value })}
+                  required
+                />
               </div>
               <div className="form-group">
                 <label>Expiration Date</label>

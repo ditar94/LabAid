@@ -3,6 +3,9 @@ import api from "../api/client";
 import type { Antibody, Lab, Fluorochrome } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 
+const NEW_FLUORO_VALUE = "__new__";
+const DEFAULT_FLUORO_COLOR = "#9ca3af";
+
 export default function AntibodiesPage() {
   const { user } = useAuth();
   const [labs, setLabs] = useState<Lab[]>([]);
@@ -18,6 +21,10 @@ export default function AntibodiesPage() {
     catalog_number: "",
     stability_days: "",
     low_stock_threshold: "",
+  });
+  const [newFluoro, setNewFluoro] = useState({
+    name: "",
+    color: DEFAULT_FLUORO_COLOR,
   });
   const [editingStability, setEditingStability] = useState<string | null>(null);
   const [stabilityInput, setStabilityInput] = useState("");
@@ -63,10 +70,31 @@ export default function AntibodiesPage() {
     if (user?.role === "super_admin" && selectedLab) {
       params.lab_id = selectedLab;
     }
+    let fluoroName = form.fluorochrome;
+    if (fluoroName === NEW_FLUORO_VALUE) {
+      const name = newFluoro.name.trim();
+      if (!name) return;
+      const existing = fluorochromes.find(
+        (f) => f.name.toLowerCase() === name.toLowerCase()
+      );
+      if (!existing) {
+        await api.post(
+          "/fluorochromes/",
+          { name, color: newFluoro.color },
+          { params }
+        );
+      } else if (existing.color !== newFluoro.color) {
+        await api.patch(`/fluorochromes/${existing.id}`, {
+          color: newFluoro.color,
+        });
+      }
+      fluoroName = name;
+    }
     await api.post(
       "/antibodies/",
       {
         ...form,
+        fluorochrome: fluoroName,
         clone: form.clone || null,
         vendor: form.vendor || null,
         catalog_number: form.catalog_number || null,
@@ -88,6 +116,7 @@ export default function AntibodiesPage() {
       stability_days: "",
       low_stock_threshold: "",
     });
+    setNewFluoro({ name: "", color: DEFAULT_FLUORO_COLOR });
     setShowForm(false);
     load();
   };
@@ -162,14 +191,41 @@ export default function AntibodiesPage() {
             onChange={(e) => setForm({ ...form, target: e.target.value })}
             required
           />
-          <input
-            placeholder="Fluorochrome (e.g., FITC)"
+          <select
             value={form.fluorochrome}
             onChange={(e) =>
               setForm({ ...form, fluorochrome: e.target.value })
             }
             required
-          />
+          >
+            <option value="">Select Fluorochrome</option>
+            <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
+            {fluorochromes.map((f) => (
+              <option key={f.id} value={f.name}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+          {form.fluorochrome === NEW_FLUORO_VALUE && (
+            <>
+              <input
+                placeholder="New Fluorochrome"
+                value={newFluoro.name}
+                onChange={(e) =>
+                  setNewFluoro({ ...newFluoro, name: e.target.value })
+                }
+                required
+              />
+              <input
+                type="color"
+                value={newFluoro.color}
+                onChange={(e) =>
+                  setNewFluoro({ ...newFluoro, color: e.target.value })
+                }
+                required
+              />
+            </>
+          )}
           <input
             placeholder="Clone"
             value={form.clone}

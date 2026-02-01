@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import api from "../api/client";
 import type { Antibody, Lot, Lab, Fluorochrome } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import BarcodeScannerButton from "../components/BarcodeScannerButton";
 
 function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => void; onUpload: () => void }) {
   const [file, setFile] = useState<File | null>(null);
@@ -93,6 +94,9 @@ export default function LotsPage() {
   const [depleteLotId, setDepleteLotId] = useState<string | null>(null);
   const [depleteLotLoading, setDepleteLotLoading] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [archivePrompt, setArchivePrompt] = useState<{ lotId: string; lotNumber: string } | null>(null);
+  const [archiveNote, setArchiveNote] = useState("");
+  const [archiveLoading, setArchiveLoading] = useState(false);
 
   const canEdit =
     user?.role === "super_admin" ||
@@ -201,9 +205,17 @@ export default function LotsPage() {
     }
   };
 
-  const handleArchive = async (lotId: string) => {
-    await api.patch(`/lots/${lotId}/archive`);
-    load();
+  const handleArchive = async (lotId: string, note?: string) => {
+    setArchiveLoading(true);
+    try {
+      const body = note ? { note } : undefined;
+      await api.patch(`/lots/${lotId}/archive`, body);
+      load();
+      setArchivePrompt(null);
+      setArchiveNote("");
+    } finally {
+      setArchiveLoading(false);
+    }
   };
 
   const abName = (lot: Lot) => {
@@ -326,13 +338,21 @@ export default function LotsPage() {
             onChange={(e) => setForm({ ...form, lot_number: e.target.value })}
             required
           />
-          <input
-            placeholder="Vendor Barcode"
-            value={form.vendor_barcode}
-            onChange={(e) =>
-              setForm({ ...form, vendor_barcode: e.target.value })
-            }
-          />
+          <div className="input-with-scan">
+            <input
+              placeholder="Vendor Barcode"
+              value={form.vendor_barcode}
+              onChange={(e) =>
+                setForm({ ...form, vendor_barcode: e.target.value })
+              }
+            />
+            <BarcodeScannerButton
+              label="Scan"
+              onDetected={(value) =>
+                setForm({ ...form, vendor_barcode: value })
+              }
+            />
+          </div>
           <input
             type="date"
             placeholder="Expiration"
@@ -435,14 +455,6 @@ export default function LotsPage() {
                         Approve
                       </button>
                     )}
-                    {lot.qc_status !== "failed" && (
-                      <button
-                        className="btn-sm btn-red"
-                        onClick={() => updateQC(lot.id, "failed")}
-                      >
-                        Fail
-                      </button>
-                    )}
                     {(vc?.opened ?? 0) > 0 && (
                       depleteAllLotId === lot.id ? (
                         <>
@@ -499,7 +511,17 @@ export default function LotsPage() {
                     )}
                     <button
                       className="btn-sm"
-                      onClick={() => handleArchive(lot.id)}
+                      onClick={() => {
+                        if (lot.is_archived) {
+                          handleArchive(lot.id);
+                        } else {
+                          setArchiveNote("");
+                          setArchivePrompt({
+                            lotId: lot.id,
+                            lotNumber: lot.lot_number,
+                          });
+                        }
+                      }}
                       title={lot.is_archived ? "Unarchive this lot" : "Archive this lot"}
                     >
                       {lot.is_archived ? "Unarchive" : "Archive"}
@@ -527,6 +549,42 @@ export default function LotsPage() {
             setModalLot(null);
           }}
         />
+      )}
+      {archivePrompt && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Archive Lot {archivePrompt.lotNumber}</h2>
+            <p className="page-desc">
+              Add an optional note about why this lot is being archived.
+            </p>
+            <div className="form-group">
+              <label>Archive Note (optional)</label>
+              <textarea
+                value={archiveNote}
+                onChange={(e) => setArchiveNote(e.target.value)}
+                rows={3}
+                placeholder='e.g., "QC Failed"'
+              />
+            </div>
+            <div className="action-btns" style={{ marginTop: "1rem" }}>
+              <button
+                className="btn-red"
+                onClick={() =>
+                  handleArchive(archivePrompt.lotId, archiveNote.trim() || undefined)
+                }
+                disabled={archiveLoading}
+              >
+                {archiveLoading ? "Archiving..." : "Archive Lot"}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => setArchivePrompt(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import type {
   Fluorochrome,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
+import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
 
 export default function ScanPage() {
@@ -34,7 +35,7 @@ export default function ScanPage() {
     antibody_id: "",
     lot_number: "",
     expiration_date: "",
-    quantity: 1,
+    quantity: "1",
     storage_unit_id: "",
   });
 
@@ -74,8 +75,9 @@ export default function ScanPage() {
     setError(null);
   };
 
-  const handleScan = async () => {
-    if (!barcode.trim()) return;
+  const handleScan = async (override?: string) => {
+    const code = (override ?? barcode).trim();
+    if (!code) return;
     setResult(null);
     resetActionState();
     setMessage(null);
@@ -84,7 +86,7 @@ export default function ScanPage() {
     setLoading(true);
 
     try {
-      const res = await api.post("/scan/lookup", { barcode: barcode.trim() });
+      const res = await api.post("/scan/lookup", { barcode: code });
       setResult(res.data);
       if (res.data) {
         api.get("/fluorochromes/").then((r) => setFluorochromes(r.data));
@@ -92,13 +94,13 @@ export default function ScanPage() {
     } catch (err: any) {
       const detail = err.response?.data?.detail || "";
       if (err.response?.status === 404 && detail.includes("No lot found")) {
-        setScannedBarcode(barcode.trim());
+        setScannedBarcode(code);
         setShowRegister(true);
         setRegForm({
           antibody_id: "",
           lot_number: "",
           expiration_date: "",
-          quantity: 1,
+          quantity: "1",
           storage_unit_id: "",
         });
         const [abRes, suRes] = await Promise.all([
@@ -140,6 +142,14 @@ export default function ScanPage() {
     setLoading(true);
 
     try {
+      const quantity = regForm.quantity.trim()
+        ? parseInt(regForm.quantity, 10)
+        : NaN;
+      if (!Number.isFinite(quantity) || quantity < 1) {
+        setError("Please enter a valid vial quantity.");
+        setLoading(false);
+        return;
+      }
       const lotRes = await api.post("/lots/", {
         antibody_id: regForm.antibody_id,
         lot_number: regForm.lot_number,
@@ -150,12 +160,12 @@ export default function ScanPage() {
 
       await api.post("/vials/receive", {
         lot_id: lot.id,
-        quantity: regForm.quantity,
+        quantity,
         storage_unit_id: regForm.storage_unit_id || null,
       });
 
       setMessage(
-        `Lot "${regForm.lot_number}" registered with ${regForm.quantity} vial(s). Barcode: ${scannedBarcode}`
+        `Lot "${regForm.lot_number}" registered with ${quantity} vial(s). Barcode: ${scannedBarcode}`
       );
       setShowRegister(false);
       setBarcode("");
@@ -368,7 +378,14 @@ export default function ScanPage() {
           onKeyDown={handleKeyDown}
           autoFocus
         />
-        <button onClick={handleScan} disabled={loading}>
+        <BarcodeScannerButton
+          onDetected={(value) => {
+            setBarcode(value);
+            handleScan(value);
+          }}
+          disabled={loading}
+        />
+        <button onClick={() => handleScan()} disabled={loading}>
           {loading ? "Looking up..." : "Lookup"}
         </button>
       </div>
@@ -425,7 +442,7 @@ export default function ScanPage() {
                   onChange={(e) =>
                     setRegForm({
                       ...regForm,
-                      quantity: parseInt(e.target.value) || 1,
+                      quantity: e.target.value,
                     })
                   }
                   required
@@ -914,4 +931,3 @@ export default function ScanPage() {
     </div>
   );
 }
-

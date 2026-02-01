@@ -21,8 +21,7 @@ export default function Layout() {
         <div className="nav-links">
           <NavLink to="/">Dashboard</NavLink>
           <NavLink to="/scan-search">Scan / Search</NavLink>
-          <NavLink to="/antibodies">Antibodies</NavLink>
-          <NavLink to="/lots">Lots</NavLink>
+          <NavLink to="/inventory">Inventory</NavLink>
           <NavLink to="/receive">Receive Inventory</NavLink>
           <NavLink to="/storage">Storage</NavLink>
           <NavLink to="/audit">Audit Log</NavLink>

@@ -3,6 +3,8 @@ import api from "../api/client";
 import type { Fluorochrome, Lab } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 
+const DEFAULT_FLUORO_COLOR = "#9ca3af";
+
 export default function FluorochromesPage() {
   const { user } = useAuth();
   const [labs, setLabs] = useState<Lab[]>([]);
@@ -11,7 +13,7 @@ export default function FluorochromesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
-    color: "#ffffff",
+    color: DEFAULT_FLUORO_COLOR,
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +53,7 @@ export default function FluorochromesPage() {
     }
     try {
       await api.post("/fluorochromes/", form, { params });
-      setForm({ name: "", color: "#ffffff" });
+      setForm({ name: "", color: DEFAULT_FLUORO_COLOR });
       setShowForm(false);
       load();
     } catch (err: any) {
@@ -62,6 +64,15 @@ export default function FluorochromesPage() {
   const handleDelete = async (id: string) => {
     await api.delete(`/fluorochromes/${id}`);
     load();
+  };
+
+  const handleColorChange = async (fluoro: Fluorochrome, color: string) => {
+    try {
+      await api.patch(`/fluorochromes/${fluoro.id}`, { color });
+      load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to update color");
+    }
   };
 
   return (
@@ -120,12 +131,11 @@ export default function FluorochromesPage() {
             <tr key={f.id}>
               <td>{f.name}</td>
               <td>
-                <div
-                  style={{
-                    width: "20px",
-                    height: "20px",
-                    backgroundColor: f.color,
-                  }}
+                <input
+                  type="color"
+                  value={f.color}
+                  onChange={(e) => handleColorChange(f, e.target.value)}
+                  title={f.color}
                 />
               </td>
               <td className="action-btns">
