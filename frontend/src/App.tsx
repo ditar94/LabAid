@@ -8,9 +8,8 @@ import DashboardPage from "./pages/DashboardPage";
 import AntibodiesPage from "./pages/AntibodiesPage";
 import LotsPage from "./pages/LotsPage";
 import ReceivePage from "./pages/ReceivePage";
-import ScanPage from "./pages/ScanPage";
+import ScanSearchPage from "./pages/ScanSearchPage";
 import StoragePage from "./pages/StoragePage";
-import SearchPage from "./pages/SearchPage";
 import AuditPage from "./pages/AuditPage";
 import UsersPage from "./pages/UsersPage";
 import LabsPage from "./pages/LabsPage";
@@ -52,8 +51,9 @@ function AppRoutes() {
         <Route path="/antibodies" element={<AntibodiesPage />} />
         <Route path="/lots" element={<LotsPage />} />
         <Route path="/receive" element={<ReceivePage />} />
-        <Route path="/scan" element={<ScanPage />} />
-        <Route path="/search" element={<SearchPage />} />
+        <Route path="/scan" element={<Navigate to="/scan-search" replace />} />
+        <Route path="/search" element={<Navigate to="/scan-search" replace />} />
+        <Route path="/scan-search" element={<ScanSearchPage />} />
         <Route path="/storage" element={<StoragePage />} />
         <Route path="/audit" element={<AuditPage />} />
         <Route path="/users" element={<UsersPage />} />

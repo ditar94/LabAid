@@ -20,8 +20,7 @@ export default function Layout() {
         </div>
         <div className="nav-links">
           <NavLink to="/">Dashboard</NavLink>
-          <NavLink to="/search">Search</NavLink>
-          <NavLink to="/scan">Scan</NavLink>
+          <NavLink to="/scan-search">Scan / Search</NavLink>
           <NavLink to="/antibodies">Antibodies</NavLink>
           <NavLink to="/lots">Lots</NavLink>
           <NavLink to="/receive">Receive Inventory</NavLink>

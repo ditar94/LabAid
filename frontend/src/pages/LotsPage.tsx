@@ -72,7 +72,8 @@ function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => vo
 }
 
 export default function LotsPage() {
-  const { user } = useAuth();
+  const { user, labSettings } = useAuth();
+  const sealedOnly = labSettings.sealed_counts_only ?? false;
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [lots, setLots] = useState<Lot[]>([]);
@@ -86,6 +87,12 @@ export default function LotsPage() {
     expiration_date: "",
   });
   const [modalLot, setModalLot] = useState<Lot | null>(null);
+  const [filterAntibodyId, setFilterAntibodyId] = useState<string>("");
+  const [depleteAllLotId, setDepleteAllLotId] = useState<string | null>(null);
+  const [depleteAllLoading, setDepleteAllLoading] = useState(false);
+  const [depleteLotId, setDepleteLotId] = useState<string | null>(null);
+  const [depleteLotLoading, setDepleteLotLoading] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const canEdit =
     user?.role === "super_admin" ||
@@ -101,10 +108,20 @@ export default function LotsPage() {
     if (user?.role === "super_admin" && selectedLab) {
       params.lab_id = selectedLab;
     }
+    if (filterAntibodyId) {
+      params.antibody_id = filterAntibodyId;
+    }
+    if (showArchived) {
+      params.include_archived = "true";
+    }
     api.get("/lots/", { params }).then((r) => setLots(r.data));
     if (user?.role !== "super_admin" || selectedLab) {
-      api.get("/antibodies/", { params }).then((r) => setAntibodies(r.data));
-      api.get("/fluorochromes/", { params }).then((r) => setFluorochromes(r.data));
+      const abParams: Record<string, string> = {};
+      if (user?.role === "super_admin" && selectedLab) {
+        abParams.lab_id = selectedLab;
+      }
+      api.get("/antibodies/", { params: abParams }).then((r) => setAntibodies(r.data));
+      api.get("/fluorochromes/", { params: abParams }).then((r) => setFluorochromes(r.data));
     }
   };
 
@@ -125,7 +142,7 @@ export default function LotsPage() {
     if (selectedLab) {
       load();
     }
-  }, [selectedLab]);
+  }, [selectedLab, filterAntibodyId, showArchived]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -155,6 +172,37 @@ export default function LotsPage() {
 
   const updateQC = async (lotId: string, status: string) => {
     await api.patch(`/lots/${lotId}/qc`, { qc_status: status });
+    load();
+  };
+
+  const handleDepleteAll = async (lotId: string) => {
+    setDepleteAllLoading(true);
+    try {
+      await api.post(`/lots/${lotId}/deplete-all`);
+      setDepleteAllLotId(null);
+      load();
+    } catch {
+      // Silently handle — user can retry
+    } finally {
+      setDepleteAllLoading(false);
+    }
+  };
+
+  const handleDepleteLot = async (lotId: string) => {
+    setDepleteLotLoading(true);
+    try {
+      await api.post(`/lots/${lotId}/deplete-all-lot`);
+      setDepleteLotId(null);
+      load();
+    } catch {
+      // Silently handle
+    } finally {
+      setDepleteLotLoading(false);
+    }
+  };
+
+  const handleArchive = async (lotId: string) => {
+    await api.patch(`/lots/${lotId}/archive`);
     load();
   };
 
@@ -191,6 +239,28 @@ export default function LotsPage() {
     return aExp - bExp;
   });
 
+  // Build age badges: for each antibody with 2+ lots, tag oldest active as "Use First"
+  const ageBadgeMap = new Map<string, "use-first" | "newer">();
+  {
+    const groups = new Map<string, Lot[]>();
+    for (const lot of sortedLots) {
+      const key = lot.antibody_id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(lot);
+    }
+    for (const [, groupLots] of groups) {
+      if (groupLots.length < 2) continue;
+      const oldest = groupLots.find((l) => (l.vial_counts?.sealed ?? 0) > 0);
+      for (const lot of groupLots) {
+        if (lot === oldest) {
+          ageBadgeMap.set(lot.id, "use-first");
+        } else {
+          ageBadgeMap.set(lot.id, "newer");
+        }
+      }
+    }
+  }
+
   const fluoroMap = new Map<string, string>();
   for (const f of fluorochromes) {
     fluoroMap.set(f.name.toLowerCase(), f.color);
@@ -213,6 +283,21 @@ export default function LotsPage() {
               ))}
             </select>
           )}
+          <select
+            value={filterAntibodyId}
+            onChange={(e) => setFilterAntibodyId(e.target.value)}
+          >
+            <option value="">All Antibodies</option>
+            {antibodies.map((ab) => (
+              <option key={ab.id} value={ab.id}>
+                {ab.target} - {ab.fluorochrome}
+              </option>
+            ))}
+          </select>
+          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.85rem" }}>
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            Show Archived
+          </label>
           {canEdit && (
             <button onClick={() => setShowForm(!showForm)}>
               {showForm ? "Cancel" : "+ New Lot"}
@@ -270,9 +355,9 @@ export default function LotsPage() {
             <th>QC</th>
             <th>Docs</th>
             <th className="count-header">Sealed</th>
-            <th className="count-header">Opened</th>
-            <th className="count-header">Depleted</th>
-            <th className="count-header">Total</th>
+            {!sealedOnly && <th className="count-header">Opened</th>}
+            {!sealedOnly && <th className="count-header">Depleted</th>}
+            <th className="count-header">Active</th>
             {canQC && <th>Actions</th>}
           </tr>
         </thead>
@@ -283,7 +368,7 @@ export default function LotsPage() {
               ? fluoroMap.get(lot.antibody_fluorochrome.toLowerCase())
               : undefined;
             return (
-              <tr key={lot.id}>
+              <tr key={lot.id} style={lot.is_archived ? { opacity: 0.5 } : undefined}>
                 <td>
                   {color && (
                     <div
@@ -293,7 +378,18 @@ export default function LotsPage() {
                   )}
                   {abName(lot)}
                 </td>
-                <td>{lot.lot_number}</td>
+                <td>
+                  {lot.lot_number}
+                  {ageBadgeMap.get(lot.id) === "use-first" && (
+                    <span className="badge badge-green" style={{ marginLeft: 6, fontSize: "0.7em" }}>Use First</span>
+                  )}
+                  {ageBadgeMap.get(lot.id) === "newer" && (
+                    <span className="badge" style={{ marginLeft: 6, fontSize: "0.7em", background: "#6b7280", color: "#fff" }}>Newer</span>
+                  )}
+                  {lot.is_archived && (
+                    <span className="badge" style={{ marginLeft: 6, fontSize: "0.7em", background: "#9ca3af", color: "#fff" }}>Archived</span>
+                  )}
+                </td>
                 <td>{lot.vendor_barcode || "—"}</td>
                 <td>
                   {lot.expiration_date
@@ -309,14 +405,23 @@ export default function LotsPage() {
                 <td className="count-cell">
                   <span className="count-pill sealed">{vc?.sealed ?? 0}</span>
                 </td>
-                <td className="count-cell">
-                  <span className="count-pill opened">{vc?.opened ?? 0}</span>
-                </td>
-                <td className="count-cell">
-                  <span className="count-pill depleted">
-                    {vc?.depleted ?? 0}
-                  </span>
-                </td>
+                {!sealedOnly && (
+                  <td className="count-cell">
+                    <span className="count-pill opened">{vc?.opened ?? 0}</span>
+                    {(vc?.opened_for_qc ?? 0) > 0 && (
+                      <span style={{ fontSize: "0.75em", color: "#d97706", marginLeft: 4 }}>
+                        ({vc!.opened_for_qc} for QC)
+                      </span>
+                    )}
+                  </td>
+                )}
+                {!sealedOnly && (
+                  <td className="count-cell">
+                    <span className="count-pill depleted">
+                      {vc?.depleted ?? 0}
+                    </span>
+                  </td>
+                )}
                 <td className="count-cell">
                   <strong>{vc?.total ?? 0}</strong>
                 </td>
@@ -338,6 +443,67 @@ export default function LotsPage() {
                         Fail
                       </button>
                     )}
+                    {(vc?.opened ?? 0) > 0 && (
+                      depleteAllLotId === lot.id ? (
+                        <>
+                          <button
+                            className="btn-sm btn-red"
+                            onClick={() => handleDepleteAll(lot.id)}
+                            disabled={depleteAllLoading}
+                          >
+                            {depleteAllLoading ? "..." : "Confirm"}
+                          </button>
+                          <button
+                            className="btn-sm"
+                            onClick={() => setDepleteAllLotId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn-sm btn-red"
+                          onClick={() => setDepleteAllLotId(lot.id)}
+                          title={`Deplete all ${vc?.opened ?? 0} opened vials`}
+                        >
+                          Deplete Opened
+                        </button>
+                      )
+                    )}
+                    {(vc?.total ?? 0) > 0 && (
+                      depleteLotId === lot.id ? (
+                        <>
+                          <button
+                            className="btn-sm btn-red"
+                            onClick={() => handleDepleteLot(lot.id)}
+                            disabled={depleteLotLoading}
+                          >
+                            {depleteLotLoading ? "..." : "Confirm"}
+                          </button>
+                          <button
+                            className="btn-sm"
+                            onClick={() => setDepleteLotId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn-sm btn-red"
+                          onClick={() => setDepleteLotId(lot.id)}
+                          title={`Deplete all ${vc?.total ?? 0} active vials (sealed + opened)`}
+                        >
+                          Deplete Lot
+                        </button>
+                      )
+                    )}
+                    <button
+                      className="btn-sm"
+                      onClick={() => handleArchive(lot.id)}
+                      title={lot.is_archived ? "Unarchive this lot" : "Archive this lot"}
+                    >
+                      {lot.is_archived ? "Unarchive" : "Archive"}
+                    </button>
                   </td>
                 )}
               </tr>
@@ -345,7 +511,7 @@ export default function LotsPage() {
           })}
           {lots.length === 0 && (
             <tr>
-              <td colSpan={canQC ? 11 : 10} className="empty">
+              <td colSpan={canQC ? (sealedOnly ? 9 : 11) : (sealedOnly ? 8 : 10)} className="empty">
                 No lots registered
               </td>
             </tr>

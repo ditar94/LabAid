@@ -40,6 +40,7 @@ def _build_cell_out(db: Session, cell: StorageCell, fluorochromes: list[Fluoroch
             antibody_target=antibody.target if antibody else None,
             antibody_fluorochrome=antibody.fluorochrome if antibody else None,
             color=color,
+            qc_status=lot.qc_status.value if lot and lot.qc_status else None,
         )
     return StorageCellOut(
         id=cell.id,

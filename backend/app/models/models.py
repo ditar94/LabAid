@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     func,
@@ -52,6 +53,7 @@ class Lab(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(200), nullable=False, unique=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    settings = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     users = relationship("User", back_populates="lab")
@@ -67,6 +69,7 @@ class Fluorochrome(Base):
     lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
     name = Column(String(100), nullable=False)
     color = Column(String(7), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False, server_default="true")
 
     lab = relationship("Lab", back_populates="fluorochromes")
 
@@ -120,6 +123,7 @@ class Lot(Base):
     qc_status = Column(Enum(QCStatus, values_callable=lambda e: [x.value for x in e]), nullable=False, default=QCStatus.PENDING)
     qc_approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     qc_approved_at = Column(DateTime(timezone=True), nullable=True)
+    is_archived = Column(Boolean, default=False, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     antibody = relationship("Antibody", back_populates="lots")
@@ -159,6 +163,7 @@ class Vial(Base):
     open_expiration = Column(Date, nullable=True)  # stability-based expiration
     depleted_at = Column(DateTime(timezone=True), nullable=True)
     depleted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    opened_for_qc = Column(Boolean, default=False, nullable=False, server_default="false")
 
     lot = relationship("Lot", back_populates="vials")
     location_cell = relationship("StorageCell", back_populates="vial")

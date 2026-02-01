@@ -6,11 +6,12 @@ import {
   type ReactNode,
 } from "react";
 import api from "../api/client";
-import type { User } from "../api/types";
+import type { User, LabSettings } from "../api/types";
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
+  labSettings: LabSettings;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -24,12 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(
     localStorage.getItem("token")
   );
+  const [labSettings, setLabSettings] = useState<LabSettings>({});
   const [loading, setLoading] = useState(true);
 
   const fetchUser = async (t?: string) => {
     const headers = t ? { Authorization: `Bearer ${t}` } : undefined;
     const res = await api.get("/auth/me", { headers });
     setUser(res.data);
+    // Fetch lab settings after user
+    try {
+      const settingsRes = await api.get("/labs/my-settings", { headers });
+      setLabSettings(settingsRes.data || {});
+    } catch {
+      setLabSettings({});
+    }
   };
 
   useEffect(() => {
@@ -57,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("token");
     setToken(null);
     setUser(null);
+    setLabSettings({});
   };
 
   const refreshUser = async () => {
@@ -64,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, refreshUser, loading }}>
+    <AuthContext.Provider value={{ user, token, labSettings, login, logout, refreshUser, loading }}>
       {children}
     </AuthContext.Provider>
   );

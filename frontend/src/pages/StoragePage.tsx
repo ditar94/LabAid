@@ -8,6 +8,7 @@ import type {
   Fluorochrome,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
+import OpenVialDialog from "../components/OpenVialDialog";
 import { useAuth } from "../context/AuthContext";
 
 export default function StoragePage() {
@@ -32,6 +33,10 @@ export default function StoragePage() {
     cols: 10,
     temperature: "",
   });
+
+  // Open vial dialog state
+  const [openTarget, setOpenTarget] = useState<StorageCell | null>(null);
+  const [openLoading, setOpenLoading] = useState(false);
 
   const canCreate = user?.role === "super_admin" || user?.role === "lab_admin";
   const canStock =
@@ -133,6 +138,29 @@ export default function StoragePage() {
       setError(err.response?.data?.detail || "Failed to stock vial");
       setBarcode("");
       scanRef.current?.focus();
+    }
+  };
+
+  const handleGridCellClick = (cell: StorageCell) => {
+    if (!cell.vial || cell.vial.status !== "sealed") return;
+    setOpenTarget(cell);
+  };
+
+  const handleOpenVial = async (force: boolean) => {
+    if (!openTarget?.vial) return;
+    setOpenLoading(true);
+    try {
+      await api.post(`/vials/${openTarget.vial.id}/open?force=${force}`, {
+        cell_id: openTarget.id,
+      });
+      setMessage(`Vial opened from cell ${openTarget.label}. Status updated.`);
+      setOpenTarget(null);
+      if (selectedGrid) await loadGrid(selectedGrid.unit.id);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to open vial");
+      setOpenTarget(null);
+    } finally {
+      setOpenLoading(false);
     }
   };
 
@@ -307,12 +335,17 @@ export default function StoragePage() {
             </div>
           )}
 
+          {!stockingMode && message && <p className="success">{message}</p>}
+          {!stockingMode && error && <p className="error">{error}</p>}
+
           <StorageGrid
             rows={selectedGrid.unit.rows}
             cols={selectedGrid.unit.cols}
             cells={selectedGrid.cells}
             highlightVialIds={new Set()}
             highlightNextCellId={stockingMode ? nextEmptyCell?.id : undefined}
+            onCellClick={!stockingMode && canStock ? handleGridCellClick : undefined}
+            clickMode={!stockingMode && canStock ? "occupied" : "highlighted"}
             showVialInfo
             fluorochromes={fluorochromes}
           />
@@ -329,7 +362,21 @@ export default function StoragePage() {
                 <span className="legend-box next-empty-legend" /> Next slot
               </span>
             )}
+            {!stockingMode && canStock && (
+              <span className="legend-item">
+                Click a sealed vial to open it
+              </span>
+            )}
           </div>
+
+          {openTarget && (
+            <OpenVialDialog
+              cell={openTarget}
+              loading={openLoading}
+              onConfirm={handleOpenVial}
+              onCancel={() => setOpenTarget(null)}
+            />
+          )}
         </div>
       )}
     </div>

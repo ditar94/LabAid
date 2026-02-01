@@ -17,7 +17,7 @@ interface AntibodyInventory {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, labSettings, refreshUser } = useAuth();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [stats, setStats] = useState({
@@ -326,6 +326,25 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {(user?.role === "lab_admin" || user?.role === "super_admin") && user?.lab_id && (
+        <div className="dashboard-section">
+          <h2>Lab Settings</h2>
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={labSettings.sealed_counts_only ?? false}
+              onChange={async () => {
+                await api.patch(`/labs/${user.lab_id}/settings`, {
+                  sealed_counts_only: !(labSettings.sealed_counts_only ?? false),
+                });
+                await refreshUser();
+              }}
+            />
+            Track sealed counts only (skip opened/depleted tracking)
+          </label>
         </div>
       )}
     </div>

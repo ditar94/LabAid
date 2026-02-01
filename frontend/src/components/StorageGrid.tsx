@@ -7,10 +7,11 @@ interface Props {
   cells: StorageCell[];
   highlightVialIds: Set<string>;
   highlightNextCellId?: string | null;
+  recommendedCellId?: string | null;
   onCellClick?: (cell: StorageCell) => void;
   selectedCellId?: string | null;
   showVialInfo?: boolean;
-  clickMode?: "highlighted" | "empty";
+  clickMode?: "highlighted" | "empty" | "occupied";
   fluorochromes?: Fluorochrome[];
 }
 
@@ -20,6 +21,7 @@ export default function StorageGrid({
   cells,
   highlightVialIds,
   highlightNextCellId,
+  recommendedCellId,
   onCellClick,
   selectedCellId,
   showVialInfo = false,
@@ -70,17 +72,22 @@ export default function StorageGrid({
               : false;
             const isSelected = cell.id === selectedCellId;
             const isNextEmpty = cell.id === highlightNextCellId;
+            const isRecommended = cell.id === recommendedCellId;
 
             const isEmptyClickable = clickMode === "empty" && !hasVial;
+            const isOccupiedClickable = clickMode === "occupied" && hasVial;
             const isClickable =
               (clickMode === "highlighted" && isHighlighted) ||
-              (clickMode === "empty" && !hasVial);
+              (clickMode === "empty" && !hasVial) ||
+              (clickMode === "occupied" && hasVial);
 
             let className = "grid-cell";
             if (isSelected) className += " selected";
+            else if (isRecommended) className += " recommended";
             else if (isHighlighted) className += " highlighted";
             else if (isNextEmpty) className += " next-empty";
             else if (isEmptyClickable) className += " empty-clickable";
+            else if (isOccupiedClickable) className += " occupied-clickable";
             else if (hasVial) className += " occupied";
 
             const vialInfo = cell.vial;

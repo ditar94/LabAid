@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import Fluorochrome, User, UserRole
 from app.schemas.schemas import FluorochromeCreate, FluorochromeOut
+from app.services.audit import log_audit, snapshot_fluorochrome
 
 router = APIRouter(prefix="/api/fluorochromes", tags=["fluorochromes"])
 
@@ -22,6 +23,7 @@ def list_fluorochromes(
         q = q.filter(Fluorochrome.lab_id == lab_id)
     else:
         q = q.filter(Fluorochrome.lab_id == current_user.lab_id)
+    q = q.filter(Fluorochrome.is_active.is_(True))
     return q.all()
 
 
@@ -57,6 +59,19 @@ def delete_fluorochrome(
     if not fluoro:
         raise HTTPException(status_code=404, detail="Fluorochrome not found")
 
-    db.delete(fluoro)
+    before = snapshot_fluorochrome(fluoro)
+    fluoro.is_active = False
+
+    log_audit(
+        db,
+        lab_id=fluoro.lab_id,
+        user_id=current_user.id,
+        action="fluorochrome.archived",
+        entity_type="fluorochrome",
+        entity_id=fluoro.id,
+        before_state=before,
+        after_state=snapshot_fluorochrome(fluoro),
+    )
+
     db.commit()
-    return {"detail": "Fluorochrome deleted"}
+    return {"detail": "Fluorochrome archived"}

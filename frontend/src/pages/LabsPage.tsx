@@ -55,6 +55,7 @@ export default function LabsPage() {
           <tr>
             <th>Name</th>
             <th>Active</th>
+            <th>Sealed Counts Only</th>
             <th>Created At</th>
           </tr>
         </thead>
@@ -63,6 +64,18 @@ export default function LabsPage() {
             <tr key={l.id}>
               <td>{l.name}</td>
               <td>{l.is_active ? "Yes" : "No"}</td>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={l.settings?.sealed_counts_only ?? false}
+                  onChange={async () => {
+                    await api.patch(`/labs/${l.id}/settings`, {
+                      sealed_counts_only: !(l.settings?.sealed_counts_only ?? false),
+                    });
+                    load();
+                  }}
+                />
+              </td>
               <td>{new Date(l.created_at).toLocaleString()}</td>
             </tr>
           ))}

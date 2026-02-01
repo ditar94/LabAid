@@ -116,10 +116,11 @@ def search_antibodies(
         counts_q = (
             db.query(
                 Vial.lot_id,
-                func.count().label("total"),
                 func.sum(case((Vial.status == VialStatus.SEALED, 1), else_=0)).label("sealed"),
                 func.sum(case((Vial.status == VialStatus.OPENED, 1), else_=0)).label("opened"),
                 func.sum(case((Vial.status == VialStatus.DEPLETED, 1), else_=0)).label("depleted"),
+                func.sum(case((Vial.status != VialStatus.DEPLETED, 1), else_=0)).label("total"),
+                func.sum(case((Vial.opened_for_qc == True, 1), else_=0)).label("opened_for_qc"),
             )
             .filter(Vial.lot_id.in_(lot_ids))
             .group_by(Vial.lot_id)
@@ -131,6 +132,7 @@ def search_antibodies(
                 opened=row.opened or 0,
                 depleted=row.depleted or 0,
                 total=row.total or 0,
+                opened_for_qc=row.opened_for_qc or 0,
             )
             for row in counts_q
         }
@@ -196,6 +198,7 @@ def search_antibodies(
             opened=sum(counts_map.get(l.id, VialCounts()).opened for l in ab_lots),
             depleted=sum(counts_map.get(l.id, VialCounts()).depleted for l in ab_lots),
             total=sum(counts_map.get(l.id, VialCounts()).total for l in ab_lots),
+            opened_for_qc=sum(counts_map.get(l.id, VialCounts()).opened_for_qc for l in ab_lots),
         )
 
         storage_locs = []

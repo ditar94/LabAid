@@ -50,16 +50,22 @@ docker compose exec backend alembic upgrade head
 - [x] Each vial is an individual record with full lifecycle (sealed → opened → depleted)
 - [x] Lot age tracking — lots have creation dates, vials have received_at timestamps for newer/older comparison
 - [x] Lot QC status — Pending / Approved / Failed, with approval timestamp and approver
-- [x] QC enforcement — cannot open a vial from an unapproved lot
+- [x] QC enforcement — soft gate with "opened for QC" tracking; vials opened from unapproved lots are flagged, confirmed on return-to-storage
 - [x] Vials per lot summary view — at-a-glance counts (sealed/opened/depleted) per lot
-- [x] Lot age comparison — visual indicator of which lots are newer vs. older
+- [x] Lot age comparison — "Use First" / "Newer" badges on lots with 2+ lots per antibody
+- [x] Lots screen: allow filtering/searching to view all lots for a specific antibody
+- [x] Lots screen: total column excludes depleted vials (renamed to "Active")
 
 ### Data Permanence & Safety
 - [x] All data stored in PostgreSQL — no risk of disappearing
-- [x] No hard deletes anywhere — status columns only (Active/Depleted/Archived)
-- [x] Full audit trail — every mutation logged with who, what, when, before/after state
+- [x] No hard deletes anywhere — status columns only (Active/Depleted/Archived); fluorochrome delete converted to soft delete
+- [x] Full audit trail — every mutation logged with who, what, when, before/after state (user creation, password ops, document upload, fluorochrome archive, lab creation all covered)
 - [x] Correction feature — revert accidental opens/depletes while preserving audit history
 - [x] Alembic migrations — schema changes tracked and versioned
+- [x] Lab data (including audit logs and uploaded PDFs) must never be deleted due to non-payment or suspension — enforced by soft deletes and suspension middleware
+- [x] Suspended labs should retain read-only access; restore full access on reactivation — middleware blocks non-GET requests for inactive labs
+- [x] Enforce append-only audit logs and prohibit destructive deletes — PostgreSQL trigger prevents UPDATE/DELETE on audit_log
+- [ ] Configure object storage lifecycle rules to move inactive files to cold storage
 
 ### Storage Racks & Vial Location
 - [x] Lab admins create storage units (e.g., "Freezer Box A1", 10x10 grid, -20C)
@@ -71,6 +77,7 @@ docker compose exec backend alembic upgrade head
 - [x] User clicks specific cell to confirm which vial they're pulling — no auto-selection
 - [x] Opening a vial frees its cell for future use
 - [x] Cell de-allocation on Deplete — logically clear grid coordinate when a vial is depleted (not just opened)
+- [x] Allow opening vials anywhere a storage grid is shown (storage screen, search results, etc.)
 
 ### Scan Screen UX
 - [x] Auto-focused scan input for hardware scanner convenience
@@ -78,6 +85,7 @@ docker compose exec backend alembic upgrade head
 - [x] QC warning banner when lot is not approved
 - [x] Oldest-vial recommendation (but requires human click to confirm)
 - [x] Inline lot registration when scanned barcode is unknown — prompt to create lot, enter quantity, pick storage unit
+- [x] Combine Scan + Search into a single "Scan/Search" tab with guidance text
 
 ### Intent-Based Scan Actions
 > After scanning a known lot, present an action menu instead of jumping straight to "open". Supports the full vial lifecycle from one screen.
@@ -88,13 +96,19 @@ docker compose exec backend alembic upgrade head
 - [x] **Receive More** — inline receive form (quantity + optional storage assignment) for the scanned lot
 - [x] **Deplete** — mark a vial as fully used up; user selects which vial from the list
 - [x] All intent-based actions logged to audit trail with lab_id and user timestamps
+- [x] Add "Deplete All" action for a lot (scan results + lots list) — includes "Deplete Opened" and "Deplete Entire Lot" options
+- [x] Optional lab setting: track only sealed counts (skip opened/depleted tracking)
+- [x] Lot archiving — archive/unarchive lots, hidden by default with toggle filter, shown with badge when visible
 
 ### Auth & Multi-Tenancy
 - [x] Email/password login with JWT tokens
 - [x] Role-based access: Super Admin, Lab Admin, Supervisor, Tech, Read-only
 - [x] Every query scoped by lab_id from JWT — users cannot see other labs' data
-- [x] Initial setup flow — create first lab + admin account
+- [ ] Initial setup flow — create first lab + admin account
 - [x] User management page for admins
+- [ ] Super Admin can suspend/reactivate labs (access revoked or restored without deleting data)
+- [ ] Support ticket system for Lab Admins and Supervisors
+- [ ] Clarify account ownership/hosting model (site-managed vs. AWS/Azure) and data durability guarantees
 
 ### Role Hierarchy Rework
 > Rethink roles to match real hospital/lab structure. Current roles (super_admin, lab_admin, tech, read_only) need to be refined.
@@ -112,7 +126,7 @@ docker compose exec backend alembic upgrade head
 
 **Supervisor (new role, per-lab)**
 - [x] Approve / Fail lots (QC decisions)
-- [x] Register new antibodies and fluorochromes
+- [ ] Register new antibodies and fluorochromes
 - [x] Register new lots and receive inventory
 - [x] All Tech abilities
 
@@ -152,18 +166,28 @@ docker compose exec backend alembic upgrade head
 - [x] Register lots (lot number, vendor barcode, expiration date, linked to antibody)
 - [x] QC approval/rejection by Lab Admin or Super Admin
 - [x] Receive inventory — enter quantity, optionally assign to storage unit
+- [ ] Inventory UI: combine Antibodies + Lots into an "Inventory" tab with cards
+- [ ] Inventory UI: click antibody card to view lots list for that antibody (and add new lots there)
+- [ ] Inventory UI: add new antibodies inline from the same screen
+- [ ] Inventory UI: select fluorochrome color inline; update all antibodies using that fluorochrome
+- [ ] Fluorochromes tab auto-populates from antibodies and stores lab color selections
+- [ ] Add-antibody flow: choose from existing fluorochromes or create a new one (auto-add to fluorochrome list)
 
 ### Dashboard & Reporting
 - [x] Dashboard with counts: antibodies, lots, sealed vials, opened vials, pending QC
 - [x] Expiring-soon alerts — lots approaching expiration date
 - [x] Per-antibody inventory breakdown (sealed/opened/depleted across all lots)
 - [x] Low-stock warnings — Supervisors+ can set a low-stock threshold per antibody (min on-hand vials across all lots); when below threshold, alert on dashboard
+- [ ] Low-stock warning should trigger when <= threshold (not just <)
+- [ ] Dashboard cards: when selecting an antibody, show counts specific to that antibody (sequential cards)
+- [ ] Pending QC card remains global total; when an antibody is selected, show its pending QC count
 
 ### Infrastructure
 - [x] Docker Compose — Postgres + Backend + Frontend, one command startup
 - [x] Backend hot-reload via volume mount
 - [x] Frontend Vite dev server with HMR
 - [x] CORS configured for local dev
+- [ ] Payment/account automation: track billing status and trigger lab suspension/reactivation without data loss
 
 ### Storage Grid Visual Language
 > Each grid cell should communicate vial state at a glance through a layered system of color dots, shading, and borders. No ambiguity — a user should be able to read the grid without clicking anything.

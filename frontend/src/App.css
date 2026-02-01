@@ -556,6 +556,35 @@ td.mono {
   transform: scale(1.1);
 }
 
+.grid-cell.recommended {
+  background: #f59e0b;
+  color: white;
+  cursor: pointer;
+  font-weight: 700;
+  animation: pulse-amber 1.5s ease-in-out infinite;
+}
+
+.grid-cell.recommended:hover {
+  background: #d97706;
+  transform: scale(1.1);
+}
+
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2); }
+}
+
+.grid-cell.occupied-clickable {
+  background: #e2e8f0;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.grid-cell.occupied-clickable:hover {
+  background: #cbd5e1;
+  outline: 2px solid var(--primary);
+}
+
 .grid-cell.selected {
   background: var(--green);
   color: white;
@@ -1117,4 +1146,39 @@ td.mono {
 
 .dashboard-section h2 {
   margin-bottom: 0.75rem;
+}
+
+/* ── Open Vial Dialog Overlay ────────────────────────────────────────── */
+
+.open-vial-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.open-vial-dialog {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.open-vial-dialog h3 {
+  margin: 0 0 0.75rem;
+}
+
+.open-vial-dialog p {
+  margin: 0.25rem 0;
+}
+
+.open-vial-dialog .action-btns {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
 }

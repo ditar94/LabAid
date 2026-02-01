@@ -41,6 +41,10 @@ export default function ScanPage() {
   // QC confirmation state
   const [showQcConfirm, setShowQcConfirm] = useState(false);
 
+  // QC return prompt state (shown when returning a vial that was opened for QC)
+  const [showQcReturnPrompt, setShowQcReturnPrompt] = useState(false);
+  const [pendingReturnCell, setPendingReturnCell] = useState<StorageCell | null>(null);
+
   // Receive More form state
   const [receiveQty, setReceiveQty] = useState(1);
   const [receiveStorageId, setReceiveStorageId] = useState("");
@@ -208,16 +212,29 @@ export default function ScanPage() {
 
   // ── Intent: Return to Storage ───────────────────────────────────────
 
-  const confirmReturn = async () => {
-    if (!selectedVial || !selectedCell) return;
+  const confirmReturn = async (openedForQcOverride?: boolean) => {
+    const vial = selectedVial;
+    const cell = openedForQcOverride !== undefined ? pendingReturnCell : selectedCell;
+    if (!vial || !cell) return;
 
+    // If vial was opened for QC and we haven't asked yet, show the prompt
+    if (vial.opened_for_qc && openedForQcOverride === undefined) {
+      setPendingReturnCell(cell);
+      setShowQcReturnPrompt(true);
+      return;
+    }
+
+    setShowQcReturnPrompt(false);
+    setPendingReturnCell(null);
     setLoading(true);
     try {
-      await api.post(`/vials/${selectedVial.id}/return-to-storage`, {
-        cell_id: selectedCell.id,
-      });
+      const body: Record<string, unknown> = { cell_id: cell.id };
+      if (openedForQcOverride !== undefined) {
+        body.opened_for_qc = openedForQcOverride;
+      }
+      await api.post(`/vials/${vial.id}/return-to-storage`, body);
       setMessage(
-        `Vial returned to storage at cell ${selectedCell.label}.`
+        `Vial returned to storage at cell ${cell.label}.`
       );
       resetActionState();
       await refreshScan();
@@ -267,6 +284,26 @@ export default function ScanPage() {
       await refreshScan();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to deplete vial");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Intent: Deplete All ────────────────────────────────────────────
+
+  const [showDepleteAllConfirm, setShowDepleteAllConfirm] = useState(false);
+
+  const confirmDepleteAll = async () => {
+    if (!result) return;
+    setLoading(true);
+    setShowDepleteAllConfirm(false);
+    try {
+      const res = await api.post(`/lots/${result.lot.id}/deplete-all`);
+      setMessage(`${res.data.length} vial(s) depleted for lot ${result.lot.lot_number}.`);
+      resetActionState();
+      await refreshScan();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to deplete all vials");
     } finally {
       setLoading(false);
     }
@@ -570,6 +607,7 @@ export default function ScanPage() {
                     cols={result.storage_grid.unit.cols}
                     cells={result.storage_grid.cells}
                     highlightVialIds={highlightCellVialIds}
+                    recommendedCellId={recommendedCell?.id}
                     onCellClick={handleCellClick}
                     selectedCellId={selectedCell?.id}
                     clickMode="highlighted"
@@ -689,7 +727,7 @@ export default function ScanPage() {
                     />
                   </div>
 
-                  {selectedCell && (
+                  {selectedCell && !showQcReturnPrompt && (
                     <div className="confirm-action">
                       <p>
                         Return vial to cell{" "}
@@ -697,11 +735,35 @@ export default function ScanPage() {
                       </p>
                       <button
                         className="btn-green"
-                        onClick={confirmReturn}
+                        onClick={() => confirmReturn()}
                         disabled={loading}
                       >
                         Confirm Return to Storage
                       </button>
+                    </div>
+                  )}
+
+                  {showQcReturnPrompt && (
+                    <div className="confirm-action qc-return-prompt">
+                      <p>
+                        This vial was opened for <strong>QC verification</strong>. Was it used for QC?
+                      </p>
+                      <div className="action-btns">
+                        <button
+                          className="btn-green"
+                          onClick={() => confirmReturn(true)}
+                          disabled={loading}
+                        >
+                          Yes, opened for QC
+                        </button>
+                        <button
+                          className="btn-sm"
+                          onClick={() => confirmReturn(false)}
+                          disabled={loading}
+                        >
+                          No, regular use
+                        </button>
+                      </div>
                     </div>
                   )}
                 </>
@@ -760,6 +822,41 @@ export default function ScanPage() {
               <p className="page-desc">
                 Select the opened vial to mark as depleted.
               </p>
+
+              {result.opened_vials.length > 1 && !showDepleteAllConfirm && (
+                <button
+                  className="btn-red"
+                  style={{ marginBottom: "0.75rem" }}
+                  onClick={() => setShowDepleteAllConfirm(true)}
+                  disabled={loading}
+                >
+                  Deplete All ({result.opened_vials.length} vials)
+                </button>
+              )}
+
+              {showDepleteAllConfirm && (
+                <div className="confirm-action">
+                  <p>
+                    Deplete all <strong>{result.opened_vials.length}</strong> opened
+                    vials for lot <strong>{result.lot.lot_number}</strong>?
+                  </p>
+                  <div className="action-btns">
+                    <button
+                      className="btn-red"
+                      onClick={confirmDepleteAll}
+                      disabled={loading}
+                    >
+                      {loading ? "Depleting..." : "Yes, Deplete All"}
+                    </button>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setShowDepleteAllConfirm(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="vial-select-list">
                 {result.opened_vials.map((v) => {

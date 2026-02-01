@@ -12,10 +12,15 @@ export interface User {
   must_change_password: boolean;
 }
 
+export interface LabSettings {
+  sealed_counts_only?: boolean;
+}
+
 export interface Lab {
   id: string;
   name: string;
   is_active: boolean;
+  settings: LabSettings;
   created_at: string;
 }
 
@@ -45,6 +50,7 @@ export interface VialCounts {
   opened: number;
   depleted: number;
   total: number;
+  opened_for_qc: number;
 }
 
 export interface Lot {
@@ -57,6 +63,7 @@ export interface Lot {
   qc_status: QCStatus;
   qc_approved_by: string | null;
   qc_approved_at: string | null;
+  is_archived: boolean;
   created_at: string;
   vial_counts?: VialCounts;
   antibody_target?: string | null;
@@ -83,6 +90,7 @@ export interface Vial {
   open_expiration: string | null;
   depleted_at: string | null;
   depleted_by: string | null;
+  opened_for_qc: boolean;
 }
 
 export interface StorageUnit {
@@ -105,6 +113,7 @@ export interface VialSummary {
   antibody_target: string | null;
   antibody_fluorochrome: string | null;
   color: string | null;
+  qc_status: QCStatus | null;
 }
 
 export interface StorageCell {

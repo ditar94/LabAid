@@ -41,6 +41,37 @@ def snapshot_vial(vial) -> dict:
         "opened_at": str(vial.opened_at) if vial.opened_at else None,
         "opened_by": str(vial.opened_by) if vial.opened_by else None,
         "depleted_at": str(vial.depleted_at) if vial.depleted_at else None,
+        "opened_for_qc": vial.opened_for_qc,
+    }
+
+
+def snapshot_user(user) -> dict:
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role.value if user.role else None,
+        "is_active": user.is_active,
+        "lab_id": str(user.lab_id) if user.lab_id else None,
+    }
+
+
+def snapshot_lab(lab) -> dict:
+    return {
+        "id": str(lab.id),
+        "name": lab.name,
+        "is_active": lab.is_active,
+        "settings": lab.settings or {},
+    }
+
+
+def snapshot_fluorochrome(fluoro) -> dict:
+    return {
+        "id": str(fluoro.id),
+        "name": fluoro.name,
+        "color": fluoro.color,
+        "is_active": fluoro.is_active,
+        "lab_id": str(fluoro.lab_id),
     }
 
 
@@ -50,4 +81,5 @@ def snapshot_lot(lot) -> dict:
         "lot_number": lot.lot_number,
         "qc_status": lot.qc_status.value if lot.qc_status else None,
         "qc_approved_by": str(lot.qc_approved_by) if lot.qc_approved_by else None,
+        "is_archived": lot.is_archived,
     }

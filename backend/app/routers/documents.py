@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import Lot, LotDocument, User, UserRole
 from app.schemas.schemas import LotDocumentOut
+from app.services.audit import log_audit
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -45,6 +46,18 @@ def upload_lot_document(
         file_name=file.filename,
     )
     db.add(doc)
+    db.flush()
+
+    log_audit(
+        db,
+        lab_id=lot.lab_id,
+        user_id=current_user.id,
+        action="document.uploaded",
+        entity_type="lot_document",
+        entity_id=doc.id,
+        after_state={"lot_id": str(lot.id), "file_name": file.filename},
+    )
+
     db.commit()
     db.refresh(doc)
     return doc

@@ -3,10 +3,14 @@ import api from "../api/client";
 import type {
   AntibodySearchResult,
   StorageGrid as StorageGridType,
+  StorageCell,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
+import OpenVialDialog from "../components/OpenVialDialog";
+import { useAuth } from "../context/AuthContext";
 
 export default function SearchPage() {
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AntibodySearchResult[]>([]);
   const [selectedResult, setSelectedResult] =
@@ -14,7 +18,16 @@ export default function SearchPage() {
   const [grids, setGrids] = useState<Map<string, StorageGridType>>(new Map());
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [openTarget, setOpenTarget] = useState<StorageCell | null>(null);
+  const [openLoading, setOpenLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const canOpen =
+    user?.role === "super_admin" ||
+    user?.role === "lab_admin" ||
+    user?.role === "supervisor" ||
+    user?.role === "tech";
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -67,6 +80,30 @@ export default function SearchPage() {
     setGrids(newGrids);
   };
 
+  const handleGridCellClick = (cell: StorageCell) => {
+    if (!cell.vial || cell.vial.status !== "sealed") return;
+    setOpenTarget(cell);
+  };
+
+  const handleOpenVial = async (force: boolean) => {
+    if (!openTarget?.vial) return;
+    setOpenLoading(true);
+    try {
+      await api.post(`/vials/${openTarget.vial.id}/open?force=${force}`, {
+        cell_id: openTarget.id,
+      });
+      setMessage(`Vial opened from cell ${openTarget.label}. Status updated.`);
+      setOpenTarget(null);
+      // Refresh grids
+      if (selectedResult) await handleSelect(selectedResult);
+    } catch (err: any) {
+      setMessage(null);
+      setOpenTarget(null);
+    } finally {
+      setOpenLoading(false);
+    }
+  };
+
   return (
     <div>
       <h1>Antibody Search</h1>
@@ -89,6 +126,8 @@ export default function SearchPage() {
           {loading ? "Searching..." : "Search"}
         </button>
       </div>
+
+      {message && <p className="success">{message}</p>}
 
       {searched && !loading && results.length === 0 && (
         <p className="empty">No antibodies found matching "{query}"</p>
@@ -194,6 +233,8 @@ export default function SearchPage() {
                     cols={grid.unit.cols}
                     cells={grid.cells}
                     highlightVialIds={highlightIds}
+                    onCellClick={canOpen ? handleGridCellClick : undefined}
+                    clickMode={canOpen ? "occupied" : "highlighted"}
                     showVialInfo
                   />
                 </div>
@@ -201,6 +242,15 @@ export default function SearchPage() {
             })
           )}
         </div>
+      )}
+
+      {openTarget && (
+        <OpenVialDialog
+          cell={openTarget}
+          loading={openLoading}
+          onConfirm={handleOpenVial}
+          onCancel={() => setOpenTarget(null)}
+        />
       )}
     </div>
   );

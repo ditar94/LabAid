@@ -1,4 +1,5 @@
 from typing import List
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -6,7 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import models
 from app.schemas import schemas
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_role
+from app.services.audit import log_audit, snapshot_lab
 
 router = APIRouter(
     prefix="/api/labs",
@@ -28,6 +30,18 @@ def create_lab(
         )
     db_lab = models.Lab(name=lab.name)
     db.add(db_lab)
+    db.flush()
+
+    log_audit(
+        db,
+        lab_id=db_lab.id,
+        user_id=current_user.id,
+        action="lab.created",
+        entity_type="lab",
+        entity_id=db_lab.id,
+        after_state=snapshot_lab(db_lab),
+    )
+
     db.commit()
     db.refresh(db_lab)
     return db_lab
@@ -45,3 +59,55 @@ def read_labs(
         )
     labs = db.query(models.Lab).all()
     return labs
+
+
+@router.get("/my-settings")
+def get_my_lab_settings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    return lab.settings or {}
+
+
+@router.patch("/{lab_id}/settings", response_model=schemas.Lab)
+def update_lab_settings(
+    lab_id: UUID,
+    body: schemas.LabSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
+    )),
+):
+    q = db.query(models.Lab).filter(models.Lab.id == lab_id)
+    if current_user.role != models.UserRole.SUPER_ADMIN:
+        if current_user.lab_id != lab_id:
+            raise HTTPException(status_code=403, detail="Not your lab")
+    lab = q.first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    before = snapshot_lab(lab)
+    settings = dict(lab.settings or {})
+    updates = body.model_dump(exclude_none=True)
+    settings.update(updates)
+    lab.settings = settings
+
+    log_audit(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="lab.settings_updated",
+        entity_type="lab",
+        entity_id=lab.id,
+        before_state=before,
+        after_state=snapshot_lab(lab),
+    )
+
+    db.commit()
+    db.refresh(lab)
+    return lab

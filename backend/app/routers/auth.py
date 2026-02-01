@@ -12,6 +12,7 @@ from app.core.security import (
 )
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import User, UserRole
+from app.services.audit import log_audit, snapshot_user
 from app.schemas.schemas import (
     ChangePasswordRequest,
     LoginRequest,
@@ -113,6 +114,18 @@ def create_user(
         must_change_password=True,
     )
     db.add(user)
+    db.flush()
+
+    log_audit(
+        db,
+        lab_id=target_lab_id,
+        user_id=current_user.id,
+        action="user.created",
+        entity_type="user",
+        entity_id=user.id,
+        after_state=snapshot_user(user),
+    )
+
     db.commit()
     db.refresh(user)
 
@@ -168,6 +181,17 @@ def reset_password(
     temp_pw = generate_temp_password()
     target.hashed_password = hash_password(temp_pw)
     target.must_change_password = True
+
+    log_audit(
+        db,
+        lab_id=target.lab_id or current_user.lab_id,
+        user_id=current_user.id,
+        action="user.password_reset",
+        entity_type="user",
+        entity_id=target.id,
+        note=f"Password reset by {current_user.email}",
+    )
+
     db.commit()
 
     return ResetPasswordResponse(temp_password=temp_pw)
@@ -184,6 +208,16 @@ def change_password(
 
     current_user.hashed_password = hash_password(body.new_password)
     current_user.must_change_password = False
+
+    log_audit(
+        db,
+        lab_id=current_user.lab_id or current_user.id,
+        user_id=current_user.id,
+        action="user.password_changed",
+        entity_type="user",
+        entity_id=current_user.id,
+    )
+
     db.commit()
 
     return {"detail": "Password changed successfully"}
