@@ -1,0 +1,205 @@
+# LabAid — Flow Cytometry Inventory System
+
+Full-stack web application for Flow Cytometry labs to track antibody inventory, lots, and QC status.
+
+## Tech Stack
+
+- **Backend**: Python / FastAPI / SQLAlchemy / Alembic
+- **Database**: PostgreSQL 16
+- **Frontend**: React / TypeScript / Vite
+- **Auth**: JWT (lab_id derived from token, never trusted from frontend)
+- **Infra**: Docker Compose
+
+## Getting Started
+
+```bash
+docker compose up -d --build
+docker compose exec backend alembic upgrade head
+# Visit http://localhost:5173/setup to create lab + admin
+# Then http://localhost:5173/login
+# API docs at http://localhost:8000/docs
+```
+
+---
+
+## Original Vision
+
+> A program for use in Flow Cytometry labs where I can scan an antibody vial and
+> track inventory (vials on hand, vials opened, vials per lot, which lot is
+> newer/older). Store information indefinitely with no risk of it disappearing.
+> Scan a vial using a barcode/QR scanner and it tells me whether the lot is
+> registered, whether it's been QC'd, and lets me "open" a vial so inventory
+> updates. The scan screen should be convenient — if the lot isn't registered yet,
+> let the user register it inline (with quantity received) and store it in a
+> storage container. Labs can create storage racks and scan antibodies into
+> specific spots so users can quickly find each antibody/lot. Multiple vials per
+> lot are stored individually, each in its own cell.
+
+---
+
+## Development Checklist
+
+### Core: Scanning & Identification
+- [x] Barcode/QR scan input — auto-focused field catches keyboard wedge input, Enter triggers lookup
+- [x] Scan tells you: is this lot registered? Is it QC'd? How many sealed vials remain?
+- [x] If lot is NOT registered, offer inline registration from the scan screen (create lot + receive vials + assign storage in one flow)
+- [x] "Open" a vial from the scan screen — user clicks grid cell, inventory updates
+
+### Inventory Tracking
+- [x] Track vials on hand (sealed), vials opened, vials per lot
+- [x] Each vial is an individual record with full lifecycle (sealed → opened → depleted)
+- [x] Lot age tracking — lots have creation dates, vials have received_at timestamps for newer/older comparison
+- [x] Lot QC status — Pending / Approved / Failed, with approval timestamp and approver
+- [x] QC enforcement — cannot open a vial from an unapproved lot
+- [x] Vials per lot summary view — at-a-glance counts (sealed/opened/depleted) per lot
+- [x] Lot age comparison — visual indicator of which lots are newer vs. older
+
+### Data Permanence & Safety
+- [x] All data stored in PostgreSQL — no risk of disappearing
+- [x] No hard deletes anywhere — status columns only (Active/Depleted/Archived)
+- [x] Full audit trail — every mutation logged with who, what, when, before/after state
+- [x] Correction feature — revert accidental opens/depletes while preserving audit history
+- [x] Alembic migrations — schema changes tracked and versioned
+
+### Storage Racks & Vial Location
+- [x] Lab admins create storage units (e.g., "Freezer Box A1", 10x10 grid, -20C)
+- [x] CSS Grid visual layout — cells show position labels (A1, B3, etc.)
+- [x] Occupied cells show antibody target name, hover for full details (antibody + fluorochrome + lot)
+- [x] 1-by-1 stocking workflow — "Stock Vials" mode highlights next open slot, scan barcode to fill it, auto-advances
+- [x] Multiple vials per lot stored individually — each vial gets its own cell
+- [x] Scan lookup shows the storage grid with matching vials highlighted (pulsing blue)
+- [x] User clicks specific cell to confirm which vial they're pulling — no auto-selection
+- [x] Opening a vial frees its cell for future use
+- [x] Cell de-allocation on Deplete — logically clear grid coordinate when a vial is depleted (not just opened)
+
+### Scan Screen UX
+- [x] Auto-focused scan input for hardware scanner convenience
+- [x] Scan result shows: antibody name, lot number, QC badge, sealed vial count
+- [x] QC warning banner when lot is not approved
+- [x] Oldest-vial recommendation (but requires human click to confirm)
+- [x] Inline lot registration when scanned barcode is unknown — prompt to create lot, enter quantity, pick storage unit
+
+### Intent-Based Scan Actions
+> After scanning a known lot, present an action menu instead of jumping straight to "open". Supports the full vial lifecycle from one screen.
+
+- [x] Action menu after scan: **Open New**, **Return to Storage**, **Receive More**, **Deplete**
+- [x] **Open New** — highlight the oldest sealed vial in the grid; user clicks cell to confirm
+- [x] **Return to Storage** — suggest the next open slot by default (like stocking workflow), but allow user to override by clicking any empty cell in the grid
+- [x] **Receive More** — inline receive form (quantity + optional storage assignment) for the scanned lot
+- [x] **Deplete** — mark a vial as fully used up; user selects which vial from the list
+- [x] All intent-based actions logged to audit trail with lab_id and user timestamps
+
+### Auth & Multi-Tenancy
+- [x] Email/password login with JWT tokens
+- [x] Role-based access: Super Admin, Lab Admin, Supervisor, Tech, Read-only
+- [x] Every query scoped by lab_id from JWT — users cannot see other labs' data
+- [x] Initial setup flow — create first lab + admin account
+- [x] User management page for admins
+
+### Role Hierarchy Rework
+> Rethink roles to match real hospital/lab structure. Current roles (super_admin, lab_admin, tech, read_only) need to be refined.
+
+**Super Admin (platform-level)**
+- [x] Manage hospitals/labs — create new labs, view all labs
+- [x] Create and manage users for any lab
+- [x] Access audit logs across all labs
+- [x] Access any lab's inventory for troubleshooting/support
+
+**Lab Admin (per-lab)**
+- [x] Create and manage users within their own lab
+- [x] Full access to all lab features (antibodies, lots, storage, inventory, audit log)
+- [x] All Supervisor abilities
+
+**Supervisor (new role, per-lab)**
+- [x] Approve / Fail lots (QC decisions)
+- [x] Register new antibodies and fluorochromes
+- [x] Register new lots and receive inventory
+- [x] All Tech abilities
+
+**Tech (per-lab)**
+- [x] View inventory and storage grids
+- [x] Store vials (1-by-1 stocking workflow)
+- [x] Open vials from the scan screen
+- [x] Cannot register lots, receive inventory, or approve QC
+- [x] If scanned barcode is unregistered or lot not QC'd, show message: "Contact your supervisor"
+
+**Password Management & User Creation**
+- [x] When creating a new user, generate a random temporary password (format: `tempXXX`, e.g., `temp482`) — display it to the admin so they can share it with the user
+- [x] Supervisors and above can reset any user's password (within their permission scope) — generates a new temp password in the same format
+- [x] Temporary password flag on User model (`must_change_password`) — set to true on creation and on reset
+- [x] Force password change on first login — if `must_change_password` is true, redirect user to a "Choose New Password" screen before they can access the app
+
+**Open question**
+- [x] Decide: should Techs be able to receive inventory, or only Supervisors? → **Only Supervisors+**
+
+### Antibody Search & Locator
+- [x] Global search bar — search by Target, Fluorochrome, Clone, or Catalog #
+- [x] Search results show matching antibodies with lot/vial summary info
+- [x] Visual locator — selecting an antibody from results displays its storage location (Freezer/Box name) and highlights its specific cell coordinates in the grid view
+
+### QC Verification & Documentation
+- [x] QC warning gate — if a user attempts to open a vial from a "Pending" lot, show confirmation: "This lot hasn't been approved yet; are you sure you wish to open this vial?"
+- [x] QC document storage — upload and store lot verifications/QC results (PDFs/images) under each Lot record
+- [x] Role gate — only Supervisors and Admins can transition a lot from "Pending" to "Approved" after reviewing documentation
+
+### Antibody-Specific Stability Logic
+- [x] Configurable secondary expiration — Supervisors can set a stability period (e.g., 90 days) at the Antibody level
+- [x] Automatic open-expiration calculation — when a vial is opened, calculate its unique expiration date based on the Antibody's stability setting
+- [x] Visual warning when an opened vial is past its stability expiration
+
+### Antibody & Lot Management
+- [x] Register antibodies (target, fluorochrome, clone, vendor, catalog number)
+- [x] Register lots (lot number, vendor barcode, expiration date, linked to antibody)
+- [x] QC approval/rejection by Lab Admin or Super Admin
+- [x] Receive inventory — enter quantity, optionally assign to storage unit
+
+### Dashboard & Reporting
+- [x] Dashboard with counts: antibodies, lots, sealed vials, opened vials, pending QC
+- [x] Expiring-soon alerts — lots approaching expiration date
+- [x] Per-antibody inventory breakdown (sealed/opened/depleted across all lots)
+- [x] Low-stock warnings — Supervisors+ can set a low-stock threshold per antibody (min on-hand vials across all lots); when below threshold, alert on dashboard
+
+### Infrastructure
+- [x] Docker Compose — Postgres + Backend + Frontend, one command startup
+- [x] Backend hot-reload via volume mount
+- [x] Frontend Vite dev server with HMR
+- [x] CORS configured for local dev
+
+### Storage Grid Visual Language
+> Each grid cell should communicate vial state at a glance through a layered system of color dots, shading, and borders. No ambiguity — a user should be able to read the grid without clicking anything.
+
+**Cell content (occupied cells)**
+- [x] Show antibody target name **and** fluorochrome in each cell (not just target)
+- [x] Show lot expiration date in the cell (compact format, e.g. "03/26")
+- [x] Fluorochrome color dot — small colored circle in the cell corner; each fluorochrome gets a distinct color (e.g., FITC = green, PE = yellow, APC = red), configurable per lab
+- [x] Fluorochrome colors carry through to Lots table, scan results, antibody list, and dashboard for consistency
+
+**Vial status shading**
+- [ ] Sealed vial — solid/full-opacity cell background
+- [ ] Opened vial — lighter/faded shading to visually distinguish from sealed
+- [ ] Depleted vial — greyed out or hatched (if still shown in grid before de-allocation)
+
+**QC status via border color**
+- [ ] Approved lot — default border (or subtle green border)
+- [ ] Pending QC — yellow/amber border to flag "needs QC"
+- [ ] Failed QC — red border
+
+**Lot age indicators**
+- [ ] Visually distinguish "current" (oldest active) lot vs. "new" (newer) lots — e.g., a small badge, dot, or subtle background tint per cell
+- [ ] Grid legend explaining the visual encoding (dot colors, shading meanings, border meanings)
+
+### Older-Lot Enforcement on Scan
+> When a user scans a lot and selects "Open New", check whether an older active lot of the same antibody exists with sealed vials. If so, prompt the user before proceeding.
+
+- [ ] On "Open New" intent, check for older lots of the same antibody that still have sealed vials
+- [ ] If an older lot exists, show prompt: "An older lot (Lot #XXXX) has N sealed vials in [Storage Unit] at [cell(s)]. Use the older lot first?"
+- [ ] Prompt includes a direct link/button to switch to the older lot's grid view
+- [ ] User can dismiss and proceed with the scanned lot if they choose
+- [ ] If user proceeds with the newer lot, offer an option to note "Lot verification / QC in progress" on the older lot — explains why it's being skipped (e.g., QC docs pending, verification underway) and logs the reason in the audit trail
+
+### Backlog / Nice-to-Have
+- [ ] Export audit log to CSV
+- [ ] Bulk vial operations (open/deplete multiple)
+- [ ] Print storage grid labels
+- [ ] Dark mode
+- [ ] Mobile-responsive layout for tablet use at the bench

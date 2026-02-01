@@ -1,0 +1,207 @@
+import { useState, useRef, useEffect } from "react";
+import api from "../api/client";
+import type {
+  AntibodySearchResult,
+  StorageGrid as StorageGridType,
+} from "../api/types";
+import StorageGrid from "../components/StorageGrid";
+
+export default function SearchPage() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<AntibodySearchResult[]>([]);
+  const [selectedResult, setSelectedResult] =
+    useState<AntibodySearchResult | null>(null);
+  const [grids, setGrids] = useState<Map<string, StorageGridType>>(new Map());
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    setSelectedResult(null);
+    setGrids(new Map());
+    setSearched(true);
+    try {
+      const res = await api.get("/antibodies/search", {
+        params: { q: query.trim() },
+      });
+      setResults(res.data);
+    } catch {
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSearch();
+    }
+  };
+
+  const handleSelect = async (result: AntibodySearchResult) => {
+    setSelectedResult(result);
+
+    if (result.storage_locations.length === 0) {
+      setGrids(new Map());
+      return;
+    }
+
+    const newGrids = new Map<string, StorageGridType>();
+    await Promise.all(
+      result.storage_locations.map(async (loc) => {
+        try {
+          const res = await api.get(`/storage/units/${loc.unit_id}/grid`);
+          newGrids.set(loc.unit_id, res.data);
+        } catch {
+          // Skip units that fail to load
+        }
+      })
+    );
+    setGrids(newGrids);
+  };
+
+  return (
+    <div>
+      <h1>Antibody Search</h1>
+      <p className="page-desc">
+        Search by target, fluorochrome, clone, or catalog number to find
+        antibodies and locate them in storage.
+      </p>
+
+      <div className="scan-input-container">
+        <input
+          ref={inputRef}
+          className="scan-input"
+          placeholder="Search antibodies..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          autoFocus
+        />
+        <button onClick={handleSearch} disabled={loading}>
+          {loading ? "Searching..." : "Search"}
+        </button>
+      </div>
+
+      {searched && !loading && results.length === 0 && (
+        <p className="empty">No antibodies found matching "{query}"</p>
+      )}
+
+      {results.length > 0 && (
+        <table className="search-results-table">
+          <thead>
+            <tr>
+              <th>Target</th>
+              <th>Fluorochrome</th>
+              <th>Clone</th>
+              <th>Catalog #</th>
+              <th>Sealed</th>
+              <th>Opened</th>
+              <th>Depleted</th>
+              <th>Lots</th>
+              <th>Locations</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((r) => (
+              <tr
+                key={r.antibody.id}
+                className={`clickable-row ${
+                  selectedResult?.antibody.id === r.antibody.id ? "active" : ""
+                }`}
+                onClick={() => handleSelect(r)}
+              >
+                <td>{r.antibody.target}</td>
+                <td>{r.antibody.fluorochrome}</td>
+                <td>{r.antibody.clone || "—"}</td>
+                <td>{r.antibody.catalog_number || "—"}</td>
+                <td>{r.total_vial_counts.sealed}</td>
+                <td>{r.total_vial_counts.opened}</td>
+                <td>{r.total_vial_counts.depleted}</td>
+                <td>{r.lots.length}</td>
+                <td>{r.storage_locations.length > 0 ? r.storage_locations.map((l) => l.unit_name).join(", ") : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {selectedResult && (
+        <div className="locator-panel">
+          <h2>
+            {selectedResult.antibody.target} -{" "}
+            {selectedResult.antibody.fluorochrome}
+          </h2>
+
+          {selectedResult.lots.length > 0 && (
+            <div className="lot-summaries">
+              {selectedResult.lots.map((lot) => (
+                <div key={lot.id} className="lot-summary-item">
+                  <span className="lot-summary-number">
+                    Lot {lot.lot_number}
+                  </span>
+                  <span
+                    className={`badge ${
+                      lot.qc_status === "approved"
+                        ? "badge-green"
+                        : lot.qc_status === "failed"
+                        ? "badge-red"
+                        : "badge-yellow"
+                    }`}
+                  >
+                    {lot.qc_status}
+                  </span>
+                  <span className="lot-summary-counts">
+                    {lot.vial_counts.sealed} sealed, {lot.vial_counts.opened}{" "}
+                    opened
+                  </span>
+                  {lot.expiration_date && (
+                    <span className="lot-summary-exp">
+                      Exp: {lot.expiration_date}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {selectedResult.storage_locations.length === 0 ? (
+            <p className="empty">
+              No vials currently in storage for this antibody.
+            </p>
+          ) : (
+            selectedResult.storage_locations.map((loc) => {
+              const grid = grids.get(loc.unit_id);
+              if (!grid) return null;
+
+              const highlightIds = new Set(loc.vial_ids);
+
+              return (
+                <div key={loc.unit_id} className="grid-container">
+                  <h3>
+                    {loc.unit_name}
+                    {loc.temperature ? ` (${loc.temperature})` : ""}
+                  </h3>
+                  <StorageGrid
+                    rows={grid.unit.rows}
+                    cols={grid.unit.cols}
+                    cells={grid.cells}
+                    highlightVialIds={highlightIds}
+                    showVialInfo
+                  />
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

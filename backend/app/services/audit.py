@@ -1,0 +1,53 @@
+import json
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from app.models.models import AuditLog
+
+
+def log_audit(
+    db: Session,
+    *,
+    lab_id: UUID,
+    user_id: UUID,
+    action: str,
+    entity_type: str,
+    entity_id: UUID,
+    before_state: dict | None = None,
+    after_state: dict | None = None,
+    note: str | None = None,
+) -> AuditLog:
+    entry = AuditLog(
+        lab_id=lab_id,
+        user_id=user_id,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        before_state=json.dumps(before_state, default=str) if before_state else None,
+        after_state=json.dumps(after_state, default=str) if after_state else None,
+        note=note,
+    )
+    db.add(entry)
+    return entry
+
+
+def snapshot_vial(vial) -> dict:
+    return {
+        "id": str(vial.id),
+        "lot_id": str(vial.lot_id),
+        "status": vial.status.value if vial.status else None,
+        "location_cell_id": str(vial.location_cell_id) if vial.location_cell_id else None,
+        "opened_at": str(vial.opened_at) if vial.opened_at else None,
+        "opened_by": str(vial.opened_by) if vial.opened_by else None,
+        "depleted_at": str(vial.depleted_at) if vial.depleted_at else None,
+    }
+
+
+def snapshot_lot(lot) -> dict:
+    return {
+        "id": str(lot.id),
+        "lot_number": lot.lot_number,
+        "qc_status": lot.qc_status.value if lot.qc_status else None,
+        "qc_approved_by": str(lot.qc_approved_by) if lot.qc_approved_by else None,
+    }

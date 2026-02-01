@@ -1,0 +1,216 @@
+import enum
+import uuid
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+
+from app.core.database import Base
+
+
+# ── Enums ──────────────────────────────────────────────────────────────────
+
+
+class UserRole(str, enum.Enum):
+    SUPER_ADMIN = "super_admin"
+    LAB_ADMIN = "lab_admin"
+    SUPERVISOR = "supervisor"
+    TECH = "tech"
+    READ_ONLY = "read_only"
+
+
+class QCStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    FAILED = "failed"
+
+
+class VialStatus(str, enum.Enum):
+    SEALED = "sealed"
+    OPENED = "opened"
+    DEPLETED = "depleted"
+    ARCHIVED = "archived"
+
+
+# ── Models ─────────────────────────────────────────────────────────────────
+
+
+class Lab(Base):
+    __tablename__ = "labs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(200), nullable=False, unique=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    users = relationship("User", back_populates="lab")
+    antibodies = relationship("Antibody", back_populates="lab")
+    storage_units = relationship("StorageUnit", back_populates="lab")
+    fluorochromes = relationship("Fluorochrome", back_populates="lab")
+
+
+class Fluorochrome(Base):
+    __tablename__ = "fluorochromes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    name = Column(String(100), nullable=False)
+    color = Column(String(7), nullable=False)
+
+    lab = relationship("Lab", back_populates="fluorochromes")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=True)
+    email = Column(String(255), nullable=False, unique=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(200), nullable=False)
+    role = Column(Enum(UserRole, values_callable=lambda e: [x.value for x in e]), nullable=False, default=UserRole.TECH)
+    is_active = Column(Boolean, default=True, nullable=False)
+    must_change_password = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    lab = relationship("Lab", back_populates="users")
+
+
+class Antibody(Base):
+    __tablename__ = "antibodies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    target = Column(String(100), nullable=False)  # e.g., CD3, CD4, CD45
+    fluorochrome = Column(String(100), nullable=False)  # e.g., FITC, PE, APC
+    clone = Column(String(100))
+    vendor = Column(String(200))
+    catalog_number = Column(String(100))
+    stability_days = Column(Integer, nullable=True)  # secondary expiration after opening
+    low_stock_threshold = Column(Integer, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    lab = relationship("Lab", back_populates="antibodies")
+    lots = relationship("Lot", back_populates="antibody")
+
+
+class Lot(Base):
+    __tablename__ = "lots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    antibody_id = Column(
+        UUID(as_uuid=True), ForeignKey("antibodies.id"), nullable=False
+    )
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    lot_number = Column(String(100), nullable=False)
+    vendor_barcode = Column(String(255))  # what the scanner reads
+    expiration_date = Column(Date)
+    qc_status = Column(Enum(QCStatus, values_callable=lambda e: [x.value for x in e]), nullable=False, default=QCStatus.PENDING)
+    qc_approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    qc_approved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    antibody = relationship("Antibody", back_populates="lots")
+    vials = relationship("Vial", back_populates="lot")
+    qc_approver = relationship("User", foreign_keys=[qc_approved_by])
+    documents = relationship("LotDocument", back_populates="lot")
+
+
+class LotDocument(Base):
+    __tablename__ = "lot_documents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    lot = relationship("Lot", back_populates="documents")
+    user = relationship("User")
+
+
+class Vial(Base):
+    __tablename__ = "vials"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    status = Column(Enum(VialStatus, values_callable=lambda e: [x.value for x in e]), nullable=False, default=VialStatus.SEALED)
+    location_cell_id = Column(
+        UUID(as_uuid=True), ForeignKey("storage_cells.id"), nullable=True
+    )
+    received_at = Column(DateTime(timezone=True), server_default=func.now())
+    opened_at = Column(DateTime(timezone=True), nullable=True)
+    opened_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    open_expiration = Column(Date, nullable=True)  # stability-based expiration
+    depleted_at = Column(DateTime(timezone=True), nullable=True)
+    depleted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    lot = relationship("Lot", back_populates="vials")
+    location_cell = relationship("StorageCell", back_populates="vial")
+    opener = relationship("User", foreign_keys=[opened_by])
+    depleter = relationship("User", foreign_keys=[depleted_by])
+
+
+class StorageUnit(Base):
+    __tablename__ = "storage_units"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    name = Column(String(200), nullable=False)  # e.g., "Freezer Box A1"
+    rows = Column(Integer, nullable=False)
+    cols = Column(Integer, nullable=False)
+    temperature = Column(String(50))  # e.g., "-20°C", "4°C"
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    lab = relationship("Lab", back_populates="storage_units")
+    cells = relationship(
+        "StorageCell", back_populates="storage_unit", cascade="all, delete-orphan"
+    )
+
+
+class StorageCell(Base):
+    __tablename__ = "storage_cells"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    storage_unit_id = Column(
+        UUID(as_uuid=True), ForeignKey("storage_units.id"), nullable=False
+    )
+    row = Column(Integer, nullable=False)  # 0-indexed
+    col = Column(Integer, nullable=False)  # 0-indexed
+    label = Column(String(20))  # e.g., "A1", "B3"
+
+    storage_unit = relationship("StorageUnit", back_populates="cells")
+    vial = relationship("Vial", back_populates="location_cell", uselist=False)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    action = Column(String(100), nullable=False)  # e.g., "vial.opened", "lot.qc_approved"
+    entity_type = Column(String(50), nullable=False)  # e.g., "vial", "lot"
+    entity_id = Column(UUID(as_uuid=True), nullable=False)
+    before_state = Column(Text, nullable=True)  # JSON snapshot
+    after_state = Column(Text, nullable=True)  # JSON snapshot
+    note = Column(Text, nullable=True)  # for corrections
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")

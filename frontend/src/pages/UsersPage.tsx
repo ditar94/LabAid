@@ -1,0 +1,213 @@
+import { useEffect, useState, type FormEvent } from "react";
+import api from "../api/client";
+import type { User, Lab } from "../api/types";
+import { useAuth } from "../context/AuthContext";
+
+export default function UsersPage() {
+  const { user: currentUser } = useAuth();
+  const [labs, setLabs] = useState<Lab[]>([]);
+  const [selectedLab, setSelectedLab] = useState<string>("");
+  const [users, setUsers] = useState<User[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    email: "",
+    full_name: "",
+    role: "tech",
+  });
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<{
+    userId: string;
+    tempPassword: string;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    if (!selectedLab) return;
+    const params: Record<string, string> = {};
+    if (currentUser?.role === "super_admin") {
+      params.lab_id = selectedLab;
+    }
+    api.get("/auth/users", { params }).then((r) => setUsers(r.data));
+  };
+
+  useEffect(() => {
+    if (currentUser?.role === "super_admin") {
+      api.get("/labs").then((r) => {
+        setLabs(r.data);
+        if (r.data.length > 0) {
+          setSelectedLab(r.data[0].id);
+        }
+      });
+    } else if (currentUser) {
+      setSelectedLab(currentUser.lab_id || "");
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (selectedLab) {
+      load();
+    }
+  }, [selectedLab]);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setTempPassword(null);
+    try {
+      const params: Record<string, string> = {};
+      if (currentUser?.role === "super_admin" && selectedLab) {
+        params.lab_id = selectedLab;
+      }
+      const res = await api.post("/auth/users", form, { params });
+      setTempPassword(res.data.temp_password);
+      setForm({ email: "", full_name: "", role: "tech" });
+      setShowForm(false);
+      load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to create user");
+    }
+  };
+
+  const handleResetPassword = async (userId: string) => {
+    setError(null);
+    setResetResult(null);
+    try {
+      const res = await api.post(`/auth/users/${userId}/reset-password`);
+      setResetResult({ userId, tempPassword: res.data.temp_password });
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to reset password");
+    }
+  };
+
+  // Build role options based on current user's role
+  const roleOptions: { value: string; label: string }[] = [];
+  if (
+    currentUser?.role === "super_admin"
+  ) {
+    roleOptions.push(
+      { value: "lab_admin", label: "Lab Admin" },
+      { value: "supervisor", label: "Supervisor" },
+      { value: "tech", label: "Tech" },
+      { value: "read_only", label: "Read Only" }
+    );
+  } else if (currentUser?.role === "lab_admin") {
+    roleOptions.push(
+      { value: "supervisor", label: "Supervisor" },
+      { value: "tech", label: "Tech" },
+      { value: "read_only", label: "Read Only" }
+    );
+  } else if (currentUser?.role === "supervisor") {
+    roleOptions.push(
+      { value: "tech", label: "Tech" },
+      { value: "read_only", label: "Read Only" }
+    );
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1>Users</h1>
+        <div className="filters">
+          {currentUser?.role === "super_admin" && (
+            <select
+              value={selectedLab}
+              onChange={(e) => setSelectedLab(e.target.value)}
+            >
+              {labs.map((lab) => (
+                <option key={lab.id} value={lab.id}>
+                  {lab.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button onClick={() => setShowForm(!showForm)}>
+            {showForm ? "Cancel" : "+ New User"}
+          </button>
+        </div>
+      </div>
+
+      {tempPassword && (
+        <div className="temp-password-banner">
+          User created. Temporary password:{" "}
+          <strong className="mono">{tempPassword}</strong>
+          <br />
+          Share this with the user — they will be prompted to change it on first
+          login.
+        </div>
+      )}
+
+      {resetResult && (
+        <div className="temp-password-banner">
+          Password reset for{" "}
+          {users.find((u) => u.id === resetResult.userId)?.full_name ||
+            "user"}
+          . New temporary password:{" "}
+          <strong className="mono">{resetResult.tempPassword}</strong>
+        </div>
+      )}
+
+      {error && <p className="error">{error}</p>}
+
+      {showForm && (
+        <form className="inline-form" onSubmit={handleSubmit}>
+          <input
+            placeholder="Full Name"
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            required
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            required
+          />
+          <select
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+          >
+            {roleOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <button type="submit">Create User</button>
+        </form>
+      )}
+
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Active</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((u) => (
+            <tr key={u.id}>
+              <td>{u.full_name}</td>
+              <td>{u.email}</td>
+              <td>{u.role.replaceAll("_", " ")}</td>
+              <td>{u.is_active ? "Yes" : "No"}</td>
+              <td className="action-btns">
+                {u.id !== currentUser?.id && (
+                  <button
+                    className="btn-sm"
+                    onClick={() => handleResetPassword(u.id)}
+                  >
+                    Reset Password
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
