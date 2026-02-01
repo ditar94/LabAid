@@ -73,7 +73,7 @@ def create_storage_unit(
     body: StorageUnitCreate,
     lab_id: UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
     if body.rows < 1 or body.rows > 26 or body.cols < 1 or body.cols > 26:
         raise HTTPException(status_code=400, detail="Rows and cols must be between 1 and 26")

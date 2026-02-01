@@ -120,6 +120,10 @@ class AntibodyUpdate(BaseModel):
     is_testing: bool | None = None
 
 
+class AntibodyArchiveRequest(BaseModel):
+    note: str | None = None
+
+
 class AntibodyOut(BaseModel):
     id: UUID
     lab_id: UUID

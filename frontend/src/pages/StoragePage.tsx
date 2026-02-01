@@ -39,7 +39,7 @@ export default function StoragePage() {
   const [openTarget, setOpenTarget] = useState<StorageCell | null>(null);
   const [openLoading, setOpenLoading] = useState(false);
 
-  const canCreate = user?.role === "super_admin" || user?.role === "lab_admin";
+  const canCreate = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
   const canStock =
     user?.role === "super_admin" ||
     user?.role === "lab_admin" ||

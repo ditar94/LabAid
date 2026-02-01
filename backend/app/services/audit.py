@@ -75,6 +75,15 @@ def snapshot_fluorochrome(fluoro) -> dict:
     }
 
 
+def snapshot_antibody(ab) -> dict:
+    return {
+        "id": str(ab.id),
+        "target": ab.target,
+        "fluorochrome": ab.fluorochrome,
+        "is_active": ab.is_active,
+    }
+
+
 def snapshot_lot(lot) -> dict:
     return {
         "id": str(lot.id),

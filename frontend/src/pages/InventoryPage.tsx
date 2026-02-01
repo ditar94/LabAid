@@ -50,8 +50,11 @@ export default function InventoryPage() {
   const [archivePrompt, setArchivePrompt] = useState<{ lotId: string; lotNumber: string } | null>(null);
   const [archiveNote, setArchiveNote] = useState("");
   const [archiveLoading, setArchiveLoading] = useState(false);
-  const [testingUpdating, setTestingUpdating] = useState<string | null>(null);
   const [autoExpandedId, setAutoExpandedId] = useState<string | null>(null);
+  const [archiveAbPrompt, setArchiveAbPrompt] = useState<{ id: string; target: string; fluorochrome: string } | null>(null);
+  const [archiveAbNote, setArchiveAbNote] = useState("");
+  const [archiveAbLoading, setArchiveAbLoading] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
   const [abForm, setAbForm] = useState({
     target: "",
@@ -99,10 +102,12 @@ export default function InventoryPage() {
   const loadData = async () => {
     if (!selectedLab) return;
     const params: Record<string, string> = { lab_id: selectedLab };
+    const abParams: Record<string, string> = { ...params };
+    if (showInactive) abParams.include_inactive = "true";
     const lotParams: Record<string, string> = { ...params };
     if (showArchived) lotParams.include_archived = "true";
     const [abRes, lotRes, fluoroRes, storageRes] = await Promise.all([
-      api.get<Antibody[]>("/antibodies/", { params }),
+      api.get<Antibody[]>("/antibodies/", { params: abParams }),
       api.get<Lot[]>("/lots/", { params: lotParams }),
       api.get<Fluorochrome[]>("/fluorochromes/", { params }),
       api.get<StorageUnit[]>("/storage/units", { params }),
@@ -117,7 +122,7 @@ export default function InventoryPage() {
     if (selectedLab) {
       loadData();
     }
-  }, [selectedLab, showArchived]);
+  }, [selectedLab, showArchived, showInactive]);
 
   useEffect(() => {
     if (!requestedAntibodyId) return;
@@ -167,7 +172,7 @@ export default function InventoryPage() {
 
   const activeLots = useMemo(() => lots.filter((l) => !l.is_archived), [lots]);
 
-  const inventoryRows: InventoryRow[] = useMemo(() => {
+  const allInventoryRows: InventoryRow[] = useMemo(() => {
     const counts = new Map<
       string,
       { lots: number; sealed: number; opened: number; depleted: number; total: number }
@@ -219,6 +224,15 @@ export default function InventoryPage() {
       );
   }, [antibodies, activeLots]);
 
+  const inventoryRows = useMemo(
+    () => allInventoryRows.filter((r) => r.antibody.is_active),
+    [allInventoryRows]
+  );
+  const inactiveRows = useMemo(
+    () => allInventoryRows.filter((r) => !r.antibody.is_active),
+    [allInventoryRows]
+  );
+
   const lotsByAntibody = useMemo(() => {
     const map = new Map<string, Lot[]>();
     for (const lot of lots) {
@@ -228,6 +242,23 @@ export default function InventoryPage() {
     }
     return map;
   }, [lots]);
+
+  const lotAgeBadgeMap = useMemo(() => {
+    const map = new Map<string, "current" | "new">();
+    for (const [, abLots] of lotsByAntibody) {
+      const nonArchived = abLots.filter((l) => !l.is_archived);
+      if (nonArchived.length < 2) continue;
+      const oldest = nonArchived.find((l) => (l.vial_counts?.sealed ?? 0) > 0);
+      for (const lot of nonArchived) {
+        if (lot === oldest) {
+          map.set(lot.id, "current");
+        } else {
+          map.set(lot.id, "new");
+        }
+      }
+    }
+    return map;
+  }, [lotsByAntibody]);
 
   useEffect(() => {
     setShowLotForm(false);
@@ -408,18 +439,6 @@ export default function InventoryPage() {
     }
   };
 
-  const handleTestingToggle = async (antibodyId: string, nextValue: boolean) => {
-    setTestingUpdating(antibodyId);
-    try {
-      await api.patch(`/antibodies/${antibodyId}`, { is_testing: nextValue });
-      await loadData();
-    } catch {
-      // keep UI stable on failure
-    } finally {
-      setTestingUpdating(null);
-    }
-  };
-
   const handleArchive = async (lotId: string, note?: string) => {
     setArchiveLoading(true);
     try {
@@ -432,6 +451,21 @@ export default function InventoryPage() {
       // keep UI stable on failure
     } finally {
       setArchiveLoading(false);
+    }
+  };
+
+  const handleArchiveAntibody = async (antibodyId: string, note?: string) => {
+    setArchiveAbLoading(true);
+    try {
+      const body = note ? { note } : undefined;
+      await api.patch(`/antibodies/${antibodyId}/archive`, body);
+      await loadData();
+      setArchiveAbPrompt(null);
+      setArchiveAbNote("");
+    } catch {
+      // keep UI stable on failure
+    } finally {
+      setArchiveAbLoading(false);
     }
   };
 
@@ -609,19 +643,39 @@ export default function InventoryPage() {
                   </span>
                 </div>
                 {canEdit && (
-                  <input
-                    type="color"
-                    className="fluoro-color-input"
-                    value={fluoro?.color || DEFAULT_FLUORO_COLOR}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      handleUpdateFluoroColor(
-                        row.antibody.fluorochrome,
-                        e.target.value
-                      );
-                    }}
-                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                      type="color"
+                      className="fluoro-color-input"
+                      value={fluoro?.color || DEFAULT_FLUORO_COLOR}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleUpdateFluoroColor(
+                          row.antibody.fluorochrome,
+                          e.target.value
+                        );
+                      }}
+                    />
+                    <div
+                      className="active-switch"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setArchiveAbNote("");
+                        setArchiveAbPrompt({
+                          id: row.antibody.id,
+                          target: row.antibody.target,
+                          fluorochrome: row.antibody.fluorochrome,
+                        });
+                      }}
+                      title="Set this antibody as inactive"
+                    >
+                      <span className="active-switch-label on">Active</span>
+                      <div className="active-switch-track on">
+                        <div className="active-switch-thumb" />
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
               <div className="inventory-meta">
@@ -629,27 +683,8 @@ export default function InventoryPage() {
                 {row.lowStock && (
                   <span className="badge badge-red">Low stock</span>
                 )}
-                {canEdit ? (
-                  <label
-                    className="testing-toggle"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={row.antibody.is_testing}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        handleTestingToggle(row.antibody.id, e.target.checked);
-                      }}
-                      disabled={testingUpdating === row.antibody.id}
-                    />
-                    In Testing
-                  </label>
-                ) : (
-                  row.antibody.is_testing && (
-                    <span className="badge badge-yellow">Testing</span>
-                  )
+                {row.antibody.is_testing && (
+                  <span className="badge badge-yellow">Testing</span>
                 )}
               </div>
               <div className="inventory-submeta">
@@ -792,8 +827,16 @@ export default function InventoryPage() {
                       </thead>
                       <tbody>
                         {cardLots.map((lot) => (
-                          <tr key={lot.id}>
-                            <td>{lot.lot_number}</td>
+                          <tr key={lot.id} style={lot.is_archived ? { opacity: 0.5 } : undefined}>
+                            <td>
+                              {lot.lot_number}
+                              {lotAgeBadgeMap.get(lot.id) === "current" && (
+                                <span className="badge badge-green" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
+                              )}
+                              {lotAgeBadgeMap.get(lot.id) === "new" && (
+                                <span className="badge" style={{ marginLeft: 6, fontSize: "0.7em", background: "#6b7280", color: "#fff" }}>New</span>
+                              )}
+                            </td>
                             <td>{lot.vendor_barcode || "—"}</td>
                             <td>
                               <span
@@ -905,6 +948,101 @@ export default function InventoryPage() {
           <p className="empty">No antibodies yet.</p>
         )}
       </div>
+
+      <div className="inactive-section">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={() => setShowInactive(!showInactive)}
+          />
+          Show inactive antibodies{inactiveRows.length > 0 ? ` (${inactiveRows.length})` : ""}
+        </label>
+        {showInactive && inactiveRows.length > 0 && (
+          <table style={{ marginTop: "0.75rem" }}>
+            <thead>
+              <tr>
+                <th>Antibody</th>
+                <th>Vendor</th>
+                <th>Catalog #</th>
+                {canEdit && <th>Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {inactiveRows.map((row) => {
+                const fluoro = fluorochromeByName.get(
+                  row.antibody.fluorochrome.toLowerCase()
+                );
+                return (
+                  <tr key={row.antibody.id}>
+                    <td>
+                      {fluoro && (
+                        <span
+                          className="color-dot"
+                          style={{ backgroundColor: fluoro.color }}
+                        />
+                      )}
+                      {row.antibody.target}-{row.antibody.fluorochrome}
+                    </td>
+                    <td>{row.antibody.vendor || "—"}</td>
+                    <td>{row.antibody.catalog_number || "—"}</td>
+                    {canEdit && (
+                      <td>
+                        <button
+                          className="archive-toggle-btn reactivate"
+                          onClick={() => handleArchiveAntibody(row.antibody.id)}
+                        >
+                          Reactivate
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        {showInactive && inactiveRows.length === 0 && (
+          <p className="empty" style={{ marginTop: "0.5rem" }}>No inactive antibodies.</p>
+        )}
+      </div>
+
+      {archiveAbPrompt && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Set Inactive: {archiveAbPrompt.target}-{archiveAbPrompt.fluorochrome}</h2>
+            <p className="page-desc">
+              This antibody will be moved to the inactive list. You can reactivate it later.
+            </p>
+            <div className="form-group">
+              <label>Note (optional)</label>
+              <textarea
+                value={archiveAbNote}
+                onChange={(e) => setArchiveAbNote(e.target.value)}
+                rows={3}
+                placeholder='e.g., "Discontinued by vendor"'
+              />
+            </div>
+            <div className="action-btns" style={{ marginTop: "1rem" }}>
+              <button
+                className="btn-red"
+                onClick={() =>
+                  handleArchiveAntibody(archiveAbPrompt.id, archiveAbNote.trim() || undefined)
+                }
+                disabled={archiveAbLoading}
+              >
+                {archiveAbLoading ? "Saving..." : "Set Inactive"}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => setArchiveAbPrompt(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmAction && (
         <div className="modal-overlay">
           <div className="modal-content">

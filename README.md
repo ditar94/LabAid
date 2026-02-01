@@ -172,9 +172,9 @@ docker compose exec backend alembic upgrade head
 - [x] Inventory UI: select fluorochrome color inline; update all antibodies using that fluorochrome
 - [x] Fluorochromes tab auto-populates from antibodies and stores lab color selections
 - [x] Add-antibody flow: choose from existing fluorochromes or create a new one (auto-add to fluorochrome list)
-- [ ] Antibody archive flow on Antibodies screen — top-right Active/Inactive switch on each card; toggle opens optional-note dialog; write to audit log
-- [ ] Inactive antibodies list at bottom of Antibodies screen (shows all inactive)
-- [ ] Current lot + New lot badges — default current lot is oldest lot; auto-update when lot is archived or depleted
+- [x] Antibody archive flow on Antibodies screen — top-right Active/Inactive switch on each card; toggle opens optional-note dialog; write to audit log
+- [x] Inactive antibodies list at bottom of Antibodies screen (shows all inactive)
+- [x] Current lot + New lot badges — default current lot is oldest lot; auto-update when lot is archived or depleted
 
 ### Dashboard & Reporting
 - [x] Dashboard: show only priority cards (Pending QC, Low Stock, Expiring Lots); clicking a card shows the relevant antibody list with all needed info

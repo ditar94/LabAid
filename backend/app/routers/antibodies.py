@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import Antibody, Fluorochrome, Lot, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
 from app.schemas.schemas import (
+    AntibodyArchiveRequest,
     AntibodyCreate,
     AntibodyOut,
     AntibodySearchResult,
@@ -17,7 +18,7 @@ from app.schemas.schemas import (
     StorageLocation,
     VialCounts,
 )
-from app.services.audit import log_audit
+from app.services.audit import log_audit, snapshot_antibody
 
 router = APIRouter(prefix="/api/antibodies", tags=["antibodies"])
 _DEFAULT_FLUORO_COLOR = "#9ca3af"
@@ -26,6 +27,7 @@ _DEFAULT_FLUORO_COLOR = "#9ca3af"
 @router.get("/", response_model=list[AntibodyOut])
 def list_antibodies(
     lab_id: UUID | None = None,
+    include_inactive: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -35,7 +37,10 @@ def list_antibodies(
     else:
         q = q.filter(Antibody.lab_id == current_user.lab_id)
 
-    return q.filter(Antibody.is_active.is_(True)).order_by(Antibody.target, Antibody.fluorochrome).all()
+    if not include_inactive:
+        q = q.filter(Antibody.is_active.is_(True))
+
+    return q.order_by(Antibody.target, Antibody.fluorochrome).all()
 
 
 @router.post("/", response_model=AntibodyOut)
@@ -329,6 +334,40 @@ def get_low_stock_antibodies(
     )
 
     return antibodies
+
+
+@router.patch("/{antibody_id}/archive", response_model=AntibodyOut)
+def archive_antibody(
+    antibody_id: UUID,
+    body: AntibodyArchiveRequest | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    q = db.query(Antibody).filter(Antibody.id == antibody_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(Antibody.lab_id == current_user.lab_id)
+    ab = q.first()
+    if not ab:
+        raise HTTPException(status_code=404, detail="Antibody not found")
+
+    before = snapshot_antibody(ab)
+    ab.is_active = not ab.is_active
+
+    log_audit(
+        db,
+        lab_id=ab.lab_id,
+        user_id=current_user.id,
+        action="antibody.archived" if not ab.is_active else "antibody.unarchived",
+        entity_type="antibody",
+        entity_id=ab.id,
+        before_state=before,
+        after_state=snapshot_antibody(ab),
+        note=body.note if body else None,
+    )
+
+    db.commit()
+    db.refresh(ab)
+    return ab
 
 
 @router.get("/{antibody_id}", response_model=AntibodyOut)

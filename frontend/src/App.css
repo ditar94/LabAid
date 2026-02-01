@@ -1412,6 +1412,96 @@ td.mono {
   transform: translate(-4px, -4px) rotate(180deg);
 }
 
+/* ── Archive Toggle (iOS-style switch) ──────────────────────────────── */
+
+.active-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.active-switch-label {
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.active-switch-label.on {
+  color: #16a34a;
+}
+
+.active-switch-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: #d1d5db;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.active-switch-track.on {
+  background: #16a34a;
+}
+
+.active-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: left 0.2s ease;
+}
+
+.active-switch-track.on .active-switch-thumb {
+  left: 16px;
+}
+
+.archive-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.archive-toggle-btn.reactivate:hover {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* ── Inactive Antibodies Section ───────────────────────────────────── */
+
+.inactive-section {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.inactive-section h2 {
+  font-size: 1rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.inactive-section table {
+  opacity: 0.7;
+}
+
 /* ── Document List ───────────────────────────────────────────────────── */
 
 .document-list {
