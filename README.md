@@ -185,6 +185,8 @@ docker compose exec backend alembic upgrade head
 - [x] Antibody archive flow on Antibodies screen — top-right Active/Inactive switch on each card; toggle opens optional-note dialog; write to audit log
 - [x] Inactive antibodies list at bottom of Antibodies screen (shows all inactive)
 - [x] Current lot + New lot badges — default current lot is oldest lot; auto-update when lot is archived or depleted
+- [ ] Lot drill-down from Inventory — clicking a lot row shows storage locations for its vials; if unstored, offer inline stocking workflow; if stored, allow opening a vial from the grid
+- [ ] Smart overflow on receive — when the selected storage container lacks enough open slots, prompt the user to split across another container or create a new one
 
 ### Dashboard & Reporting
 - [x] Dashboard: show only priority cards (Pending QC, Low Stock, Expiring Lots); clicking a card shows the relevant antibody list with all needed info
@@ -195,10 +197,13 @@ docker compose exec backend alembic upgrade head
 - [x] Low-stock warning should trigger when <= threshold (not just <)
 - [x] Dashboard cards: when selecting an antibody, show counts specific to that antibody (sequential cards)
 - [x] Pending QC card remains global total; when an antibody is selected, show its pending QC count
-- [ ] Inventory availability model: split counts into Ready (QC‑approved), Pending QC, and Total (Ready + Pending)
-- [ ] Dual thresholds per antibody: "Reorder Point (Total)" and "Operational Minimum (Ready)"
-- [ ] QC Bottleneck alert: if Ready < Operational Minimum while Pending QC > 0, raise high‑priority alert
-- [ ] Near‑expiry rule: lots expiring within 7 days count as effectively low stock (forces prioritization of pending replacement)
+- [x] Edit antibody fields — expand card to reveal Edit button; modal form to update target, fluorochrome, clone, vendor, catalog #, stability, thresholds
+- [x] Dual thresholds per antibody: "Reorder Point" (total vials from Pending QC + Approved lots) and "Min Ready Stock" (approved lots' vials only)
+- [x] Unified badge system on Inventory cards: Reorder (red), Needs QC (yellow), Expiring/Expired Lot (yellow/red)
+- [x] Dashboard Pending QC contextual badge: "Low Approved Stock" when approving the lot is urgent
+- [x] Dashboard Expiring Lots contextual badges: "No Other Lots" or "Pending Lot(s) Available"
+- [x] Dashboard Low Stock contextual badges: "Reorder" (red, must buy more) vs "QC New Lot(s) to Resolve" (yellow, approve pending lots)
+- [x] Removed is_testing flag (obsolete)
 
 ### Infrastructure
 - [x] Docker Compose — Postgres + Backend + Frontend, one command startup

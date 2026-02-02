@@ -263,13 +263,31 @@ def update_antibody(
     if not ab:
         raise HTTPException(status_code=404, detail="Antibody not found")
 
-    before = {
-        "stability_days": ab.stability_days,
-        "low_stock_threshold": ab.low_stock_threshold,
-        "is_testing": ab.is_testing,
-    }
+    before = snapshot_antibody(ab)
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+
+    # Handle fluorochrome change — ensure it exists in the lab's list
+    if "fluorochrome" in updates and updates["fluorochrome"]:
+        fluoro_name = updates["fluorochrome"].strip()
+        target_lab_id = ab.lab_id
+        existing_fluoro = (
+            db.query(Fluorochrome)
+            .filter(Fluorochrome.lab_id == target_lab_id)
+            .filter(func.lower(Fluorochrome.name) == func.lower(fluoro_name))
+            .first()
+        )
+        if not existing_fluoro:
+            db.add(
+                Fluorochrome(
+                    lab_id=target_lab_id,
+                    name=fluoro_name,
+                    color=_DEFAULT_FLUORO_COLOR,
+                )
+            )
+        updates["fluorochrome"] = fluoro_name
+
+    for field, value in updates.items():
         setattr(ab, field, value)
 
     log_audit(
@@ -280,11 +298,7 @@ def update_antibody(
         entity_type="antibody",
         entity_id=ab.id,
         before_state=before,
-        after_state={
-            "stability_days": ab.stability_days,
-            "low_stock_threshold": ab.low_stock_threshold,
-            "is_testing": ab.is_testing,
-        },
+        after_state=snapshot_antibody(ab),
     )
 
     db.commit()
@@ -302,33 +316,68 @@ def get_low_stock_antibodies(
     if current_user.role == UserRole.SUPER_ADMIN and lab_id:
         target_lab_id = lab_id
 
-    # Subquery to get the count of sealed vials for each antibody
-    sealed_vials_subquery = (
+    from app.models.models import QCStatus as QCS
+
+    # Total sealed vials from non-archived, non-failed lots (pending QC + approved)
+    total_vials_subquery = (
         db.query(
             Lot.antibody_id,
-            func.count(Vial.id).label("sealed_vial_count")
+            func.count(Vial.id).label("total_vial_count"),
         )
         .join(Vial, Lot.id == Vial.lot_id)
         .filter(
+            Lot.lab_id == target_lab_id,
+            Lot.is_archived.is_(False),
+            Lot.qc_status.in_([QCS.PENDING, QCS.APPROVED]),
             Vial.status == VialStatus.SEALED,
-            Lot.lab_id == target_lab_id
         )
         .group_by(Lot.antibody_id)
         .subquery()
     )
 
-    # Main query to get antibodies that are below their low-stock threshold
+    # Approved lots' sealed vials only
+    approved_vials_subquery = (
+        db.query(
+            Lot.antibody_id,
+            func.count(Vial.id).label("approved_vial_count"),
+        )
+        .join(Vial, Lot.id == Vial.lot_id)
+        .filter(
+            Lot.lab_id == target_lab_id,
+            Lot.is_archived.is_(False),
+            Lot.qc_status == QCS.APPROVED,
+            Vial.status == VialStatus.SEALED,
+        )
+        .group_by(Lot.antibody_id)
+        .subquery()
+    )
+
+    # Antibodies below EITHER threshold
     antibodies = (
         db.query(Antibody)
         .outerjoin(
-            sealed_vials_subquery,
-            Antibody.id == sealed_vials_subquery.c.antibody_id
+            total_vials_subquery,
+            Antibody.id == total_vials_subquery.c.antibody_id,
+        )
+        .outerjoin(
+            approved_vials_subquery,
+            Antibody.id == approved_vials_subquery.c.antibody_id,
         )
         .filter(
             Antibody.lab_id == target_lab_id,
-            Antibody.low_stock_threshold.isnot(None),
-            Antibody.is_testing.is_(False),
-            func.coalesce(sealed_vials_subquery.c.sealed_vial_count, 0) <= Antibody.low_stock_threshold
+            Antibody.is_active.is_(True),
+            or_(
+                (Antibody.low_stock_threshold.isnot(None))
+                & (
+                    func.coalesce(total_vials_subquery.c.total_vial_count, 0)
+                    < Antibody.low_stock_threshold
+                ),
+                (Antibody.approved_low_threshold.isnot(None))
+                & (
+                    func.coalesce(approved_vials_subquery.c.approved_vial_count, 0)
+                    < Antibody.approved_low_threshold
+                ),
+            ),
         )
         .all()
     )

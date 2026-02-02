@@ -14,6 +14,7 @@ export interface User {
 
 export interface LabSettings {
   sealed_counts_only?: boolean;
+  expiry_warn_days?: number;
 }
 
 export interface Lab {
@@ -41,7 +42,7 @@ export interface Antibody {
   catalog_number: string | null;
   stability_days: number | null;
   low_stock_threshold: number | null;
-  is_testing: boolean;
+  approved_low_threshold: number | null;
   is_active: boolean;
   created_at: string;
 }

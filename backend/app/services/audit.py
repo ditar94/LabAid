@@ -80,6 +80,12 @@ def snapshot_antibody(ab) -> dict:
         "id": str(ab.id),
         "target": ab.target,
         "fluorochrome": ab.fluorochrome,
+        "clone": ab.clone,
+        "vendor": ab.vendor,
+        "catalog_number": ab.catalog_number,
+        "stability_days": ab.stability_days,
+        "low_stock_threshold": ab.low_stock_threshold,
+        "approved_low_threshold": ab.approved_low_threshold,
         "is_active": ab.is_active,
     }
 

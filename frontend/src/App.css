@@ -1702,3 +1702,54 @@ td.mono {
   display: flex;
   gap: 0.5rem;
 }
+
+/* ── Date Picker Overrides ────────────────────────────────────────────── */
+
+.react-datepicker-wrapper {
+  width: auto;
+}
+
+.react-datepicker-wrapper input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: var(--card-bg);
+  color: var(--text);
+  width: 160px;
+}
+
+.react-datepicker-wrapper input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.react-datepicker {
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.react-datepicker__header {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  background-color: var(--primary);
+  border-radius: 4px;
+}
+
+.react-datepicker__day:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-radius: 4px;
+}
+
+.react-datepicker__close-icon::after {
+  background-color: var(--text-muted);
+  font-size: 14px;
+}

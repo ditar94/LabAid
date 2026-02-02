@@ -70,6 +70,7 @@ class Lab(BaseModel):
 
 class LabSettingsUpdate(BaseModel):
     sealed_counts_only: bool | None = None
+    expiry_warn_days: int | None = None
 
 
 class SetupRequest(BaseModel):
@@ -111,13 +112,18 @@ class AntibodyCreate(BaseModel):
     catalog_number: str | None = None
     stability_days: int | None = None
     low_stock_threshold: int | None = None
-    is_testing: bool = False
+    approved_low_threshold: int | None = None
 
 
 class AntibodyUpdate(BaseModel):
+    target: str | None = None
+    fluorochrome: str | None = None
+    clone: str | None = None
+    vendor: str | None = None
+    catalog_number: str | None = None
     stability_days: int | None = None
     low_stock_threshold: int | None = None
-    is_testing: bool | None = None
+    approved_low_threshold: int | None = None
 
 
 class AntibodyArchiveRequest(BaseModel):
@@ -134,7 +140,7 @@ class AntibodyOut(BaseModel):
     catalog_number: str | None
     stability_days: int | None
     low_stock_threshold: int | None
-    is_testing: bool
+    approved_low_threshold: int | None
     is_active: bool
     created_at: datetime
 

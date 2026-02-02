@@ -4,9 +4,81 @@ import api from "../api/client";
 import type { Antibody, Fluorochrome, Lab, Lot, StorageUnit, VialCounts } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
+import DatePicker from "../components/DatePicker";
+
+function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => void; onUpload: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleDownload = async (docId: string, fileName: string) => {
+    const res = await api.get(`/documents/${docId}`, { responseType: "blob" });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setError(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      await api.post(`/documents/lots/${lot.id}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      onUpload();
+      setFile(null);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to upload file");
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <h2>Documents for Lot {lot.lot_number}</h2>
+        <div className="document-list">
+          {lot.documents?.map((doc) => (
+            <div key={doc.id} className="document-item">
+              <a href="#" onClick={(e) => { e.preventDefault(); handleDownload(doc.id, doc.file_name); }}>
+                {doc.file_name}
+              </a>
+            </div>
+          ))}
+          {lot.documents?.length === 0 && <p>No documents uploaded.</p>}
+        </div>
+        <div className="upload-form">
+          <h3>Upload New Document</h3>
+          <input type="file" onChange={handleFileChange} />
+          <button onClick={handleUpload} disabled={!file}>
+            Upload
+          </button>
+          {error && <p className="error">{error}</p>}
+        </div>
+        <button onClick={onClose} className="modal-close-btn">
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const NEW_FLUORO_VALUE = "__new__";
 const DEFAULT_FLUORO_COLOR = "#9ca3af";
+
+type InventoryBadge = {
+  label: string;
+  color: "red" | "yellow";
+};
 
 type InventoryRow = {
   antibody: Antibody;
@@ -55,6 +127,21 @@ export default function InventoryPage() {
   const [archiveAbNote, setArchiveAbNote] = useState("");
   const [archiveAbLoading, setArchiveAbLoading] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [editAbId, setEditAbId] = useState<string | null>(null);
+  const [editAbForm, setEditAbForm] = useState({
+    target: "",
+    fluorochrome_choice: "",
+    new_fluorochrome: "",
+    new_fluoro_color: DEFAULT_FLUORO_COLOR,
+    clone: "",
+    vendor: "",
+    catalog_number: "",
+    stability_days: "",
+    low_stock_threshold: "",
+    approved_low_threshold: "",
+  });
+  const [editAbLoading, setEditAbLoading] = useState(false);
+  const [modalLot, setModalLot] = useState<Lot | null>(null);
 
   const [abForm, setAbForm] = useState({
     target: "",
@@ -66,6 +153,7 @@ export default function InventoryPage() {
     catalog_number: "",
     stability_days: "",
     low_stock_threshold: "",
+    approved_low_threshold: "",
   });
 
   const [lotForm, setLotForm] = useState({
@@ -212,9 +300,8 @@ export default function InventoryPage() {
           antibody: ab,
           ...c,
           lowStock:
-            !ab.is_testing &&
             ab.low_stock_threshold !== null &&
-            c.sealed <= ab.low_stock_threshold,
+            c.sealed < ab.low_stock_threshold,
         };
       })
       .sort((a, b) =>
@@ -248,17 +335,87 @@ export default function InventoryPage() {
     for (const [, abLots] of lotsByAntibody) {
       const nonArchived = abLots.filter((l) => !l.is_archived);
       if (nonArchived.length < 2) continue;
-      const oldest = nonArchived.find((l) => (l.vial_counts?.sealed ?? 0) > 0);
-      for (const lot of nonArchived) {
-        if (lot === oldest) {
-          map.set(lot.id, "current");
-        } else {
-          map.set(lot.id, "new");
-        }
+      // Sort by expiration date ascending (soonest first); lots without expiration go last
+      const withSealed = nonArchived
+        .filter((l) => (l.vial_counts?.sealed ?? 0) > 0)
+        .sort((a, b) => {
+          if (!a.expiration_date && !b.expiration_date) return 0;
+          if (!a.expiration_date) return 1;
+          if (!b.expiration_date) return -1;
+          return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
+        });
+      if (withSealed.length < 2) continue;
+      const currentLot = withSealed[0];
+      for (const lot of withSealed) {
+        map.set(lot.id, lot === currentLot ? "current" : "new");
       }
     }
     return map;
   }, [lotsByAntibody]);
+
+  const expiryWarnDays = labSettings.expiry_warn_days ?? 30;
+
+  const antibodyBadges = useMemo(() => {
+    const map = new Map<string, InventoryBadge[]>();
+    for (const row of allInventoryRows) {
+      const ab = row.antibody;
+      if (!ab.is_active) continue;
+      const badges: InventoryBadge[] = [];
+      const abLots = lotsByAntibody.get(ab.id) || [];
+      const activAbLots = abLots.filter((l) => !l.is_archived);
+
+      // Total sealed vials from non-archived, non-failed lots (approved + pending QC)
+      const totalSealed = activAbLots
+        .filter((l) => l.qc_status !== "failed")
+        .reduce((s, l) => s + (l.vial_counts?.sealed ?? 0), 0);
+
+      // Approved sealed vials only
+      const approvedSealed = activAbLots
+        .filter((l) => l.qc_status === "approved")
+        .reduce((s, l) => s + (l.vial_counts?.sealed ?? 0), 0);
+
+      // Reorder badge: total sealed (including pending QC) below reorder point
+      if (ab.low_stock_threshold != null && totalSealed < ab.low_stock_threshold) {
+        const reorderLabel = totalSealed === 0
+          ? "No Stock \u2014 Reorder"
+          : `Low Stock (${totalSealed} vial${totalSealed === 1 ? "" : "s"}) \u2014 Reorder`;
+        badges.push({ label: reorderLabel, color: "red" });
+      }
+
+      // Needs QC badge: approved sealed below min ready stock, but total is fine
+      if (
+        ab.approved_low_threshold != null &&
+        approvedSealed < ab.approved_low_threshold &&
+        !(ab.low_stock_threshold != null && totalSealed < ab.low_stock_threshold)
+      ) {
+        badges.push({ label: "Needs QC", color: "yellow" });
+      }
+
+      // Expiring badge: has lots expiring within 30 days
+      const now = new Date();
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() + expiryWarnDays);
+      const hasExpiring = activAbLots.some((l) => {
+        if (!l.expiration_date) return false;
+        const exp = new Date(l.expiration_date);
+        return exp <= cutoff && exp >= now;
+      });
+      const hasExpired = activAbLots.some((l) => {
+        if (!l.expiration_date) return false;
+        return new Date(l.expiration_date) < now;
+      });
+      if (hasExpired) {
+        badges.push({ label: "Expired Lot", color: "red" });
+      } else if (hasExpiring) {
+        badges.push({ label: "Expiring", color: "yellow" });
+      }
+
+      if (badges.length) {
+        map.set(ab.id, badges);
+      }
+    }
+    return map;
+  }, [allInventoryRows, lotsByAntibody, expiryWarnDays]);
 
   useEffect(() => {
     setShowLotForm(false);
@@ -330,6 +487,9 @@ export default function InventoryPage() {
           low_stock_threshold: abForm.low_stock_threshold
             ? parseInt(abForm.low_stock_threshold, 10)
             : null,
+          approved_low_threshold: abForm.approved_low_threshold
+            ? parseInt(abForm.approved_low_threshold, 10)
+            : null,
         },
         { params }
       );
@@ -344,6 +504,7 @@ export default function InventoryPage() {
         catalog_number: "",
         stability_days: "",
         low_stock_threshold: "",
+        approved_low_threshold: "",
       });
       setShowAbForm(false);
       setMessage("Antibody created.");
@@ -469,6 +630,81 @@ export default function InventoryPage() {
     }
   };
 
+  const openEditForm = (ab: Antibody) => {
+    const fluoro = fluorochromeByName.get(ab.fluorochrome.toLowerCase());
+    setEditAbForm({
+      target: ab.target,
+      fluorochrome_choice: ab.fluorochrome,
+      new_fluorochrome: "",
+      new_fluoro_color: fluoro?.color || DEFAULT_FLUORO_COLOR,
+      clone: ab.clone || "",
+      vendor: ab.vendor || "",
+      catalog_number: ab.catalog_number || "",
+      stability_days: ab.stability_days != null ? String(ab.stability_days) : "",
+      low_stock_threshold: ab.low_stock_threshold != null ? String(ab.low_stock_threshold) : "",
+      approved_low_threshold: ab.approved_low_threshold != null ? String(ab.approved_low_threshold) : "",
+    });
+    setEditAbId(ab.id);
+  };
+
+  const handleEditAntibody = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editAbId || !canEdit) return;
+    resetMessages();
+    setEditAbLoading(true);
+    try {
+      let fluoroName = editAbForm.fluorochrome_choice;
+      const params: Record<string, string> = {};
+      if (user?.role === "super_admin" && selectedLab) {
+        params.lab_id = selectedLab;
+      }
+      if (fluoroName === NEW_FLUORO_VALUE) {
+        const name = editAbForm.new_fluorochrome.trim();
+        if (!name) {
+          setError("Please enter a fluorochrome name.");
+          setEditAbLoading(false);
+          return;
+        }
+        const existing = fluorochromeByName.get(name.toLowerCase());
+        if (!existing) {
+          await api.post(
+            "/fluorochromes/",
+            { name, color: editAbForm.new_fluoro_color },
+            { params }
+          );
+        } else if (existing.color !== editAbForm.new_fluoro_color) {
+          await api.patch(`/fluorochromes/${existing.id}`, {
+            color: editAbForm.new_fluoro_color,
+          });
+        }
+        fluoroName = name;
+      }
+      await api.patch(`/antibodies/${editAbId}`, {
+        target: editAbForm.target,
+        fluorochrome: fluoroName,
+        clone: editAbForm.clone || null,
+        vendor: editAbForm.vendor || null,
+        catalog_number: editAbForm.catalog_number || null,
+        stability_days: editAbForm.stability_days
+          ? parseInt(editAbForm.stability_days, 10)
+          : null,
+        low_stock_threshold: editAbForm.low_stock_threshold
+          ? parseInt(editAbForm.low_stock_threshold, 10)
+          : null,
+        approved_low_threshold: editAbForm.approved_low_threshold
+          ? parseInt(editAbForm.approved_low_threshold, 10)
+          : null,
+      });
+      setEditAbId(null);
+      setMessage("Antibody updated.");
+      await loadData();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to update antibody");
+    } finally {
+      setEditAbLoading(false);
+    }
+  };
+
   const handleConfirmDeplete = async (type: "opened" | "lot") => {
     if (!confirmAction) return;
     setConfirmLoading(true);
@@ -586,12 +822,23 @@ export default function InventoryPage() {
           />
           <input
             type="number"
-            placeholder="Low stock threshold"
+            placeholder="Reorder Point"
             min={1}
             value={abForm.low_stock_threshold}
             onChange={(e) =>
               setAbForm({ ...abForm, low_stock_threshold: e.target.value })
             }
+            title="Alert when total vials (pending QC + approved) falls to this level"
+          />
+          <input
+            type="number"
+            placeholder="Min Ready Stock"
+            min={1}
+            value={abForm.approved_low_threshold}
+            onChange={(e) =>
+              setAbForm({ ...abForm, approved_low_threshold: e.target.value })
+            }
+            title="Alert when approved/usable vials fall to this level"
           />
           <button type="submit" disabled={loading}>
             {loading ? "Creating..." : "Create Antibody"}
@@ -680,12 +927,15 @@ export default function InventoryPage() {
               </div>
               <div className="inventory-meta">
                 <span>{row.lots} lot{row.lots === 1 ? "" : "s"}</span>
-                {row.lowStock && (
-                  <span className="badge badge-red">Low stock</span>
-                )}
-                {row.antibody.is_testing && (
-                  <span className="badge badge-yellow">Testing</span>
-                )}
+                {antibodyBadges.get(row.antibody.id)?.map((b, i) => (
+                  <span
+                    key={i}
+                    className={`badge badge-${b.color}`}
+                    style={{ fontSize: "0.75em" }}
+                  >
+                    {b.label}
+                  </span>
+                ))}
               </div>
               <div className="inventory-submeta">
                 <span>Vendor: {row.antibody.vendor || "—"}</span>
@@ -732,6 +982,11 @@ export default function InventoryPage() {
                         Show archived
                       </label>
                       {canEdit && (
+                        <button onClick={() => openEditForm(row.antibody)}>
+                          Edit Antibody
+                        </button>
+                      )}
+                      {canEdit && (
                         <button onClick={() => setShowLotForm(!showLotForm)}>
                           {showLotForm ? "Cancel" : "+ New Lot"}
                         </button>
@@ -769,15 +1024,15 @@ export default function InventoryPage() {
                         }
                         required
                       />
-                      <input
-                        type="date"
+                      <DatePicker
                         value={lotForm.expiration_date}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           setLotForm({
                             ...lotForm,
-                            expiration_date: e.target.value,
+                            expiration_date: v,
                           })
                         }
+                        placeholderText="Expiration date"
                       />
                       <input
                         type="number"
@@ -913,6 +1168,13 @@ export default function InventoryPage() {
                                     Deplete
                                   </button>
                                 )}
+                                <button
+                                  className="btn-sm"
+                                  onClick={() => setModalLot(lot)}
+                                  title="QC documents"
+                                >
+                                  Docs{lot.documents?.length ? ` (${lot.documents.length})` : ""}
+                                </button>
                                 <button
                                   className="btn-sm"
                                   onClick={() => {
@@ -1075,6 +1337,145 @@ export default function InventoryPage() {
             </div>
           </div>
         </div>
+      )}
+      {editAbId && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Edit Antibody</h2>
+            <form onSubmit={handleEditAntibody} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <div className="form-group">
+                <label>Target</label>
+                <input
+                  value={editAbForm.target}
+                  onChange={(e) => setEditAbForm({ ...editAbForm, target: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Fluorochrome</label>
+                <select
+                  value={editAbForm.fluorochrome_choice}
+                  onChange={(e) =>
+                    setEditAbForm({ ...editAbForm, fluorochrome_choice: e.target.value })
+                  }
+                  required
+                >
+                  <option value="">Select Fluorochrome</option>
+                  <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
+                  {fluorochromes.map((f) => (
+                    <option key={f.id} value={f.name}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {editAbForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
+                <>
+                  <div className="form-group">
+                    <label>New Fluorochrome Name</label>
+                    <input
+                      value={editAbForm.new_fluorochrome}
+                      onChange={(e) =>
+                        setEditAbForm({ ...editAbForm, new_fluorochrome: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Color</label>
+                    <input
+                      type="color"
+                      value={editAbForm.new_fluoro_color}
+                      onChange={(e) =>
+                        setEditAbForm({ ...editAbForm, new_fluoro_color: e.target.value })
+                      }
+                    />
+                  </div>
+                </>
+              )}
+              <div className="form-group">
+                <label>Clone</label>
+                <input
+                  value={editAbForm.clone}
+                  onChange={(e) => setEditAbForm({ ...editAbForm, clone: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Vendor</label>
+                <input
+                  value={editAbForm.vendor}
+                  onChange={(e) => setEditAbForm({ ...editAbForm, vendor: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Catalog #</label>
+                <input
+                  value={editAbForm.catalog_number}
+                  onChange={(e) =>
+                    setEditAbForm({ ...editAbForm, catalog_number: e.target.value })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Stability (days after opening)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={editAbForm.stability_days}
+                  onChange={(e) =>
+                    setEditAbForm({ ...editAbForm, stability_days: e.target.value })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>Reorder Point</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={editAbForm.low_stock_threshold}
+                  onChange={(e) =>
+                    setEditAbForm({ ...editAbForm, low_stock_threshold: e.target.value })
+                  }
+                  title="Alert when total vials (pending QC + approved) falls to this level"
+                />
+              </div>
+              <div className="form-group">
+                <label>Min Ready Stock</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={editAbForm.approved_low_threshold}
+                  onChange={(e) =>
+                    setEditAbForm({ ...editAbForm, approved_low_threshold: e.target.value })
+                  }
+                  title="Alert when approved/usable vials fall to this level"
+                />
+              </div>
+              <div className="action-btns" style={{ marginTop: "0.5rem" }}>
+                <button type="submit" disabled={editAbLoading}>
+                  {editAbLoading ? "Saving..." : "Save Changes"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setEditAbId(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {modalLot && (
+        <DocumentModal
+          lot={modalLot}
+          onClose={() => setModalLot(null)}
+          onUpload={() => {
+            loadData();
+            setModalLot(null);
+          }}
+        />
       )}
       {archivePrompt && (
         <div className="modal-overlay">

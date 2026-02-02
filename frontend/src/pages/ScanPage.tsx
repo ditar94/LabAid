@@ -12,6 +12,7 @@ import type {
 import StorageGrid from "../components/StorageGrid";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
+import DatePicker from "../components/DatePicker";
 
 export default function ScanPage() {
   const { user } = useAuth();
@@ -450,15 +451,15 @@ export default function ScanPage() {
               </div>
               <div className="form-group">
                 <label>Expiration Date</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={regForm.expiration_date}
-                  onChange={(e) =>
+                  onChange={(v) =>
                     setRegForm({
                       ...regForm,
-                      expiration_date: e.target.value,
+                      expiration_date: v,
                     })
                   }
+                  placeholderText="Expiration date"
                 />
               </div>
             </div>

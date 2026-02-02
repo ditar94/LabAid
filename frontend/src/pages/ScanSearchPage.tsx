@@ -15,6 +15,7 @@ import StorageGrid from "../components/StorageGrid";
 import OpenVialDialog from "../components/OpenVialDialog";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
+import DatePicker from "../components/DatePicker";
 
 type ResultMode = "idle" | "scan" | "search" | "register";
 const NEW_ANTIBODY_VALUE = "__new__";
@@ -673,7 +674,7 @@ export default function ScanSearchPage() {
               </div>
               <div className="form-group">
                 <label>Expiration Date</label>
-                <input type="date" value={regForm.expiration_date} onChange={(e) => setRegForm({ ...regForm, expiration_date: e.target.value })} />
+                <DatePicker value={regForm.expiration_date} onChange={(v) => setRegForm({ ...regForm, expiration_date: v })} placeholderText="Expiration date" />
               </div>
             </div>
             <div className="form-group">

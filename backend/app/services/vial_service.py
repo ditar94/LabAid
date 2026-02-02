@@ -170,11 +170,19 @@ def open_vial(
         vial.opened_by = user.id
         vial.location_cell_id = None  # free the cell
 
-        # Calculate stability-based open expiration
+        # Calculate open expiration: min(stability expiration, lot expiration)
         if lot:
             antibody = db.query(Antibody).filter(Antibody.id == lot.antibody_id).first()
+            stability_exp = None
             if antibody and antibody.stability_days:
-                vial.open_expiration = (vial.opened_at + timedelta(days=antibody.stability_days)).date()
+                stability_exp = (vial.opened_at + timedelta(days=antibody.stability_days)).date()
+            lot_exp = lot.expiration_date
+            if stability_exp and lot_exp:
+                vial.open_expiration = min(stability_exp, lot_exp)
+            elif stability_exp:
+                vial.open_expiration = stability_exp
+            elif lot_exp:
+                vial.open_expiration = lot_exp
 
         log_audit(
             db,

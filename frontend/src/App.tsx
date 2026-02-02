@@ -6,8 +6,6 @@ import SetupPage from "./pages/SetupPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import DashboardPage from "./pages/DashboardPage";
 import InventoryPage from "./pages/InventoryPage";
-import AntibodiesPage from "./pages/AntibodiesPage";
-import LotsPage from "./pages/LotsPage";
 import ReceivePage from "./pages/ReceivePage";
 import ScanSearchPage from "./pages/ScanSearchPage";
 import StoragePage from "./pages/StoragePage";
@@ -51,8 +49,6 @@ function AppRoutes() {
       >
         <Route path="/" element={<DashboardPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
-        <Route path="/antibodies" element={<AntibodiesPage />} />
-        <Route path="/lots" element={<LotsPage />} />
         <Route path="/receive" element={<ReceivePage />} />
         <Route path="/scan" element={<Navigate to="/scan-search" replace />} />
         <Route path="/search" element={<Navigate to="/scan-search" replace />} />
