@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../api/client";
-import type { Antibody, AuditLogEntry, Lab, Lot } from "../api/types";
+import type { Antibody, AuditLogEntry, AuditLogRange, Lab, Lot } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 
 const ACTION_OPTIONS = [
@@ -63,6 +63,37 @@ function dateRangeToParams(r: DateRange): { date_from: string; date_to: string }
   const nextY = r.toMonth === 11 ? r.toYear + 1 : r.toYear;
   const dt = `${nextY}-${String(nextM + 1).padStart(2, "0")}-01`;
   return { date_from: df, date_to: dt };
+}
+
+function monthIndex(year: number, month: number) {
+  return year * 12 + month;
+}
+
+function monthIndexFromDate(d: Date) {
+  return d.getUTCFullYear() * 12 + d.getUTCMonth();
+}
+
+function monthRangeFromIndex(fromIdx: number, toIdx: number): DateRange {
+  return {
+    fromYear: Math.floor(fromIdx / 12),
+    fromMonth: fromIdx % 12,
+    toYear: Math.floor(toIdx / 12),
+    toMonth: toIdx % 12,
+  };
+}
+
+function monthLabelFromIndex(idx: number) {
+  const year = Math.floor(idx / 12);
+  const month = idx % 12;
+  return `${MONTH_NAMES[month]} ${year}`;
+}
+
+interface RangeNotice {
+  suggested: DateRange;
+  currentLabel: string;
+  suggestedLabel: string;
+  earliestLabel: string;
+  latestLabel: string;
 }
 
 function MonthPicker({
@@ -216,6 +247,8 @@ export default function AuditPage() {
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [actionDropdownOpen, setActionDropdownOpen] = useState(false);
   const actionDropdownRef = useRef<HTMLDivElement>(null);
+  const [rangeNotice, setRangeNotice] = useState<RangeNotice | null>(null);
+  const [rangeNoticeDismissed, setRangeNoticeDismissed] = useState(false);
 
   // Close action dropdown on outside click
   useEffect(() => {
@@ -248,7 +281,6 @@ export default function AuditPage() {
 
   // Load lots when antibody changes
   useEffect(() => {
-    setFilterLot("");
     if (!filterAntibody) {
       setLots([]);
       return;
@@ -272,6 +304,63 @@ export default function AuditPage() {
     }
     api.get("/audit/", { params }).then((r) => setLogs(r.data));
   }, [filterAntibody, filterLot, filterActions, dateRange, selectedLab]);
+
+  useEffect(() => {
+    setRangeNoticeDismissed(false);
+  }, [filterAntibody, filterLot, filterActions, dateRange, selectedLab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const hasScope = !!filterLot || !!filterAntibody;
+    if (!dateRange || !hasScope) {
+      setRangeNotice(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const activeRange = dateRange;
+
+    const params: Record<string, string> = {};
+    if (user?.role === "super_admin" && selectedLab) params.lab_id = selectedLab;
+    if (filterAntibody) params.antibody_id = filterAntibody;
+    if (filterLot) params.lot_id = filterLot;
+    if (filterActions.size > 0) params.action = Array.from(filterActions).join(",");
+
+    api.get<AuditLogRange>("/audit/range", { params })
+      .then((r) => {
+        if (cancelled) return;
+        const { min_created_at, max_created_at } = r.data;
+        if (!min_created_at || !max_created_at) {
+          setRangeNotice(null);
+          return;
+        }
+
+        const minIdx = monthIndexFromDate(new Date(min_created_at));
+        const maxIdx = monthIndexFromDate(new Date(max_created_at));
+        const rangeFromIdx = monthIndex(activeRange.fromYear, activeRange.fromMonth);
+        const rangeToIdx = monthIndex(activeRange.toYear, activeRange.toMonth);
+        if (rangeFromIdx <= minIdx && rangeToIdx >= maxIdx) {
+          setRangeNotice(null);
+          return;
+        }
+
+        const suggested = monthRangeFromIndex(minIdx, maxIdx);
+        setRangeNotice({
+          suggested,
+          currentLabel: dateRangeLabel(activeRange),
+          suggestedLabel: dateRangeLabel(suggested),
+          earliestLabel: monthLabelFromIndex(minIdx),
+          latestLabel: monthLabelFromIndex(maxIdx),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setRangeNotice(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dateRange, filterAntibody, filterLot, filterActions, selectedLab, user]);
 
   const toggleAction = (value: string) => {
     setFilterActions((prev) => {
@@ -345,6 +434,18 @@ export default function AuditPage() {
     setFilterActions(new Set());
     setDateRange(null);
   };
+
+  const scopeLabel = (() => {
+    if (filterLot) {
+      const lot = lots.find((l) => l.id === filterLot);
+      return lot ? `Lot ${lot.lot_number}` : "This lot";
+    }
+    if (filterAntibody) {
+      const ab = antibodies.find((a) => a.id === filterAntibody);
+      return ab ? `${ab.target} ${ab.fluorochrome}` : "This antibody";
+    }
+    return "This selection";
+  })();
 
   return (
     <div>
@@ -426,6 +527,23 @@ export default function AuditPage() {
           onClear={() => setDateRange(null)}
         />
       </div>
+
+      {rangeNotice && !rangeNoticeDismissed && (
+        <div className="audit-range-banner">
+          <div>
+            <strong>Heads up:</strong>{" "}
+            {scopeLabel} has events outside {rangeNotice.currentLabel}. Earliest: {rangeNotice.earliestLabel}. Latest: {rangeNotice.latestLabel}. Include {rangeNotice.suggestedLabel}?
+          </div>
+          <div className="audit-range-actions">
+            <button className="btn-sm btn-green" onClick={() => setDateRange(rangeNotice.suggested)}>
+              Include months
+            </button>
+            <button className="btn-sm btn-secondary" onClick={() => setRangeNoticeDismissed(true)}>
+              Keep current
+            </button>
+          </div>
+        </div>
+      )}
 
       {activeFilters.length > 0 && (
         <div className="scope-chips">

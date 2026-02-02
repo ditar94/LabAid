@@ -230,3 +230,8 @@ export interface AuditLogEntry {
   note: string | null;
   created_at: string;
 }
+
+export interface AuditLogRange {
+  min_created_at: string | null;
+  max_created_at: string | null;
+}

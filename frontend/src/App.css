@@ -1318,6 +1318,30 @@ td.mono {
   border-radius: 4px;
 }
 
+/* ── Audit Range Banner ────────────────────────────────────────────── */
+
+.audit-range-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.audit-range-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 /* ── Search Page ──────────────────────────────────────────────────────── */
 
 .search-results-table {

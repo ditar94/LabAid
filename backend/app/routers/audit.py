@@ -2,6 +2,7 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -18,7 +19,7 @@ from app.models.models import (
     UserRole,
     Vial,
 )
-from app.schemas.schemas import AuditLogOut
+from app.schemas.schemas import AuditLogOut, AuditLogRangeOut
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -195,3 +196,60 @@ def list_audit_logs(
         results.append(out)
 
     return results
+
+
+@router.get("/range", response_model=AuditLogRangeOut)
+def get_audit_log_range(
+    action: str | None = None,
+    lab_id: UUID | None = None,
+    lot_id: UUID | None = None,
+    antibody_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(AuditLog)
+    if current_user.role == UserRole.SUPER_ADMIN and lab_id:
+        q = q.filter(AuditLog.lab_id == lab_id)
+    elif current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(AuditLog.lab_id == current_user.lab_id)
+
+    # Scope filtering: antibody and lot filters are additive (lot narrows antibody)
+    if antibody_id and lot_id:
+        related_ids: list[UUID] = [lot_id]
+        vial_ids = [r[0] for r in db.query(Vial.id).filter(Vial.lot_id == lot_id).all()]
+        related_ids.extend(vial_ids)
+        doc_ids = [r[0] for r in db.query(LotDocument.id).filter(LotDocument.lot_id == lot_id).all()]
+        related_ids.extend(doc_ids)
+        q = q.filter(AuditLog.entity_id.in_(related_ids))
+    elif antibody_id:
+        related_ids = [antibody_id]
+        lot_ids = [r[0] for r in db.query(Lot.id).filter(Lot.antibody_id == antibody_id).all()]
+        related_ids.extend(lot_ids)
+        if lot_ids:
+            vial_ids = [r[0] for r in db.query(Vial.id).filter(Vial.lot_id.in_(lot_ids)).all()]
+            related_ids.extend(vial_ids)
+            doc_ids = [r[0] for r in db.query(LotDocument.id).filter(LotDocument.lot_id.in_(lot_ids)).all()]
+            related_ids.extend(doc_ids)
+        q = q.filter(AuditLog.entity_id.in_(related_ids))
+    elif lot_id:
+        related_ids = [lot_id]
+        vial_ids = [r[0] for r in db.query(Vial.id).filter(Vial.lot_id == lot_id).all()]
+        related_ids.extend(vial_ids)
+        doc_ids = [r[0] for r in db.query(LotDocument.id).filter(LotDocument.lot_id == lot_id).all()]
+        related_ids.extend(doc_ids)
+        q = q.filter(AuditLog.entity_id.in_(related_ids))
+
+    # Support multiple comma-separated actions
+    if action:
+        actions = [a.strip() for a in action.split(",") if a.strip()]
+        if len(actions) == 1:
+            q = q.filter(AuditLog.action == actions[0])
+        else:
+            q = q.filter(AuditLog.action.in_(actions))
+
+    min_ts, max_ts = q.with_entities(
+        func.min(AuditLog.created_at),
+        func.max(AuditLog.created_at),
+    ).one()
+
+    return AuditLogRangeOut(min_created_at=min_ts, max_created_at=max_ts)

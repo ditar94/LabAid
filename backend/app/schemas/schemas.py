@@ -397,6 +397,11 @@ class AuditLogOut(BaseModel):
         from_attributes = True
 
 
+class AuditLogRangeOut(BaseModel):
+    min_created_at: datetime | None = None
+    max_created_at: datetime | None = None
+
+
 # ── Support Tickets ──────────────────────────────────────────────────
 
 
