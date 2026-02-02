@@ -28,7 +28,20 @@ docker compose exec backend alembic upgrade head
 - **Database**: PostgreSQL with full audit trail; every mutation is logged with before/after state
 - **Data retention**: Lab data is never deleted — suspension revokes write access but preserves all records (inventory, audit logs, uploaded documents)
 - **File storage**: QC documents and lot verification PDFs stored on server filesystem alongside the database
-- **Future**: Cloud object storage (S3/Azure Blob) with lifecycle rules to move inactive files to cold storage
+- **Future**: Cloud object storage + retention policies — see Recommended Azure Stack
+- **Recommended Azure Stack (Simple + Scalable)**
+    >   App Service (Linux) — host API + frontend; autoscale as labs grow
+    >   Azure Database for PostgreSQL (Flexible Server) — managed DB with automatic backups + PITR
+    >   Azure Blob Storage (Standard) — store documents with versioning + soft delete
+    >   Azure Key Vault — secrets (JWT, DB creds, storage keys)
+    >   Application Insights — logs, metrics, alerts
+
+- **Data Retention (Practical Default)**
+    >   Active labs: keep documents in Hot tier for 12–24 months
+    >   Older docs: move to Cool tier to reduce cost
+    >   Inactive labs: move to Cool/Archive after a defined grace period
+    >   Deletion: only after the legal retention window (e.g., 5 years) and written policy
+
 
 ---
 
@@ -48,6 +61,46 @@ docker compose exec backend alembic upgrade head
 ---
 
 ## Development Checklist
+
+### Production-Only Tasks
+
+- [ ] Support env-based storage backend (local disk for dev, Azure Blob for prod)
+- [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
+- [ ] Enable Azure Blob redundancy + soft delete/versioning + lifecycle policies
+- [ ] Document backup/restore process and run periodic restore tests
+- [ ] Define RPO/RTO targets (e.g., 15 min / 4 hrs) and align backup cadence to them
+- [ ] Enable Postgres PITR (WAL archiving) + daily snapshots + retention policy
+- [ ] Ensure automatic backups cover all labs in the multi-tenant database
+- [ ] Verify foreign keys and cascading rules cover antibody → fluorochrome → lot → document integrity
+- [ ] Store document checksums + add a periodic verification job for missing/corrupt blobs
+- [ ] Enable object storage versioning + soft delete + retention/immutability where required
+- [ ] Write and rehearse a restore playbook (DB restore + blob restore + validation queries)
+- [ ] Run scheduled restore tests and record results
+- [ ] Use backward-compatible migrations for relationship changes (add new columns first, backfill, then cut over)
+- [ ] Add automated integrity checks that validate the full graph after migrations/restores
+- [ ] Tag releases and keep a mapping of schema version to app version for restores/rollbacks
+
+### Pre-Prod Launch Checklist
+
+- [ ] Secrets management (Key Vault or equivalent); no secrets committed to repo
+- [ ] MFA + strong password policy for admins; account lockout/rate limiting
+- [ ] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
+- [ ] Uptime monitoring + health checks (API, DB, storage)
+- [ ] Request size limits + rate limiting for uploads and public endpoints
+- [ ] Staging environment mirrors prod (including storage backend) and runs restore drills
+- [ ] Incident response plan + basic status/communication plan
+- [ ] Legal baseline: Terms of Service, Privacy Policy, data retention policy
+
+### Open Tasks / Backlog
+
+- [ ] Audit log entries must include the associated user
+- [ ] Redirect `/antibodies` and `/lots` to `/inventory` and remove old views entirely
+- [ ] Add "Receive via barcode" flow on the Receive page to match the new scan buttons
+- [ ] Add quick filters/search on Inventory cards (e.g., low stock, QC pending)
+- [ ] Lot documents must be accessible from the audit log, and lot documents should be filterable
+- [ ] Audit log should show the referenced antibody/fluorochrome/lot (entity id alone is not useful)
+- [ ] Hovering over the archived badge should show the archive note if one exists
+- [ ] Bug: left sidebar items should remain fixed and not be affected by right content scrolling/layout
 
 ### Core: Scanning & Identification
 - [x] Barcode/QR scan input — auto-focused field catches keyboard wedge input, Enter triggers lookup

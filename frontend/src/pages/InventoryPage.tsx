@@ -13,11 +13,16 @@ function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => vo
   const handleDownload = async (docId: string, fileName: string) => {
     const res = await api.get(`/documents/${docId}`, { responseType: "blob" });
     const url = URL.createObjectURL(res.data);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
+    const newTab = window.open(url, "_blank", "noopener,noreferrer");
+    if (!newTab) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.click();
+    }
+    // Delay revoke so the new tab has time to read the blob URL.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
