@@ -61,6 +61,7 @@ export interface Lot {
   lab_id: string;
   lot_number: string;
   vendor_barcode: string | null;
+  gs1_ai: Record<string, string> | null;
   expiration_date: string | null;
   qc_status: QCStatus;
   qc_approved_by: string | null;
@@ -140,6 +141,26 @@ export interface ScanLookupResult {
   opened_vials: Vial[];
   storage_grid: StorageGrid | null;
   qc_warning: string | null;
+}
+
+export interface GUDIDDevice {
+  brand_name: string;
+  company_name: string;
+  catalog_number: string;
+  description: string;
+}
+
+export interface ScanEnrichResult {
+  parsed: boolean;
+  gtin: string | null;
+  lot_number: string | null;
+  expiration_date: string | null;
+  serial: string | null;
+  catalog_number: string | null;
+  vendor: string | null;
+  all_ais: Record<string, string> | null;
+  gudid_devices: GUDIDDevice[];
+  warnings: string[];
 }
 
 export type ScanIntent = "open" | "return" | "receive" | "deplete" | null;

@@ -9,12 +9,17 @@ from app.models.models import Antibody, Lot, QCStatus, StorageCell, StorageUnit,
 from app.routers.storage import _build_cell_out
 from app.schemas.schemas import (
     AntibodyOut,
+    GUDIDDevice,
     LotOut,
+    ScanEnrichRequest,
+    ScanEnrichResult,
     ScanLookupRequest,
     ScanLookupResult,
     StorageGridOut,
     VialOut,
 )
+from app.services.gs1_parser import extract_fields, parse_gs1
+from app.services.gudid_client import lookup_gudid
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 
@@ -101,4 +106,60 @@ def scan_lookup(
         opened_vials=opened_vials,
         storage_grid=storage_grid,
         qc_warning=qc_warning,
+    )
+
+
+@router.post("/enrich", response_model=ScanEnrichResult)
+async def scan_enrich(
+    body: ScanEnrichRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Parse GS1 AIs from a barcode string and optionally enrich via AccessGUDID.
+    Called when /scan/lookup returns 404 (unknown barcode) to auto-populate
+    registration form fields.
+    """
+    warnings: list[str] = []
+
+    parsed = parse_gs1(body.barcode)
+    if not parsed:
+        return ScanEnrichResult(
+            parsed=False,
+            warnings=["Could not parse GS1 data from barcode. Enter fields manually."],
+        )
+
+    fields = extract_fields(parsed)
+
+    # Look up device info via AccessGUDID if we have a GTIN
+    gudid_devices: list[GUDIDDevice] = []
+    vendor: str | None = None
+    catalog_number: str | None = fields["catalog_number"]
+
+    gtin = fields["gtin"]
+    if gtin:
+        raw_devices = await lookup_gudid(gtin)
+        gudid_devices = [GUDIDDevice(**d) for d in raw_devices]
+
+        if not gudid_devices:
+            warnings.append("No device found in FDA database for this GTIN.")
+        elif len(gudid_devices) == 1:
+            # Single match — auto-populate vendor and catalog
+            device = gudid_devices[0]
+            vendor = device.company_name
+            if device.catalog_number:
+                catalog_number = device.catalog_number
+    else:
+        warnings.append("No GTIN found in barcode; skipping FDA device lookup.")
+
+    return ScanEnrichResult(
+        parsed=True,
+        gtin=gtin,
+        lot_number=fields["lot_number"],
+        expiration_date=fields["expiration_date"],
+        serial=fields["serial"],
+        catalog_number=catalog_number,
+        vendor=vendor,
+        all_ais=fields["all_ais"],
+        gudid_devices=gudid_devices,
+        warnings=warnings,
     )

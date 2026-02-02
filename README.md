@@ -62,6 +62,20 @@ docker compose exec backend alembic upgrade head
 
 ## Development Checklist
 
+### Top Priority (Env + Staging Readiness)
+
+- [ ] Add `VITE_API_BASE_URL` and use it in `frontend/src/api/client.ts`
+- [ ] Create a storage interface with env-based switch (local disk vs Azure Blob)
+- [ ] Add staging `.env` + deployment notes to mirror prod config
+- [ ] Add minimal integration tests (auth + document upload/download) and run against staging
+
+### Go-Live Gate (Ready for Prod)
+
+- [ ] Deployment automation or documented, repeatable deploy steps
+- [ ] Migration process defined and rehearsed (staging first, then prod)
+- [ ] Backups + PITR enabled in prod and restore verified
+- [ ] Monitoring + alerts configured for API errors and auth/storage issues
+
 ### Production-Only Tasks
 
 - [ ] Support env-based storage backend (local disk for dev, Azure Blob for prod)
@@ -101,6 +115,100 @@ docker compose exec backend alembic upgrade head
 - [ ] Audit log should show the referenced antibody/fluorochrome/lot (entity id alone is not useful)
 - [ ] Hovering over the archived badge should show the archive note if one exists
 - [ ] Bug: left sidebar items should remain fixed and not be affected by right content scrolling/layout
+- [ ] GS1 DataMatrix parsing on unknown barcode (post `/scan/lookup` 404 only)
+- [ ] AccessGUDID lookup by GTIN, with picker list for multiple matches
+- [ ] Auto-populate lot fields on registration (lot number, expiration date, vendor barcode)
+- [ ] Auto-populate antibody fields on registration (vendor/company name, catalog number) and allow edits
+- [ ] Store all parsed GS1 AIs per lot (JSON column or normalized table)
+- [ ] Normalize scanner input (strip CR/LF, handle GS separator for variable-length AIs)
+- [ ] Storage page: unknown barcode should show error with "Go register" link to Scan/Search
+
+---
+
+## Barcode Scanner + GS1/UDI (AccessGUDID) Plan
+
+### Goals
+- Scan GS1 DataMatrix barcodes (mobile camera + hardware scanners).
+- If barcode is unknown, parse GS1 AIs and enrich via FDA AccessGUDID.
+- Auto-populate lot + antibody fields during registration.
+- Store full AI data per lot without losing the raw barcode string.
+
+### Scope (Where it applies)
+- Scan/Search page registration: `frontend/src/pages/ScanSearchPage.tsx`
+- Inventory "New Lot" inline form: `frontend/src/pages/InventoryPage.tsx`
+- Storage stocking scan: `frontend/src/pages/StoragePage.tsx` (unknown barcode = link to register)
+
+### UX Behavior
+- Always attempt `/scan/lookup` first.
+- Only if `/scan/lookup` returns 404:
+  - Parse GS1 AIs from the scanned string.
+  - If GTIN is present, query AccessGUDID.
+  - Show a picker list if multiple AccessGUDID matches exist.
+  - Overwrite registration fields with parsed/enriched values, but keep them editable.
+- Storage page: unknown barcode shows error + "Go register" link to `/scan-search?barcode=...`.
+
+### Supported GS1 AIs (initial)
+- Required: (01) GTIN
+- Common: (17) Expiration (YYMMDD), (10) Lot, (21) Serial
+- Store all parsed AIs (not just the common subset) to avoid data loss.
+
+### Input Normalization
+- Trim whitespace and trailing CR/LF from hardware scanner input.
+- Preserve the raw barcode string in `lots.vendor_barcode`.
+- Support GS separator (ASCII 29) between variable-length AIs.
+- If scanners send non-ASCII placeholders for GS, map them to ASCII 29 before parsing.
+- Mobile camera scan is real-time: `BarcodeScannerButton` uses `BarcodeDetector` and closes on `rawValue`.
+- Optional: show a "Scan successful" toast and auto-trigger lookup after camera detection.
+- Desktop wedge scanners often send trailing Enter (CR/LF); Scan/Search and Storage handle Enter.
+- Some scanners add prefix/suffix chars; strip them in a small normalizer.
+
+### Data Storage (Per Lot)
+- Keep `lots.vendor_barcode` as-is (raw scan).
+- Store full AI map per lot.
+  - Preferred: `lots.gs1_ai` JSON/JSONB map of `AI -> value` (Postgres friendly).
+  - Alternative: normalized `gs1_identifiers` table (ai, value, raw_segment) for querying.
+- Decide on JSON vs normalized based on reporting needs.
+
+### Backend Additions
+- Parsing + lookup helper (server-side to avoid CORS/external API exposure).
+- Endpoint proposal:
+  - `POST /api/scan/parse`
+    - Input: `{ barcode: string }`
+    - Output: `{ ai: Record<string,string>, gtin?: string, lot?: string, exp?: string, serial?: string }`
+  - `GET /api/scan/gudid?gtin=...`
+    - Output: list of AccessGUDID matches (company name, catalog number, device description, primary DI)
+  - Alternatively: one combined endpoint `POST /api/scan/enrich` to return parse + GUDID in one call.
+- Rate limit and cache AccessGUDID lookups (GTIN -> response).
+
+### Frontend Changes
+- Shared parse/enrich helper (or new API call) used by:
+  - `ScanSearchPage` (unknown barcode path)
+  - `InventoryPage` (new lot scan button)
+  - `StoragePage` (unknown barcode path)
+- Registration field population rules:
+  - `lot_number` <- AI (10)
+  - `expiration_date` <- AI (17) mapped to ISO date
+  - `vendor_barcode` <- raw barcode
+  - `vendor` <- AccessGUDID company name
+  - `catalog_number` <- AccessGUDID catalog number (if present)
+- Picker UI:
+  - Inline list below Vendor/Catalog fields.
+  - Selecting a match overwrites fields but keeps them editable.
+
+### Error Handling
+- If parse fails: fall back to manual entry; show non-blocking warning.
+- If no GTIN: skip AccessGUDID, continue manual entry with any parsed data.
+- If AccessGUDID returns no matches: show "No match found" hint.
+
+### Testing / Verification
+- Unit tests for GS1 parser (AI parsing, GS separator handling, date parsing).
+- Integration tests for `/scan/lookup` 404 -> parse -> enrich -> registration flow.
+- UI tests for picker selection + editable overwrite behavior.
+- Manual test matrix:
+  - Mobile camera scan (DataMatrix)
+  - Desktop scanner with CR/LF
+  - Desktop scanner with GS separator
+
 
 ### Core: Scanning & Identification
 - [x] Barcode/QR scan input — auto-focused field catches keyboard wedge input, Enter triggers lookup

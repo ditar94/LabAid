@@ -127,6 +127,7 @@ class Lot(Base):
     lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
     lot_number = Column(String(100), nullable=False)
     vendor_barcode = Column(String(255))  # what the scanner reads
+    gs1_ai = Column(JSON, nullable=True)  # parsed GS1 Application Identifiers
     expiration_date = Column(Date)
     qc_status = Column(Enum(QCStatus, values_callable=lambda e: [x.value for x in e]), nullable=False, default=QCStatus.PENDING)
     qc_approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

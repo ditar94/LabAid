@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { BarcodeDetector } from "barcode-detector/pure";
 
 type Props = {
   onDetected: (value: string) => void;
@@ -7,7 +8,7 @@ type Props = {
   disabled?: boolean;
 };
 
-const DEFAULT_FORMATS = [
+const DEFAULT_FORMATS: string[] = [
   "qr_code",
   "code_128",
   "code_39",
@@ -31,7 +32,7 @@ export default function BarcodeScannerButton({
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectorRef = useRef<any>(null);
+  const detectorRef = useRef<BarcodeDetector | null>(null);
   const rafRef = useRef<number | null>(null);
 
   const stopStream = () => {
@@ -75,17 +76,12 @@ export default function BarcodeScannerButton({
 
   const startScan = async () => {
     setError(null);
-    const BarcodeDetectorCtor = (window as any).BarcodeDetector;
-    if (!BarcodeDetectorCtor) {
-      setError("Camera scanning isn't supported in this browser.");
-      return;
-    }
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("Camera access isn't available.");
       return;
     }
     try {
-      detectorRef.current = new BarcodeDetectorCtor({ formats: DEFAULT_FORMATS });
+      detectorRef.current = new BarcodeDetector({ formats: DEFAULT_FORMATS as any });
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
         audio: false,

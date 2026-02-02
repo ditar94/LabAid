@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type {
   ScanLookupResult,
+  ScanEnrichResult,
+  GUDIDDevice,
   ScanIntent,
   StorageCell,
   Vial,
@@ -24,6 +27,7 @@ const DEFAULT_FLUORO_COLOR = "#9ca3af";
 
 export default function ScanSearchPage() {
   const { user, labSettings } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const sealedOnly = labSettings.sealed_counts_only ?? false;
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<ResultMode>("idle");
@@ -67,7 +71,13 @@ export default function ScanSearchPage() {
     catalog_number: "",
     stability_days: "",
     low_stock_threshold: "",
+    approved_low_threshold: "",
   });
+
+  // ── GS1 Enrich state ───────────────────────────────────────────────
+  const [enrichResult, setEnrichResult] = useState<ScanEnrichResult | null>(null);
+  const [enrichLoading, setEnrichLoading] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<GUDIDDevice | null>(null);
 
   // ── Search state ────────────────────────────────────────────────────
   const [searchResults, setSearchResults] = useState<AntibodySearchResult[]>([]);
@@ -99,6 +109,17 @@ export default function ScanSearchPage() {
       inputRef.current?.focus();
     }
   }, [loading, mode]);
+
+  // Auto-trigger lookup if ?barcode= query param is present (e.g. from StoragePage link)
+  useEffect(() => {
+    const bc = searchParams.get("barcode");
+    if (bc && mode === "idle") {
+      setInput(bc);
+      setSearchParams({}, { replace: true });
+      handleLookup(bc);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const resetScanState = () => {
     setIntent(null);
@@ -149,15 +170,18 @@ export default function ScanSearchPage() {
             // Neither scan nor search found results — offer registration
             setScannedBarcode(q);
             setMode("register");
-            setRegForm({
+            setEnrichResult(null);
+            setSelectedDevice(null);
+
+            const regDefaults = {
               antibody_id: "",
               lot_number: "",
               vendor_barcode: q,
               expiration_date: "",
               quantity: "1",
               storage_unit_id: "",
-            });
-            setNewAbForm({
+            };
+            const abDefaults = {
               target: "",
               fluorochrome_choice: "",
               new_fluorochrome: "",
@@ -167,7 +191,12 @@ export default function ScanSearchPage() {
               catalog_number: "",
               stability_days: "",
               low_stock_threshold: "",
-            });
+              approved_low_threshold: "",
+            };
+
+            setRegForm(regDefaults);
+            setNewAbForm(abDefaults);
+
             const [abRes, suRes, fluoroRes] = await Promise.all([
               api.get("/antibodies/"),
               api.get("/storage/units"),
@@ -176,6 +205,38 @@ export default function ScanSearchPage() {
             setAntibodies(abRes.data);
             setStorageUnits(suRes.data);
             setFluorochromes(fluoroRes.data);
+
+            // Try GS1 enrichment in the background
+            setEnrichLoading(true);
+            try {
+              const enrichRes = await api.post<ScanEnrichResult>("/scan/enrich", { barcode: q });
+              const enrich = enrichRes.data;
+              setEnrichResult(enrich);
+
+              if (enrich.parsed) {
+                // Auto-populate lot fields from parsed GS1 data
+                setRegForm((prev) => ({
+                  ...prev,
+                  lot_number: enrich.lot_number || prev.lot_number,
+                  expiration_date: enrich.expiration_date || prev.expiration_date,
+                }));
+
+                // If single GUDID match, auto-populate antibody fields
+                if (enrich.gudid_devices.length === 1) {
+                  const device = enrich.gudid_devices[0];
+                  setSelectedDevice(device);
+                  setNewAbForm((prev) => ({
+                    ...prev,
+                    vendor: device.company_name || prev.vendor,
+                    catalog_number: device.catalog_number || prev.catalog_number,
+                  }));
+                }
+              }
+            } catch {
+              // Enrich failure is non-blocking — user can still register manually
+            } finally {
+              setEnrichLoading(false);
+            }
           }
         } catch {
           setError("Search failed");
@@ -379,6 +440,9 @@ export default function ScanSearchPage() {
           low_stock_threshold: newAbForm.low_stock_threshold.trim()
             ? parseInt(newAbForm.low_stock_threshold, 10)
             : null,
+          approved_low_threshold: newAbForm.approved_low_threshold.trim()
+            ? parseInt(newAbForm.approved_low_threshold, 10)
+            : null,
         });
         antibodyId = abRes.data.id;
       }
@@ -387,6 +451,7 @@ export default function ScanSearchPage() {
         lot_number: regForm.lot_number,
         vendor_barcode: regForm.vendor_barcode.trim() || scannedBarcode,
         expiration_date: regForm.expiration_date || null,
+        gs1_ai: enrichResult?.all_ais || null,
       });
       await api.post("/vials/receive", {
         lot_id: lotRes.data.id,
@@ -522,6 +587,58 @@ export default function ScanSearchPage() {
           <p className="page-desc">
             This barcode isn't registered and no antibodies match. Fill in the details below to register a new lot.
           </p>
+
+          {enrichLoading && (
+            <p className="info">Parsing barcode...</p>
+          )}
+
+          {enrichResult && enrichResult.warnings.length > 0 && (
+            <div className="enrich-warnings">
+              {enrichResult.warnings.map((w, i) => (
+                <p key={i} className="info">{w}</p>
+              ))}
+            </div>
+          )}
+
+          {enrichResult?.parsed && enrichResult.gudid_devices.length === 1 && selectedDevice && (
+            <div className="enrich-info">
+              <p className="success">Device info auto-filled from FDA database: {selectedDevice.brand_name} — {selectedDevice.company_name}</p>
+            </div>
+          )}
+
+          {enrichResult?.parsed && enrichResult.gudid_devices.length > 1 && !selectedDevice && (
+            <div className="gudid-picker">
+              <p className="page-desc"><strong>Multiple devices found for this GTIN. Select the matching device:</strong></p>
+              <div className="gudid-picker-list">
+                {enrichResult.gudid_devices.map((d, i) => (
+                  <div key={i} className="gudid-picker-item" onClick={() => {
+                    setSelectedDevice(d);
+                    setNewAbForm((prev) => ({
+                      ...prev,
+                      vendor: d.company_name || prev.vendor,
+                      catalog_number: d.catalog_number || prev.catalog_number,
+                    }));
+                  }}>
+                    <div><strong>{d.brand_name}</strong></div>
+                    <div>{d.company_name} — {d.catalog_number || "No catalog #"}</div>
+                    <div className="gudid-picker-desc">{d.description}</div>
+                  </div>
+                ))}
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setSelectedDevice({} as GUDIDDevice)}>
+                  Skip — enter manually
+                </button>
+              </div>
+            </div>
+          )}
+
+          {enrichResult?.parsed && enrichResult.gudid_devices.length > 1 && selectedDevice && selectedDevice.company_name && (
+            <div className="enrich-info">
+              <p className="success">Selected: {selectedDevice.brand_name} — {selectedDevice.company_name}
+                <button type="button" className="btn-secondary btn-sm" style={{ marginLeft: "0.5rem" }} onClick={() => setSelectedDevice(null)}>Change</button>
+              </p>
+            </div>
+          )}
+
           <form className="register-form" onSubmit={handleRegister}>
             <div className="form-group">
               <label>Antibody</label>
@@ -630,13 +747,25 @@ export default function ScanSearchPage() {
                 </div>
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Low Stock Threshold</label>
+                    <label>Reorder Point <small style={{ fontWeight: "normal", color: "#888" }}>(total sealed vials)</small></label>
                     <input
                       type="number"
                       min={1}
-                      placeholder="Low stock threshold"
+                      placeholder="Reorder Point"
+                      title="Alert when total vials on hand drops below this level"
                       value={newAbForm.low_stock_threshold}
                       onChange={(e) => setNewAbForm({ ...newAbForm, low_stock_threshold: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Min Ready Stock <small style={{ fontWeight: "normal", color: "#888" }}>(approved vials)</small></label>
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="Min Ready Stock"
+                      title="Alert when QC-approved vials drops below this level"
+                      value={newAbForm.approved_low_threshold}
+                      onChange={(e) => setNewAbForm({ ...newAbForm, approved_low_threshold: e.target.value })}
                     />
                   </div>
                 </div>

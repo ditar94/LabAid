@@ -156,6 +156,7 @@ class LotCreate(BaseModel):
     lot_number: str
     vendor_barcode: str | None = None
     expiration_date: date | None = None
+    gs1_ai: dict | None = None
 
 
 class LotArchiveRequest(BaseModel):
@@ -168,6 +169,7 @@ class LotOut(BaseModel):
     lab_id: UUID
     lot_number: str
     vendor_barcode: str | None
+    gs1_ai: dict | None = None
     expiration_date: date | None
     qc_status: QCStatus
     qc_approved_by: UUID | None
@@ -339,6 +341,30 @@ class ScanLookupResult(BaseModel):
     opened_vials: list[VialOut] = []
     storage_grid: StorageGridOut | None = None
     qc_warning: str | None = None
+
+
+class ScanEnrichRequest(BaseModel):
+    barcode: str
+
+
+class GUDIDDevice(BaseModel):
+    brand_name: str
+    company_name: str
+    catalog_number: str
+    description: str
+
+
+class ScanEnrichResult(BaseModel):
+    parsed: bool
+    gtin: str | None = None
+    lot_number: str | None = None
+    expiration_date: date | None = None
+    serial: str | None = None
+    catalog_number: str | None = None
+    vendor: str | None = None
+    all_ais: dict | None = None
+    gudid_devices: list[GUDIDDevice] = []
+    warnings: list[str] = []
 
 
 class ReturnToStorageRequest(BaseModel):

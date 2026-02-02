@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import api from "../api/client";
 import type {
   StorageUnit,
@@ -137,7 +138,13 @@ export default function StoragePage() {
       await loadNextEmpty(selectedGrid.unit.id);
       scanRef.current?.focus();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to stock vial");
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail || "Failed to stock vial";
+      if (status === 404) {
+        setError(`not_registered:${code}`);
+      } else {
+        setError(detail);
+      }
       setBarcode("");
       scanRef.current?.focus();
     }
@@ -341,12 +348,30 @@ export default function StoragePage() {
                 </button>
               </div>
               {message && <p className="success">{message}</p>}
-              {error && <p className="error">{error}</p>}
+              {error && error.startsWith("not_registered:") ? (
+                <p className="error">
+                  Barcode not registered.{" "}
+                  <Link to={`/scan?barcode=${encodeURIComponent(error.slice("not_registered:".length))}`}>
+                    Go to Scan/Search to register
+                  </Link>
+                </p>
+              ) : error ? (
+                <p className="error">{error}</p>
+              ) : null}
             </div>
           )}
 
           {!stockingMode && message && <p className="success">{message}</p>}
-          {!stockingMode && error && <p className="error">{error}</p>}
+          {!stockingMode && error && error.startsWith("not_registered:") ? (
+            <p className="error">
+              Barcode not registered.{" "}
+              <Link to={`/scan?barcode=${encodeURIComponent(error.slice("not_registered:".length))}`}>
+                Go to Scan/Search to register
+              </Link>
+            </p>
+          ) : !stockingMode && error ? (
+            <p className="error">{error}</p>
+          ) : null}
 
           <StorageGrid
             rows={selectedGrid.unit.rows}

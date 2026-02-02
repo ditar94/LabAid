@@ -303,7 +303,6 @@ export default function DashboardPage() {
                   <th>Sealed</th>
                   <th>Opened</th>
                   <th>Total</th>
-                  <th>Vendor Barcode</th>
                 </tr>
               </thead>
               <tbody>
@@ -349,7 +348,6 @@ export default function DashboardPage() {
                       <td>{counts.sealed}</td>
                       <td>{counts.opened}</td>
                       <td>{counts.total}</td>
-                      <td>{lot.vendor_barcode || "—"}</td>
                     </tr>
                   );
                 })}

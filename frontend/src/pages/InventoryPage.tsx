@@ -5,6 +5,9 @@ import type { Antibody, Fluorochrome, Lab, Lot, StorageUnit, VialCounts } from "
 import { useAuth } from "../context/AuthContext";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import DatePicker from "../components/DatePicker";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import LotTable from "../components/LotTable";
+import LotCardList from "../components/LotCardList";
 
 function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => void; onUpload: () => void }) {
   const [file, setFile] = useState<File | null>(null);
@@ -174,6 +177,7 @@ export default function InventoryPage() {
     user?.role === "lab_admin" ||
     user?.role === "supervisor";
   const canQC = canEdit;
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   useEffect(() => {
     if (user?.role === "super_admin") {
@@ -827,23 +831,23 @@ export default function InventoryPage() {
           />
           <input
             type="number"
-            placeholder="Reorder Point"
+            placeholder="Reorder Point (total sealed vials)"
             min={1}
             value={abForm.low_stock_threshold}
             onChange={(e) =>
               setAbForm({ ...abForm, low_stock_threshold: e.target.value })
             }
-            title="Alert when total vials (pending QC + approved) falls to this level"
+            title="Alert when total vials on hand drops below this level"
           />
           <input
             type="number"
-            placeholder="Min Ready Stock"
+            placeholder="Min Ready Stock (approved vials)"
             min={1}
             value={abForm.approved_low_threshold}
             onChange={(e) =>
               setAbForm({ ...abForm, approved_low_threshold: e.target.value })
             }
-            title="Alert when approved/usable vials fall to this level"
+            title="Alert when QC-approved vials drops below this level"
           />
           <button type="submit" disabled={loading}>
             {loading ? "Creating..." : "Create Antibody"}
@@ -1071,138 +1075,59 @@ export default function InventoryPage() {
                   )}
 
                   {cardLots.length > 0 ? (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Lot #</th>
-                          <th>Vendor Barcode</th>
-                          <th>QC</th>
-                          <th>Expiration</th>
-                          <th>Sealed</th>
-                          {!sealedOnly && <th>Opened</th>}
-                          {!sealedOnly && <th>Depleted</th>}
-                          <th>Total</th>
-                          {canQC && <th>Actions</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cardLots.map((lot) => (
-                          <tr key={lot.id} style={lot.is_archived ? { opacity: 0.5 } : undefined}>
-                            <td>
-                              {lot.lot_number}
-                              {lotAgeBadgeMap.get(lot.id) === "current" && (
-                                <span className="badge badge-green" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
-                              )}
-                              {lotAgeBadgeMap.get(lot.id) === "new" && (
-                                <span className="badge" style={{ marginLeft: 6, fontSize: "0.7em", background: "#6b7280", color: "#fff" }}>New</span>
-                              )}
-                            </td>
-                            <td>{lot.vendor_barcode || "—"}</td>
-                            <td>
-                              <span
-                                className={`badge ${
-                                  lot.qc_status === "approved"
-                                    ? "badge-green"
-                                    : lot.qc_status === "failed"
-                                    ? "badge-red"
-                                    : "badge-yellow"
-                                }`}
-                              >
-                                {lot.qc_status}
-                              </span>
-                              {lot.is_archived && (
-                                <span
-                                  className="badge"
-                                  style={{
-                                    marginLeft: 6,
-                                    fontSize: "0.7em",
-                                    background: "#9ca3af",
-                                    color: "#fff",
-                                  }}
-                                >
-                                  Archived
-                                </span>
-                              )}
-                            </td>
-                            <td>{lot.expiration_date || "—"}</td>
-                            <td>{lot.vial_counts?.sealed ?? 0}</td>
-                            {!sealedOnly && <td>{lot.vial_counts?.opened ?? 0}</td>}
-                            {!sealedOnly && <td>{lot.vial_counts?.depleted ?? 0}</td>}
-                            <td>{lot.vial_counts?.total ?? 0}</td>
-                            {canQC && (
-                              <td className="action-btns">
-                                {lot.qc_status !== "approved" && (
-                                  <button
-                                    className="btn-sm btn-green"
-                                    onClick={() => updateQC(lot.id, "approved")}
-                                  >
-                                    Approve
-                                  </button>
-                                )}
-                                {(lot.vial_counts?.opened ?? 0) > 0 && (
-                                  <button
-                                    className="btn-sm btn-red"
-                                    onClick={() =>
-                                      setConfirmAction({
-                                        lotId: lot.id,
-                                        lotNumber: lot.lot_number,
-                                        openedCount: lot.vial_counts?.opened ?? 0,
-                                        sealedCount: lot.vial_counts?.sealed ?? 0,
-                                        totalCount: lot.vial_counts?.total ?? 0,
-                                      })
-                                    }
-                                    title={`Deplete vials for lot ${lot.lot_number}`}
-                                  >
-                                    Deplete
-                                  </button>
-                                )}
-                                {(lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.total ?? 0) > 0 && (
-                                  <button
-                                    className="btn-sm btn-red"
-                                    onClick={() =>
-                                      setConfirmAction({
-                                        lotId: lot.id,
-                                        lotNumber: lot.lot_number,
-                                        openedCount: 0,
-                                        sealedCount: lot.vial_counts?.sealed ?? 0,
-                                        totalCount: lot.vial_counts?.total ?? 0,
-                                      })
-                                    }
-                                    title={`Deplete all ${lot.vial_counts?.total ?? 0} active vials (sealed + opened)`}
-                                  >
-                                    Deplete
-                                  </button>
-                                )}
-                                <button
-                                  className="btn-sm"
-                                  onClick={() => setModalLot(lot)}
-                                  title="QC documents"
-                                >
-                                  Docs{lot.documents?.length ? ` (${lot.documents.length})` : ""}
-                                </button>
-                                <button
-                                  className="btn-sm"
-                                  onClick={() => {
-                                    if (lot.is_archived) {
-                                      handleArchive(lot.id);
-                                    } else {
-                                      setArchiveNote("");
-                                      setArchivePrompt({
-                                        lotId: lot.id,
-                                        lotNumber: lot.lot_number,
-                                      });
-                                    }
-                                  }}
-                                  title={lot.is_archived ? "Unarchive this lot" : "Archive this lot"}
-                                >
-                                  {lot.is_archived ? "Unarchive" : "Archive"}
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    isMobile ? (
+                      <LotCardList
+                        lots={cardLots}
+                        sealedOnly={sealedOnly}
+                        canQC={canQC}
+                        lotAgeBadgeMap={lotAgeBadgeMap}
+                        onApproveQC={(id) => updateQC(id, "approved")}
+                        onDeplete={(lot) =>
+                          setConfirmAction({
+                            lotId: lot.id,
+                            lotNumber: lot.lot_number,
+                            openedCount: lot.vial_counts?.opened ?? 0,
+                            sealedCount: lot.vial_counts?.sealed ?? 0,
+                            totalCount: lot.vial_counts?.total ?? 0,
+                          })
+                        }
+                        onOpenDocs={(lot) => setModalLot(lot)}
+                        onArchive={(lotId, lotNumber, isArchived) => {
+                          if (isArchived) {
+                            handleArchive(lotId);
+                          } else {
+                            setArchiveNote("");
+                            setArchivePrompt({ lotId, lotNumber });
+                          }
+                        }}
+                      />
+                    ) : (
+                      <LotTable
+                        lots={cardLots}
+                        sealedOnly={sealedOnly}
+                        canQC={canQC}
+                        lotAgeBadgeMap={lotAgeBadgeMap}
+                        onApproveQC={(id) => updateQC(id, "approved")}
+                        onDeplete={(lot) =>
+                          setConfirmAction({
+                            lotId: lot.id,
+                            lotNumber: lot.lot_number,
+                            openedCount: lot.vial_counts?.opened ?? 0,
+                            sealedCount: lot.vial_counts?.sealed ?? 0,
+                            totalCount: lot.vial_counts?.total ?? 0,
+                          })
+                        }
+                        onOpenDocs={(lot) => setModalLot(lot)}
+                        onArchive={(lotId, lotNumber, isArchived) => {
+                          if (isArchived) {
+                            handleArchive(lotId);
+                          } else {
+                            setArchiveNote("");
+                            setArchivePrompt({ lotId, lotNumber });
+                          }
+                        }}
+                      />
+                    )
                   ) : (
                     <p className="empty">No lots for this antibody yet.</p>
                   )}
@@ -1433,7 +1358,7 @@ export default function InventoryPage() {
                 />
               </div>
               <div className="form-group">
-                <label>Reorder Point</label>
+                <label>Reorder Point <small style={{ fontWeight: "normal", color: "#888" }}>(total sealed vials)</small></label>
                 <input
                   type="number"
                   min={1}
@@ -1441,11 +1366,11 @@ export default function InventoryPage() {
                   onChange={(e) =>
                     setEditAbForm({ ...editAbForm, low_stock_threshold: e.target.value })
                   }
-                  title="Alert when total vials (pending QC + approved) falls to this level"
+                  title="Alert when total vials on hand drops below this level"
                 />
               </div>
               <div className="form-group">
-                <label>Min Ready Stock</label>
+                <label>Min Ready Stock <small style={{ fontWeight: "normal", color: "#888" }}>(approved vials)</small></label>
                 <input
                   type="number"
                   min={1}
@@ -1453,7 +1378,7 @@ export default function InventoryPage() {
                   onChange={(e) =>
                     setEditAbForm({ ...editAbForm, approved_low_threshold: e.target.value })
                   }
-                  title="Alert when approved/usable vials fall to this level"
+                  title="Alert when QC-approved vials drops below this level"
                 />
               </div>
               <div className="action-btns" style={{ marginTop: "0.5rem" }}>
