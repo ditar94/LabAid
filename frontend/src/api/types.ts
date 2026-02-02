@@ -165,6 +165,31 @@ export interface AntibodySearchResult {
   storage_locations: StorageLocation[];
 }
 
+export type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+
+export interface TicketReply {
+  id: string;
+  ticket_id: string;
+  user_id: string;
+  user_name: string;
+  message: string;
+  created_at: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  lab_id: string;
+  user_id: string;
+  user_name: string;
+  lab_name: string;
+  subject: string;
+  message: string;
+  status: TicketStatus;
+  created_at: string;
+  updated_at: string;
+  replies: TicketReply[];
+}
+
 export interface AuditLogEntry {
   id: string;
   lab_id: string;

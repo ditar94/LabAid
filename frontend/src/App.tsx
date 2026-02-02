@@ -15,6 +15,7 @@ import AuditPage from "./pages/AuditPage";
 import UsersPage from "./pages/UsersPage";
 import LabsPage from "./pages/LabsPage";
 import FluorochromesPage from "./pages/FluorochromesPage";
+import TicketsPage from "./pages/TicketsPage";
 import type { ReactNode } from "react";
 import "./App.css";
 
@@ -61,6 +62,7 @@ function AppRoutes() {
         <Route path="/users" element={<UsersPage />} />
         <Route path="/labs" element={<LabsPage />} />
         <Route path="/fluorochromes" element={<FluorochromesPage />} />
+        <Route path="/tickets" element={<TicketsPage />} />
       </Route>
     </Routes>
   );

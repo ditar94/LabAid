@@ -31,6 +31,9 @@ export default function Layout() {
           {user?.role === "super_admin" && (
             <NavLink to="/labs">Labs</NavLink>
           )}
+          {(user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor") && (
+            <NavLink to="/tickets">Support</NavLink>
+          )}
           {(user?.role === "super_admin" || user?.role === "lab_admin") && (
             <NavLink to="/fluorochromes">Fluorochromes</NavLink>
           )}
@@ -38,6 +41,10 @@ export default function Layout() {
         <button className="logout-btn" onClick={handleLogout}>
           Sign Out
         </button>
+        <div className="sidebar-copyright">
+          <div>&copy; {new Date().getFullYear()} LabAid</div>
+          <div>v1.0 Beta</div>
+        </div>
       </nav>
       <main className="main-content">
         <Outlet />

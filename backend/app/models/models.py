@@ -44,6 +44,13 @@ class VialStatus(str, enum.Enum):
     ARCHIVED = "archived"
 
 
+class TicketStatus(str, enum.Enum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
+
+
 # ── Models ─────────────────────────────────────────────────────────────────
 
 
@@ -220,3 +227,37 @@ class AuditLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
+
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    subject = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+    status = Column(
+        Enum(TicketStatus, values_callable=lambda e: [x.value for x in e]),
+        nullable=False,
+        default=TicketStatus.OPEN,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    lab = relationship("Lab")
+    creator = relationship("User")
+    replies = relationship("TicketReply", back_populates="ticket", order_by="TicketReply.created_at")
+
+
+class TicketReply(Base):
+    __tablename__ = "ticket_replies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("support_tickets.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    ticket = relationship("SupportTicket", back_populates="replies")
+    author = relationship("User")

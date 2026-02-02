@@ -152,6 +152,13 @@ body {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.sidebar-copyright {
+  margin: 0.75rem 1.25rem 1rem;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.35);
+  text-align: center;
+}
+
 .main-content {
   flex: 1;
   padding: 2rem;
@@ -1500,6 +1507,122 @@ td.mono {
 
 .inactive-section table {
   opacity: 0.7;
+}
+
+/* ── Support Tickets ────────────────────────────────────────────────── */
+
+.ticket-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.ticket-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.ticket-card:hover {
+  border-color: var(--primary);
+}
+
+.ticket-card.expanded {
+  border-color: var(--primary);
+}
+
+.ticket-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.ticket-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ticket-meta {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.ticket-lab {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.ticket-body {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.ticket-message {
+  white-space: pre-wrap;
+  margin-bottom: 1rem;
+}
+
+.ticket-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.ticket-reply {
+  background: rgba(0, 0, 0, 0.02);
+  border-left: 3px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0 6px 6px 0;
+}
+
+.reply-meta {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.reply-meta strong {
+  color: var(--text);
+}
+
+.ticket-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.reply-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.reply-form textarea {
+  flex: 1;
+  resize: vertical;
+}
+
+.status-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.badge-blue {
+  background: #3b82f6;
+  color: #fff;
 }
 
 /* ── Document List ───────────────────────────────────────────────────── */

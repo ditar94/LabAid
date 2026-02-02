@@ -22,6 +22,16 @@ docker compose exec backend alembic upgrade head
 
 ---
 
+## Hosting & Data Durability
+
+- **Model**: Site-managed SaaS — LabAid hosts and manages the platform on behalf of labs
+- **Database**: PostgreSQL with full audit trail; every mutation is logged with before/after state
+- **Data retention**: Lab data is never deleted — suspension revokes write access but preserves all records (inventory, audit logs, uploaded documents)
+- **File storage**: QC documents and lot verification PDFs stored on server filesystem alongside the database
+- **Future**: Cloud object storage (S3/Azure Blob) with lifecycle rules to move inactive files to cold storage
+
+---
+
 ## Original Vision
 
 > A program for use in Flow Cytometry labs where I can scan an antibody vial and
@@ -104,11 +114,11 @@ docker compose exec backend alembic upgrade head
 - [x] Email/password login with JWT tokens
 - [x] Role-based access: Super Admin, Lab Admin, Supervisor, Tech, Read-only
 - [x] Every query scoped by lab_id from JWT — users cannot see other labs' data
-- [ ] Initial setup flow — create first lab + admin account
+- [x] Initial setup flow — create first lab + admin account
 - [x] User management page for admins
-- [ ] Super Admin can suspend/reactivate labs (access revoked or restored without deleting data)
-- [ ] Support ticket system for Lab Admins and Supervisors
-- [ ] Clarify account ownership/hosting model (site-managed vs. AWS/Azure) and data durability guarantees
+- [x] Super Admin can suspend/reactivate labs (access revoked or restored without deleting data)
+- [x] Support ticket system for Lab Admins and Supervisors
+- [x] Clarify account ownership/hosting model (site-managed vs. AWS/Azure) and data durability guarantees
 
 ### Role Hierarchy Rework
 > Rethink roles to match real hospital/lab structure. Current roles (super_admin, lab_admin, tech, read_only) need to be refined.
@@ -126,7 +136,7 @@ docker compose exec backend alembic upgrade head
 
 **Supervisor (new role, per-lab)**
 - [x] Approve / Fail lots (QC decisions)
-- [ ] Register new antibodies and fluorochromes
+- [x] Register new antibodies and fluorochromes
 - [x] Register new lots and receive inventory
 - [x] All Tech abilities
 
@@ -185,6 +195,10 @@ docker compose exec backend alembic upgrade head
 - [x] Low-stock warning should trigger when <= threshold (not just <)
 - [x] Dashboard cards: when selecting an antibody, show counts specific to that antibody (sequential cards)
 - [x] Pending QC card remains global total; when an antibody is selected, show its pending QC count
+- [ ] Inventory availability model: split counts into Ready (QC‑approved), Pending QC, and Total (Ready + Pending)
+- [ ] Dual thresholds per antibody: "Reorder Point (Total)" and "Operational Minimum (Ready)"
+- [ ] QC Bottleneck alert: if Ready < Operational Minimum while Pending QC > 0, raise high‑priority alert
+- [ ] Near‑expiry rule: lots expiring within 7 days count as effectively low stock (forces prioritization of pending replacement)
 
 ### Infrastructure
 - [x] Docker Compose — Postgres + Backend + Frontend, one command startup

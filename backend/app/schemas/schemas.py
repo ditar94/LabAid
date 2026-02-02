@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
 
-from app.models.models import QCStatus, UserRole, VialStatus
+from app.models.models import QCStatus, TicketStatus, UserRole, VialStatus
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────
@@ -357,3 +357,42 @@ class AuditLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Support Tickets ──────────────────────────────────────────────────
+
+
+class TicketCreate(BaseModel):
+    subject: str
+    message: str
+
+
+class TicketReplyCreate(BaseModel):
+    message: str
+
+
+class TicketUpdateStatus(BaseModel):
+    status: TicketStatus
+
+
+class TicketReplyOut(BaseModel):
+    id: UUID
+    ticket_id: UUID
+    user_id: UUID
+    user_name: str
+    message: str
+    created_at: datetime
+
+
+class TicketOut(BaseModel):
+    id: UUID
+    lab_id: UUID
+    user_id: UUID
+    user_name: str
+    lab_name: str
+    subject: str
+    message: str
+    status: TicketStatus
+    created_at: datetime
+    updated_at: datetime
+    replies: list[TicketReplyOut] = []

@@ -111,3 +111,32 @@ def update_lab_settings(
     db.commit()
     db.refresh(lab)
     return lab
+
+
+@router.patch("/{lab_id}/suspend", response_model=schemas.Lab)
+def suspend_lab(
+    lab_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    before = snapshot_lab(lab)
+    lab.is_active = not lab.is_active
+
+    log_audit(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="lab.suspended" if not lab.is_active else "lab.reactivated",
+        entity_type="lab",
+        entity_id=lab.id,
+        before_state=before,
+        after_state=snapshot_lab(lab),
+    )
+
+    db.commit()
+    db.refresh(lab)
+    return lab
