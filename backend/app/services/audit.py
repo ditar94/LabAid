@@ -32,8 +32,8 @@ def log_audit(
     return entry
 
 
-def snapshot_vial(vial) -> dict:
-    return {
+def snapshot_vial(vial, *, db=None) -> dict:
+    d = {
         "id": str(vial.id),
         "lot_id": str(vial.lot_id),
         "status": vial.status.value if vial.status else None,
@@ -43,6 +43,15 @@ def snapshot_vial(vial) -> dict:
         "depleted_at": str(vial.depleted_at) if vial.depleted_at else None,
         "opened_for_qc": vial.opened_for_qc,
     }
+    # Resolve storage location if db session provided
+    if db and vial.location_cell_id:
+        from app.models.models import StorageCell, StorageUnit
+        cell = db.get(StorageCell, vial.location_cell_id)
+        if cell:
+            unit = db.get(StorageUnit, cell.storage_unit_id)
+            d["storage_unit"] = unit.name if unit else None
+            d["storage_cell"] = cell.label or f"R{cell.row + 1}C{cell.col + 1}"
+    return d
 
 
 def snapshot_user(user) -> dict:

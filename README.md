@@ -15,10 +15,22 @@ Full-stack web application for Flow Cytometry labs to track antibody inventory, 
 ```bash
 docker compose up -d --build
 docker compose exec backend alembic upgrade head
-# Visit http://localhost:5173/setup to create lab + admin
-# Then http://localhost:5173/login
-# API docs at http://localhost:8000/docs
 ```
+
+## Testing the App
+
+| What | URL |
+|------|-----|
+| **Desktop browser** | https://localhost:5173 |
+| **Mobile / other device** (same Wi-Fi) | https://\<your-mac-ip\>:5173 |
+| **API docs (Swagger)** | http://local host:8000/docs |
+
+**First-time setup:** Visit `/setup` to create your first lab and admin account, then log in at `/login`.
+
+**Mobile testing notes:**
+- The dev server uses a self-signed HTTPS certificate (required for camera access). Accept the browser's certificate warning when prompted.
+- Find your Mac's local IP with `ipconfig getifaddr en0` (e.g. `192.168.1.218`).
+- API requests are proxied through Vite — no need to expose port 8000 to the network.
 
 ---
 
@@ -107,21 +119,21 @@ docker compose exec backend alembic upgrade head
 
 ### Open Tasks / Backlog
 
-- [ ] Audit log entries must include the associated user
-- [ ] Redirect `/antibodies` and `/lots` to `/inventory` and remove old views entirely
+- [x] Audit log entries must include the associated user
+- [x] Redirect `/antibodies` and `/lots` to `/inventory` and remove old views entirely
 - [ ] Add "Receive via barcode" flow on the Receive page to match the new scan buttons
 - [ ] Add quick filters/search on Inventory cards (e.g., low stock, QC pending)
 - [ ] Lot documents must be accessible from the audit log, and lot documents should be filterable
-- [ ] Audit log should show the referenced antibody/fluorochrome/lot (entity id alone is not useful)
-- [ ] Hovering over the archived badge should show the archive note if one exists
-- [ ] Bug: left sidebar items should remain fixed and not be affected by right content scrolling/layout
-- [ ] GS1 DataMatrix parsing on unknown barcode (post `/scan/lookup` 404 only)
-- [ ] AccessGUDID lookup by GTIN, with picker list for multiple matches
-- [ ] Auto-populate lot fields on registration (lot number, expiration date, vendor barcode)
-- [ ] Auto-populate antibody fields on registration (vendor/company name, catalog number) and allow edits
-- [ ] Store all parsed GS1 AIs per lot (JSON column or normalized table)
-- [ ] Normalize scanner input (strip CR/LF, handle GS separator for variable-length AIs)
-- [ ] Storage page: unknown barcode should show error with "Go register" link to Scan/Search
+- [x] Audit log should show the referenced antibody/fluorochrome/lot (entity id alone is not useful)
+- [x] Hovering over the archived badge should show the archive note if one exists
+- [x] Bug: left sidebar items should remain fixed and not be affected by right content scrolling/layout
+- [x] GS1 DataMatrix parsing on unknown barcode (post `/scan/lookup` 404 only)
+- [x] AccessGUDID lookup by GTIN, with picker list for multiple matches
+- [x] Auto-populate lot fields on registration (lot number, expiration date, vendor barcode)
+- [x] Auto-populate antibody fields on registration (vendor/company name, catalog number) and allow edits
+- [x] Store all parsed GS1 AIs per lot (JSON column or normalized table)
+- [x] Normalize scanner input (strip CR/LF, handle GS separator for variable-length AIs)
+- [x] Storage page: unknown barcode should show error with "Go register" link to Scan/Search
 
 ---
 

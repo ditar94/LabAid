@@ -216,6 +216,10 @@ def archive_lot(
 
     before = snapshot_lot(lot)
     lot.is_archived = not lot.is_archived
+    if lot.is_archived:
+        lot.archive_note = body.note if body else None
+    else:
+        lot.archive_note = None
 
     log_audit(
         db,

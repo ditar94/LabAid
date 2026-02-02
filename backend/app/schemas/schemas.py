@@ -175,6 +175,7 @@ class LotOut(BaseModel):
     qc_approved_by: UUID | None
     qc_approved_at: datetime | None
     is_archived: bool = False
+    archive_note: str | None = None
     created_at: datetime
 
     class Config:
@@ -193,6 +194,7 @@ class LotDocumentOut(BaseModel):
     id: UUID
     lot_id: UUID
     file_name: str
+    description: str | None = None
     created_at: datetime
 
     class Config:
@@ -379,9 +381,13 @@ class AuditLogOut(BaseModel):
     id: UUID
     lab_id: UUID
     user_id: UUID
+    user_full_name: str | None = None
     action: str
     entity_type: str
     entity_id: UUID
+    entity_label: str | None = None
+    lot_id: UUID | None = None
+    antibody_id: UUID | None = None
     before_state: str | None
     after_state: str | None
     note: str | None

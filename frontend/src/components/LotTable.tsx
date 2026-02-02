@@ -70,6 +70,7 @@ export default function LotTable({
                     background: "#9ca3af",
                     color: "#fff",
                   }}
+                  title={lot.archive_note || undefined}
                 >
                   Archived
                 </span>

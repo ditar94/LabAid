@@ -76,7 +76,7 @@ export default function LotCardList({
                   <span className="badge" style={{ fontSize: "0.7em", background: "#6b7280", color: "#fff" }}>New</span>
                 )}
                 {lot.is_archived && (
-                  <span className="badge" style={{ fontSize: "0.7em", background: "#9ca3af", color: "#fff" }}>Archived</span>
+                  <span className="badge" style={{ fontSize: "0.7em", background: "#9ca3af", color: "#fff" }} title={lot.archive_note || undefined}>Archived</span>
                 )}
               </div>
               <span

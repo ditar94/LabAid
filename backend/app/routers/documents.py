@@ -2,13 +2,13 @@ import os
 import shutil
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from starlette.responses import FileResponse
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.models import Lot, LotDocument, User, UserRole
+from app.models.models import Antibody, Lot, LotDocument, User, UserRole
 from app.schemas.schemas import LotDocumentOut
 from app.services.audit import log_audit
 
@@ -21,6 +21,7 @@ UPLOAD_DIR = "uploads"
 def upload_lot_document(
     lot_id: UUID,
     file: UploadFile = File(...),
+    description: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
@@ -33,29 +34,41 @@ def upload_lot_document(
 
     # Ensure upload directory exists
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    
+
     file_path = os.path.join(UPLOAD_DIR, f"{lot.id}_{file.filename}")
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    desc = description.strip() if description else None
     doc = LotDocument(
         lot_id=lot.id,
         lab_id=lot.lab_id,
         user_id=current_user.id,
         file_path=file_path,
         file_name=file.filename,
+        description=desc,
     )
     db.add(doc)
     db.flush()
+
+    # Build audit note with file name and description
+    note = f"Uploaded: {file.filename}"
+    if desc:
+        note += f" — {desc}"
 
     log_audit(
         db,
         lab_id=lot.lab_id,
         user_id=current_user.id,
         action="document.uploaded",
-        entity_type="lot_document",
-        entity_id=doc.id,
-        after_state={"lot_id": str(lot.id), "file_name": file.filename},
+        entity_type="lot",
+        entity_id=lot.id,
+        after_state={
+            "document_id": str(doc.id),
+            "file_name": file.filename,
+            "description": desc,
+        },
+        note=note,
     )
 
     db.commit()

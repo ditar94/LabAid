@@ -133,6 +133,7 @@ class Lot(Base):
     qc_approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     qc_approved_at = Column(DateTime(timezone=True), nullable=True)
     is_archived = Column(Boolean, default=False, nullable=False, server_default="false")
+    archive_note = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     antibody = relationship("Antibody", back_populates="lots")
@@ -150,6 +151,7 @@ class LotDocument(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_name = Column(String(255), nullable=False)
+    description = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lot = relationship("Lot", back_populates="documents")

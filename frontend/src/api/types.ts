@@ -67,6 +67,7 @@ export interface Lot {
   qc_approved_by: string | null;
   qc_approved_at: string | null;
   is_archived: boolean;
+  archive_note: string | null;
   created_at: string;
   vial_counts?: VialCounts;
   antibody_target?: string | null;
@@ -78,6 +79,7 @@ export interface LotDocument {
   id: string;
   lot_id: string;
   file_name: string;
+  description: string | null;
   created_at: string;
 }
 
@@ -216,9 +218,13 @@ export interface AuditLogEntry {
   id: string;
   lab_id: string;
   user_id: string;
+  user_full_name: string | null;
   action: string;
   entity_type: string;
   entity_id: string;
+  entity_label: string | null;
+  lot_id: string | null;
+  antibody_id: string | null;
   before_state: string | null;
   after_state: string | null;
   note: string | null;

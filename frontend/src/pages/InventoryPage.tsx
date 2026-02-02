@@ -11,6 +11,7 @@ import LotCardList from "../components/LotCardList";
 
 function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => void; onUpload: () => void }) {
   const [file, setFile] = useState<File | null>(null);
+  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleDownload = async (docId: string, fileName: string) => {
@@ -39,12 +40,14 @@ function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => vo
     setError(null);
     const formData = new FormData();
     formData.append("file", file);
+    if (description.trim()) formData.append("description", description.trim());
     try {
       await api.post(`/documents/lots/${lot.id}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       onUpload();
       setFile(null);
+      setDescription("");
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to upload file");
     }
@@ -60,6 +63,7 @@ function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => vo
               <a href="#" onClick={(e) => { e.preventDefault(); handleDownload(doc.id, doc.file_name); }}>
                 {doc.file_name}
               </a>
+              {doc.description && <span className="document-desc">{doc.description}</span>}
             </div>
           ))}
           {lot.documents?.length === 0 && <p>No documents uploaded.</p>}
@@ -67,7 +71,14 @@ function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => vo
         <div className="upload-form">
           <h3>Upload New Document</h3>
           <input type="file" onChange={handleFileChange} />
-          <button onClick={handleUpload} disabled={!file}>
+          <input
+            type="text"
+            placeholder="What is this document? (e.g. QC report, CoA)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            style={{ width: "100%", marginTop: "0.5rem" }}
+          />
+          <button onClick={handleUpload} disabled={!file} style={{ marginTop: "0.5rem" }}>
             Upload
           </button>
           {error && <p className="error">{error}</p>}

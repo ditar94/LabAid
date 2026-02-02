@@ -80,16 +80,56 @@ def receive_vials(
 
     db.flush()
 
-    for vial in vials:
-        log_audit(
-            db,
-            lab_id=user.lab_id,
-            user_id=user.id,
-            action="vial.received",
-            entity_type="vial",
-            entity_id=vial.id,
-            after_state=snapshot_vial(vial),
-        )
+    # Build storage location description for the note
+    storage_note = ""
+    if empty_cells:
+        unit = db.get(StorageUnit, empty_cells[0].storage_unit_id)
+        unit_name = unit.name if unit else "Unknown"
+
+        def _cell_label(c: StorageCell) -> str:
+            return c.label or f"R{c.row + 1}C{c.col + 1}"
+
+        def _cell_sort_key(c: StorageCell) -> tuple[int, int]:
+            return (c.row, c.col)
+
+        # Group consecutive cells into ranges
+        sorted_cells = sorted(empty_cells, key=_cell_sort_key)
+        runs: list[list[StorageCell]] = []
+        for cell in sorted_cells:
+            if runs and cell.row == runs[-1][-1].row and cell.col == runs[-1][-1].col + 1:
+                runs[-1].append(cell)
+            else:
+                runs.append([cell])
+
+        parts = []
+        for run in runs:
+            if len(run) == 1:
+                parts.append(_cell_label(run[0]))
+            else:
+                parts.append(f"{_cell_label(run[0])}–{_cell_label(run[-1])}")
+
+        storage_note = f" → {unit_name} [{', '.join(parts)}]"
+
+    # Look up antibody for audit context
+    ab = db.query(Antibody).filter(Antibody.id == lot.antibody_id).first()
+
+    # Log a single batch event on the lot
+    log_audit(
+        db,
+        lab_id=user.lab_id,
+        user_id=user.id,
+        action="vial.received",
+        entity_type="lot",
+        entity_id=lot_id,
+        after_state={
+            "lot_number": lot.lot_number,
+            "antibody_target": ab.target if ab else None,
+            "antibody_fluorochrome": ab.fluorochrome if ab else None,
+            "quantity": quantity,
+            "vial_ids": [str(v.id) for v in vials],
+        },
+        note=f"Received {quantity} vial{'s' if quantity != 1 else ''}{storage_note}",
+    )
 
     db.commit()
     for v in vials:
@@ -131,7 +171,7 @@ def open_vial(
             detail=f"QC status is '{lot.qc_status.value}'. Lot must be approved before opening vials.",
         )
 
-    before = snapshot_vial(vial)
+    before = snapshot_vial(vial, db=db)
 
     qc_override = lot and lot.qc_status != QCStatus.APPROVED and force
 
@@ -157,7 +197,7 @@ def open_vial(
             entity_type="vial",
             entity_id=vial.id,
             before_state=before,
-            after_state=snapshot_vial(vial),
+            after_state=snapshot_vial(vial, db=db),
             note="Sealed counts only — direct deplete" + (
                 f"; QC override: lot status was '{lot.qc_status.value}'" if qc_override else ""
             ),
@@ -192,7 +232,7 @@ def open_vial(
             entity_type="vial",
             entity_id=vial.id,
             before_state=before,
-            after_state=snapshot_vial(vial),
+            after_state=snapshot_vial(vial, db=db),
             note=f"QC override: lot status was '{lot.qc_status.value}'" if qc_override else None,
         )
 
@@ -218,7 +258,7 @@ def deplete_vial(
     if vial.status != VialStatus.OPENED:
         raise HTTPException(status_code=400, detail=f"Vial is '{vial.status.value}', expected 'opened'")
 
-    before = snapshot_vial(vial)
+    before = snapshot_vial(vial, db=db)
 
     vial.status = VialStatus.DEPLETED
     vial.depleted_at = datetime.now(timezone.utc)
@@ -233,7 +273,7 @@ def deplete_vial(
         entity_type="vial",
         entity_id=vial.id,
         before_state=before,
-        after_state=snapshot_vial(vial),
+        after_state=snapshot_vial(vial, db=db),
     )
 
     db.commit()
@@ -270,7 +310,7 @@ def deplete_all_opened(
 
     now = datetime.now(timezone.utc)
     for vial in vials:
-        before = snapshot_vial(vial)
+        before = snapshot_vial(vial, db=db)
         vial.status = VialStatus.DEPLETED
         vial.depleted_at = now
         vial.depleted_by = user.id
@@ -283,7 +323,7 @@ def deplete_all_opened(
             entity_type="vial",
             entity_id=vial.id,
             before_state=before,
-            after_state=snapshot_vial(vial),
+            after_state=snapshot_vial(vial, db=db),
             note="Bulk deplete all",
         )
 
@@ -322,7 +362,7 @@ def deplete_all_lot(
 
     now = datetime.now(timezone.utc)
     for vial in vials:
-        before = snapshot_vial(vial)
+        before = snapshot_vial(vial, db=db)
         was_sealed = vial.status == VialStatus.SEALED
         vial.status = VialStatus.DEPLETED
         vial.depleted_at = now
@@ -339,7 +379,7 @@ def deplete_all_lot(
             entity_type="vial",
             entity_id=vial.id,
             before_state=before,
-            after_state=snapshot_vial(vial),
+            after_state=snapshot_vial(vial, db=db),
             note="Bulk deplete entire lot",
         )
 
@@ -392,7 +432,7 @@ def return_to_storage(
     if occupant:
         raise HTTPException(status_code=400, detail="Cell is already occupied")
 
-    before = snapshot_vial(vial)
+    before = snapshot_vial(vial, db=db)
 
     vial.location_cell_id = cell_id
     if opened_for_qc is not None:
@@ -406,7 +446,7 @@ def return_to_storage(
         entity_type="vial",
         entity_id=vial.id,
         before_state=before,
-        after_state=snapshot_vial(vial),
+        after_state=snapshot_vial(vial, db=db),
     )
 
     db.commit()
@@ -432,7 +472,7 @@ def correct_vial(
     if not vial:
         raise HTTPException(status_code=404, detail="Vial not found")
 
-    before = snapshot_vial(vial)
+    before = snapshot_vial(vial, db=db)
 
     vial.status = revert_to
     if revert_to == VialStatus.SEALED:
@@ -460,7 +500,7 @@ def correct_vial(
         entity_type="vial",
         entity_id=vial.id,
         before_state=before,
-        after_state=snapshot_vial(vial),
+        after_state=snapshot_vial(vial, db=db),
         note=note,
     )
 

@@ -261,7 +261,7 @@ def stock_vial(
     if not cell:
         raise HTTPException(status_code=400, detail="No empty cells in this storage unit")
 
-    before = snapshot_vial(vial)
+    before = snapshot_vial(vial, db=db)
     vial.location_cell_id = cell.id
 
     log_audit(
@@ -272,7 +272,7 @@ def stock_vial(
         entity_type="vial",
         entity_id=vial.id,
         before_state=before,
-        after_state=snapshot_vial(vial),
+        after_state=snapshot_vial(vial, db=db),
     )
 
     db.commit()
