@@ -22,6 +22,7 @@ def upload_lot_document(
     lot_id: UUID,
     file: UploadFile = File(...),
     description: str | None = Form(None),
+    is_qc_document: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
@@ -47,6 +48,7 @@ def upload_lot_document(
         file_path=file_path,
         file_name=file.filename,
         description=desc,
+        is_qc_document=is_qc_document,
     )
     db.add(doc)
     db.flush()
@@ -67,6 +69,7 @@ def upload_lot_document(
             "document_id": str(doc.id),
             "file_name": file.filename,
             "description": desc,
+            "is_qc_document": is_qc_document,
         },
         note=note,
     )

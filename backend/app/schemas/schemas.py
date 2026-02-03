@@ -71,6 +71,7 @@ class Lab(BaseModel):
 class LabSettingsUpdate(BaseModel):
     sealed_counts_only: bool | None = None
     expiry_warn_days: int | None = None
+    qc_doc_required: bool | None = None
 
 
 class SetupRequest(BaseModel):
@@ -195,6 +196,7 @@ class LotDocumentOut(BaseModel):
     lot_id: UUID
     file_name: str
     description: str | None = None
+    is_qc_document: bool = False
     created_at: datetime
 
     class Config:
@@ -206,6 +208,7 @@ class LotWithCounts(LotOut):
     antibody_target: str | None = None
     antibody_fluorochrome: str | None = None
     documents: list[LotDocumentOut] = []
+    has_qc_document: bool = False
 
 
 class LotUpdateQC(BaseModel):
@@ -299,6 +302,7 @@ class StorageUnitOut(BaseModel):
 class VialSummary(BaseModel):
     id: UUID
     lot_id: UUID
+    antibody_id: UUID | None = None
     status: VialStatus
     lot_number: str | None = None
     expiration_date: date | None = None

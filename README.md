@@ -123,7 +123,12 @@ docker compose exec backend alembic upgrade head
 - [x] Redirect `/antibodies` and `/lots` to `/inventory` and remove old views entirely
 - [ ] Add "Receive via barcode" flow on the Receive page to match the new scan buttons
 - [ ] Add quick filters/search on Inventory cards (e.g., low stock, QC pending)
-- [ ] Lot documents must be accessible from the audit log, and lot documents should be filterable
+- [x] Add lab setting (e.g., `qc_doc_required`) to keep lots in "Pending QC" until a QC document is uploaded (approval alone is not enough)
+- [x] Add a QC document flag/type on lot documents (or doc category) and expose it in the upload UI
+- [x] Update QC approval flow to enforce the QC doc requirement when enabled (block approval or keep lot pending with a clear reason)
+- [x] Update Dashboard + Inventory QC pending badges/counts to be reason-aware (approval pending, doc upload pending, or both)
+- [x] Expose QC pending reason in the API (computed on lot or via summary endpoint) so UI can render dynamic badges consistently
+- [x] Lot documents must be accessible from the audit log, and lot documents should be filterable
 - [x] Audit log should show the referenced antibody/fluorochrome/lot (entity id alone is not useful)
 - [x] Hovering over the archived badge should show the archive note if one exists
 - [x] Bug: left sidebar items should remain fixed and not be affected by right content scrolling/layout
@@ -397,12 +402,12 @@ docker compose exec backend alembic upgrade head
 - [x] Fluorochrome color dot — small colored circle in the cell corner; each fluorochrome gets a distinct color (e.g., FITC = green, PE = yellow, APC = red), configurable per lab
 - [x] Fluorochrome colors carry through to Lots table, scan results, antibody list, and dashboard for consistency
 
-**Vial status shading**
+**Vial status shading on storage view**
 - [ ] Sealed vial — solid/full-opacity cell background
 - [ ] Opened vial — lighter/faded shading to visually distinguish from sealed
 - [ ] Depleted vial — greyed out or hatched (if still shown in grid before de-allocation)
 
-**QC status via border color**
+**QC status via grid square border color on storage view **
 - [ ] Approved lot — default border (or subtle green border)
 - [ ] Pending QC — yellow/amber border to flag "needs QC"
 - [ ] Failed QC — red border

@@ -9,9 +9,15 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import LotTable from "../components/LotTable";
 import LotCardList from "../components/LotCardList";
 
-function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => void; onUpload: () => void }) {
+function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
+  lot: Lot;
+  onClose: () => void;
+  onUpload: () => void;
+  onUploadAndApprove?: () => void;
+}) {
   const [file, setFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
+  const [isQcDocument, setIsQcDocument] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleDownload = async (docId: string, fileName: string) => {
@@ -35,22 +41,33 @@ function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => vo
     }
   };
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const doUpload = async () => {
+    if (!file) return false;
     setError(null);
     const formData = new FormData();
     formData.append("file", file);
     if (description.trim()) formData.append("description", description.trim());
+    if (isQcDocument) formData.append("is_qc_document", "true");
     try {
       await api.post(`/documents/lots/${lot.id}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      onUpload();
       setFile(null);
       setDescription("");
+      setIsQcDocument(false);
+      return true;
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to upload file");
+      return false;
     }
+  };
+
+  const handleUpload = async () => {
+    if (await doUpload()) onUpload();
+  };
+
+  const handleUploadAndApprove = async () => {
+    if (await doUpload()) onUploadAndApprove?.();
   };
 
   return (
@@ -63,6 +80,7 @@ function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => vo
               <a href="#" onClick={(e) => { e.preventDefault(); handleDownload(doc.id, doc.file_name); }}>
                 {doc.file_name}
               </a>
+              {doc.is_qc_document && <span className="badge badge-green qc-doc-badge">QC</span>}
               {doc.description && <span className="document-desc">{doc.description}</span>}
             </div>
           ))}
@@ -78,13 +96,24 @@ function DocumentModal({ lot, onClose, onUpload }: { lot: Lot; onClose: () => vo
             onChange={(e) => setDescription(e.target.value)}
             style={{ width: "100%", marginTop: "0.5rem" }}
           />
-          <button onClick={handleUpload} disabled={!file} style={{ marginTop: "0.5rem" }}>
-            Upload
-          </button>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: "0.5rem" }}>
+            <input type="checkbox" checked={isQcDocument} onChange={(e) => setIsQcDocument(e.target.checked)} />
+            This is a lot verification/QC document
+          </label>
+          <div className="action-btns" style={{ marginTop: "0.5rem" }}>
+            <button onClick={handleUpload} disabled={!file}>
+              Upload
+            </button>
+            {onUploadAndApprove && (
+              <button className="btn-green" onClick={handleUploadAndApprove} disabled={!file}>
+                Upload &amp; Approve
+              </button>
+            )}
+          </div>
           {error && <p className="error">{error}</p>}
         </div>
         <button onClick={onClose} className="modal-close-btn">
-          Close
+          {onUploadAndApprove ? "Cancel" : "Close"}
         </button>
       </div>
     </div>
@@ -161,6 +190,8 @@ export default function InventoryPage() {
   });
   const [editAbLoading, setEditAbLoading] = useState(false);
   const [modalLot, setModalLot] = useState<Lot | null>(null);
+  const [qcBlockedLot, setQcBlockedLot] = useState<Lot | null>(null);
+  const [docModalApproveAfter, setDocModalApproveAfter] = useState(false);
 
   const [abForm, setAbForm] = useState({
     target: "",
@@ -355,18 +386,19 @@ export default function InventoryPage() {
     for (const [, abLots] of lotsByAntibody) {
       const nonArchived = abLots.filter((l) => !l.is_archived);
       if (nonArchived.length < 2) continue;
-      // Sort by expiration date ascending (soonest first); lots without expiration go last
-      const withSealed = nonArchived
+      // Eligible lots: not archived, has sealed vials (not fully depleted)
+      const eligible = nonArchived
         .filter((l) => (l.vial_counts?.sealed ?? 0) > 0)
+        // Sort by expiration date ascending (soonest first); lots without expiration go last
         .sort((a, b) => {
           if (!a.expiration_date && !b.expiration_date) return 0;
           if (!a.expiration_date) return 1;
           if (!b.expiration_date) return -1;
           return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
         });
-      if (withSealed.length < 2) continue;
-      const currentLot = withSealed[0];
-      for (const lot of withSealed) {
+      if (eligible.length < 2) continue;
+      const currentLot = eligible[0];
+      for (const lot of eligible) {
         map.set(lot.id, lot === currentLot ? "current" : "new");
       }
     }
@@ -408,6 +440,13 @@ export default function InventoryPage() {
         approvedSealed < ab.approved_low_threshold &&
         !(ab.low_stock_threshold != null && totalSealed < ab.low_stock_threshold)
       ) {
+        badges.push({ label: "Needs QC", color: "yellow" });
+      }
+
+      // Needs QC badge (doc required): lab requires QC doc and at least one pending lot is missing one
+      const needsQcDoc = (labSettings.qc_doc_required ?? false) &&
+        activAbLots.some((l) => l.qc_status === "pending" && !l.has_qc_document);
+      if (needsQcDoc && !badges.some((b) => b.label === "Needs QC")) {
         badges.push({ label: "Needs QC", color: "yellow" });
       }
 
@@ -615,8 +654,11 @@ export default function InventoryPage() {
     try {
       await api.patch(`/lots/${lotId}/qc`, { qc_status: status });
       await loadData();
-    } catch {
-      // keep UI stable on failure
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        const lot = lots.find((l) => l.id === lotId) || null;
+        setQcBlockedLot(lot);
+      }
     }
   };
 
@@ -1091,6 +1133,7 @@ export default function InventoryPage() {
                         lots={cardLots}
                         sealedOnly={sealedOnly}
                         canQC={canQC}
+                        qcDocRequired={labSettings.qc_doc_required ?? false}
                         lotAgeBadgeMap={lotAgeBadgeMap}
                         onApproveQC={(id) => updateQC(id, "approved")}
                         onDeplete={(lot) =>
@@ -1117,6 +1160,7 @@ export default function InventoryPage() {
                         lots={cardLots}
                         sealedOnly={sealedOnly}
                         canQC={canQC}
+                        qcDocRequired={labSettings.qc_doc_required ?? false}
                         lotAgeBadgeMap={lotAgeBadgeMap}
                         onApproveQC={(id) => updateQC(id, "approved")}
                         onDeplete={(lot) =>
@@ -1411,12 +1455,48 @@ export default function InventoryPage() {
       {modalLot && (
         <DocumentModal
           lot={modalLot}
-          onClose={() => setModalLot(null)}
+          onClose={() => { setModalLot(null); setDocModalApproveAfter(false); }}
           onUpload={() => {
+            setDocModalApproveAfter(false);
             loadData();
             setModalLot(null);
           }}
+          onUploadAndApprove={docModalApproveAfter ? async () => {
+            const lotId = modalLot.id;
+            setModalLot(null);
+            setDocModalApproveAfter(false);
+            try {
+              await api.patch(`/lots/${lotId}/qc`, { qc_status: "approved" });
+            } catch { /* approval may still fail for other reasons */ }
+            await loadData();
+          } : undefined}
         />
+      )}
+      {qcBlockedLot && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>QC Document Required</h2>
+            <p>
+              Your lab requires a QC verification document to be uploaded before a lot can be approved.
+              Please upload a QC document for Lot <strong>{qcBlockedLot.lot_number}</strong>.
+            </p>
+            <div className="action-btns" style={{ marginTop: "1rem" }}>
+              <button
+                onClick={() => {
+                  const lot = qcBlockedLot;
+                  setQcBlockedLot(null);
+                  setDocModalApproveAfter(true);
+                  setModalLot(lot);
+                }}
+              >
+                Continue
+              </button>
+              <button className="btn-secondary" onClick={() => setQcBlockedLot(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {archivePrompt && (
         <div className="modal-overlay">

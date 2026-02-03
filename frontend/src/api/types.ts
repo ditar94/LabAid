@@ -15,6 +15,7 @@ export interface User {
 export interface LabSettings {
   sealed_counts_only?: boolean;
   expiry_warn_days?: number;
+  qc_doc_required?: boolean;
 }
 
 export interface Lab {
@@ -73,6 +74,7 @@ export interface Lot {
   antibody_target?: string | null;
   antibody_fluorochrome?: string | null;
   documents?: LotDocument[];
+  has_qc_document?: boolean;
 }
 
 export interface LotDocument {
@@ -80,6 +82,7 @@ export interface LotDocument {
   lot_id: string;
   file_name: string;
   description: string | null;
+  is_qc_document: boolean;
   created_at: string;
 }
 
@@ -112,6 +115,7 @@ export interface StorageUnit {
 export interface VialSummary {
   id: string;
   lot_id: string;
+  antibody_id: string | null;
   status: VialStatus;
   lot_number: string | null;
   expiration_date: string | null;
@@ -165,7 +169,7 @@ export interface ScanEnrichResult {
   warnings: string[];
 }
 
-export type ScanIntent = "open" | "return" | "receive" | "deplete" | null;
+export type ScanIntent = "open" | "return" | "receive" | "deplete" | "store_open" | null;
 
 export interface LotSummary {
   id: string;

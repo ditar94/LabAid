@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import type {
   AntibodySearchResult,
@@ -12,6 +13,7 @@ import { useAuth } from "../context/AuthContext";
 
 export default function SearchPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AntibodySearchResult[]>([]);
   const [selectedResult, setSelectedResult] =
@@ -258,6 +260,11 @@ export default function SearchPage() {
           cell={openTarget}
           loading={openLoading}
           onConfirm={handleOpenVial}
+          onViewLot={() => {
+            const abId = openTarget.vial?.antibody_id;
+            setOpenTarget(null);
+            if (abId) navigate(`/inventory?antibodyId=${abId}`);
+          }}
           onCancel={() => setOpenTarget(null)}
         />
       )}

@@ -613,7 +613,32 @@ export default function AuditPage() {
                   </span>
                 )}
               </td>
-              <td>{log.note || "\u2014"}</td>
+              <td>
+                {log.action === "document.uploaded" && log.after_state ? (() => {
+                  try {
+                    const state = JSON.parse(log.after_state);
+                    if (state.document_id) {
+                      return (
+                        <a
+                          href="#"
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            const res = await api.get(`/documents/${state.document_id}`, { responseType: "blob" });
+                            const url = URL.createObjectURL(res.data);
+                            const w = window.open(url, "_blank", "noopener,noreferrer");
+                            if (!w) { const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.click(); }
+                            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                          }}
+                          title="Open document"
+                        >
+                          {log.note || "View document"}
+                        </a>
+                      );
+                    }
+                  } catch { /* ignore parse errors */ }
+                  return log.note || "\u2014";
+                })() : (log.note || "\u2014")}
+              </td>
             </tr>
           ))}
           {logs.length === 0 && (

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "../api/client";
 import type {
   StorageUnit,
@@ -15,6 +15,7 @@ import { useAuth } from "../context/AuthContext";
 
 export default function StoragePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [units, setUnits] = useState<StorageUnit[]>([]);
@@ -341,7 +342,7 @@ export default function StoragePage() {
                   }}
                 />
                 <button
-                  onClick={handleStock}
+                  onClick={() => handleStock()}
                   disabled={!nextEmptyCell || !barcode.trim()}
                 >
                   Stock
@@ -409,6 +410,11 @@ export default function StoragePage() {
               cell={openTarget}
               loading={openLoading}
               onConfirm={handleOpenVial}
+              onViewLot={() => {
+                const abId = openTarget.vial?.antibody_id;
+                setOpenTarget(null);
+                if (abId) navigate(`/inventory?antibodyId=${abId}`);
+              }}
               onCancel={() => setOpenTarget(null)}
             />
           )}

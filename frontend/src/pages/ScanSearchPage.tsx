@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type {
   ScanLookupResult,
@@ -27,6 +27,7 @@ const DEFAULT_FLUORO_COLOR = "#9ca3af";
 
 export default function ScanSearchPage() {
   const { user, labSettings } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const sealedOnly = labSettings.sealed_counts_only ?? false;
   const [input, setInput] = useState("");
@@ -48,6 +49,8 @@ export default function ScanSearchPage() {
   const [showDepleteLotConfirm, setShowDepleteLotConfirm] = useState(false);
   const [receiveQty, setReceiveQty] = useState(1);
   const [receiveStorageId, setReceiveStorageId] = useState("");
+  const [storeOpenUnitId, setStoreOpenUnitId] = useState("");
+  const [storeOpenGrid, setStoreOpenGrid] = useState<StorageGridType | null>(null);
 
   // ── Registration state ──────────────────────────────────────────────
   const [scannedBarcode, setScannedBarcode] = useState("");
@@ -130,6 +133,8 @@ export default function ScanSearchPage() {
     setShowDepleteLotConfirm(false);
     setShowQcReturnPrompt(false);
     setPendingReturnCell(null);
+    setStoreOpenUnitId("");
+    setStoreOpenGrid(null);
     setError(null);
   };
 
@@ -385,6 +390,32 @@ export default function ScanSearchPage() {
     }
   };
 
+  // ── Scan: Store Open Vial ──────────────────────────────────────────
+  const loadStoreOpenGrid = async (unitId: string) => {
+    if (!unitId) { setStoreOpenGrid(null); return; }
+    try {
+      const res = await api.get(`/storage/units/${unitId}/grid`);
+      setStoreOpenGrid(res.data);
+    } catch {
+      setStoreOpenGrid(null);
+    }
+  };
+
+  const confirmStoreOpen = async () => {
+    if (!selectedVial || !selectedCell) return;
+    setLoading(true);
+    try {
+      await api.post(`/vials/${selectedVial.id}/return-to-storage`, { cell_id: selectedCell.id });
+      setMessage(`Open vial stored in cell ${selectedCell.label}.`);
+      resetScanState();
+      await refreshScan();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to store vial");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ── Registration ────────────────────────────────────────────────────
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
@@ -534,6 +565,8 @@ export default function ScanSearchPage() {
   const canOpenScan = (result?.vials.length ?? 0) > 0;
   const canReturn = (result?.opened_vials?.length ?? 0) > 0 && !!result?.storage_grid;
   const canDeplete = (result?.opened_vials?.length ?? 0) > 0;
+  const unstored_opened = result?.opened_vials?.filter((v) => !v.location_cell_id) ?? [];
+  const canStoreOpen = unstored_opened.length > 0;
 
   const fluoroMap = new Map<string, string>();
   for (const f of fluorochromes) {
@@ -842,7 +875,7 @@ export default function ScanSearchPage() {
             <p>Lot: <strong>{result.lot.lot_number}</strong> | QC: <span className={`badge ${result.lot.qc_status === "approved" ? "badge-green" : result.lot.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>{result.lot.qc_status}</span></p>
             <p>
               Sealed: <strong>{result.vials.length}</strong>
-              {!sealedOnly && <> | Opened: <strong>{result.opened_vials?.length ?? 0}</strong></>}
+              {" "}| Opened: <strong>{result.opened_vials?.length ?? 0}</strong>
             </p>
             {result.qc_warning && <div className="qc-warning">{result.qc_warning}</div>}
             {result.qc_warning && !canEdit && <p className="error">This lot has not been QC-approved. Contact your supervisor.</p>}
@@ -853,7 +886,9 @@ export default function ScanSearchPage() {
             <button className={`intent-btn ${intent === "open" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("open"); }} disabled={!canOpenScan} title={!canOpenScan ? "No sealed vials" : ""}>{sealedOnly ? "Use Vial" : "Open New"}</button>
             {!sealedOnly && <button className={`intent-btn ${intent === "return" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("return"); }} disabled={!canReturn} title={!canReturn ? "No opened vials or no storage grid" : ""}>Return to Storage</button>}
             <button className={`intent-btn ${intent === "receive" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("receive"); setReceiveQty(1); setReceiveStorageId(result.storage_grid?.unit.id ?? ""); api.get("/storage/units").then((r) => setStorageUnits(r.data)); }}>Receive More</button>
+            {!sealedOnly && <button className={`intent-btn ${intent === "store_open" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("store_open"); setStoreOpenUnitId(""); setStoreOpenGrid(null); api.get("/storage/units").then((r) => setStorageUnits(r.data)); }} disabled={!canStoreOpen} title={!canStoreOpen ? "No unstored opened vials" : ""}>Store Open Vial</button>}
             {!sealedOnly && <button className={`intent-btn ${intent === "deplete" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("deplete"); }} disabled={!canDeplete} title={!canDeplete ? "No opened vials" : ""}>Deplete</button>}
+            <button className="intent-btn" onClick={() => navigate(`/inventory?antibodyId=${result.antibody.id}`)}>View Lot</button>
           </div>
 
           {/* Intent: Open New */}
@@ -1010,6 +1045,49 @@ export default function ScanSearchPage() {
               )}
             </div>
           )}
+          {/* Intent: Store Open Vial */}
+          {intent === "store_open" && (
+            <div className="intent-panel">
+              <p className="page-desc">Select an opened vial, choose a storage unit, then click an empty cell to store it.</p>
+              <div className="vial-select-list">
+                {unstored_opened.map((v) => {
+                  const isExpired = v.open_expiration && new Date(v.open_expiration) < new Date();
+                  return (
+                    <div key={v.id} className={`vial-select-item ${selectedVial?.id === v.id ? "selected" : ""}`} onClick={() => { setSelectedVial(v); setSelectedCell(null); }}>
+                      <span className="vial-id">{v.id.slice(0, 8)}</span>
+                      <span className="vial-detail">Opened {v.opened_at ? new Date(v.opened_at).toLocaleDateString() : "—"}</span>
+                      {v.open_expiration && <span className={`vial-expiration ${isExpired ? "expired" : ""}`}>{isExpired ? "Expired" : `Exp: ${v.open_expiration}`}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              {selectedVial && (
+                <>
+                  <div className="form-group" style={{ marginTop: "0.75rem" }}>
+                    <label>Storage Unit</label>
+                    <select value={storeOpenUnitId} onChange={(e) => { setStoreOpenUnitId(e.target.value); setSelectedCell(null); loadStoreOpenGrid(e.target.value); }}>
+                      <option value="">Select storage unit</option>
+                      {storageUnits.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.rows}x{u.cols}) {u.temperature || ""}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {storeOpenGrid && (
+                    <div className="grid-container">
+                      <h3>{storeOpenGrid.unit.name}</h3>
+                      <StorageGrid rows={storeOpenGrid.unit.rows} cols={storeOpenGrid.unit.cols} cells={storeOpenGrid.cells} highlightVialIds={new Set()} onCellClick={handleCellClick} selectedCellId={selectedCell?.id} clickMode="empty" showVialInfo fluorochromes={fluorochromes} />
+                    </div>
+                  )}
+                  {selectedCell && (
+                    <div className="confirm-action">
+                      <p>Store vial <strong>{selectedVial.id.slice(0, 8)}</strong> in cell <strong>{selectedCell.label}</strong>?</p>
+                      <button className="btn-green" onClick={confirmStoreOpen} disabled={loading}>{loading ? "Storing..." : "Confirm Store"}</button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1084,7 +1162,17 @@ export default function ScanSearchPage() {
       )}
 
       {openTarget && (
-        <OpenVialDialog cell={openTarget} loading={openLoading} onConfirm={handleOpenVialFromSearch} onCancel={() => setOpenTarget(null)} />
+        <OpenVialDialog
+          cell={openTarget}
+          loading={openLoading}
+          onConfirm={handleOpenVialFromSearch}
+          onViewLot={() => {
+            const abId = openTarget.vial?.antibody_id;
+            setOpenTarget(null);
+            if (abId) navigate(`/inventory?antibodyId=${abId}`);
+          }}
+          onCancel={() => setOpenTarget(null)}
+        />
       )}
     </div>
   );

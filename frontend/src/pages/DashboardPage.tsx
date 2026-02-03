@@ -337,6 +337,11 @@ export default function DashboardPage() {
                             {badge}
                           </span>
                         ))}
+                        {(labSettings.qc_doc_required ?? false) && !lot.has_qc_document && (
+                          <span className="badge badge-orange needs-doc-badge" style={{ marginLeft: 6, fontSize: "0.7em" }}>
+                            Needs QC
+                          </span>
+                        )}
                       </td>
                       <td>{lotVendor(lot)}</td>
                       <td>{lot.lot_number}</td>
@@ -539,6 +544,19 @@ export default function DashboardPage() {
               }}
             />
             Track sealed counts only (skip opened/depleted tracking)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+            <input
+              type="checkbox"
+              checked={labSettings.qc_doc_required ?? false}
+              onChange={async () => {
+                await api.patch(`/labs/${user.lab_id}/settings`, {
+                  qc_doc_required: !(labSettings.qc_doc_required ?? false),
+                });
+                await refreshUser();
+              }}
+            />
+            Require QC document upload before lot approval
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
             Expiring lot warning (days):

@@ -316,6 +316,12 @@ td.mono {
 .action-btns {
   display: flex;
   gap: 0.25rem;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+}
+
+td.action-btns {
+  white-space: nowrap;
 }
 
 /* ── Vial Count Pills ─────────────────────────────────────────────────── */
@@ -377,6 +383,22 @@ td.mono {
 .badge-yellow {
   background: #fefce8;
   color: #854d0e;
+}
+
+.badge-orange {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.needs-doc-badge {
+  font-size: 0.7em;
+  margin-left: 4px;
+}
+
+.qc-doc-badge {
+  font-size: 0.65em;
+  margin-left: 4px;
+  vertical-align: middle;
 }
 
 /* ── Forms ────────────────────────────────────────────────────────────── */
@@ -1875,6 +1897,49 @@ td.mono {
 .lot-card-copy-btn {
   padding: 0.15rem 0.3rem;
   font-size: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Inline barcode (desktop table) ──────────────────────────────────── */
+
+.lot-barcode-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.lot-barcode-toggle {
+  font-size: 0.75rem;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.lot-barcode-toggle:hover {
+  text-decoration: underline;
+}
+
+.lot-barcode-text {
+  font-family: "SF Mono", Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lot-barcode-text.expanded {
+  white-space: normal;
+  word-break: break-all;
+}
+
+.lot-barcode-copy {
+  padding: 0.1rem 0.25rem;
+  font-size: 0.7rem;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text-muted);

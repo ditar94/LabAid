@@ -34,6 +34,7 @@ def _build_cell_out(db: Session, cell: StorageCell, fluorochromes: list[Fluoroch
         vial_summary = VialSummary(
             id=vial.id,
             lot_id=vial.lot_id,
+            antibody_id=lot.antibody_id if lot else None,
             status=vial.status,
             lot_number=lot.lot_number if lot else None,
             expiration_date=lot.expiration_date if lot else None,
@@ -228,7 +229,7 @@ def stock_vial(
     if not lot:
         raise HTTPException(status_code=404, detail="No lot found for this barcode in the selected lab")
 
-    # Find an unassigned sealed vial from this lot
+    # Find an unassigned sealed vial from this lot (prefer sealed, fall back to opened)
     vial = (
         db.query(Vial)
         .filter(
@@ -241,7 +242,20 @@ def stock_vial(
         .first()
     )
     if not vial:
-        raise HTTPException(status_code=400, detail="No unassigned sealed vials for this lot")
+        # Try opened vials not in storage
+        vial = (
+            db.query(Vial)
+            .filter(
+                Vial.lot_id == lot.id,
+                Vial.lab_id == target_lab_id,
+                Vial.status == VialStatus.OPENED,
+                Vial.location_cell_id.is_(None),
+            )
+            .order_by(Vial.opened_at)
+            .first()
+        )
+    if not vial:
+        raise HTTPException(status_code=400, detail="No unassigned vials for this lot")
 
     # Find next empty cell
     occupied_cell_ids = (

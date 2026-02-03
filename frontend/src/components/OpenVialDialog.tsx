@@ -4,6 +4,7 @@ interface Props {
   cell: StorageCell;
   loading: boolean;
   onConfirm: (force: boolean) => void;
+  onViewLot: () => void;
   onCancel: () => void;
 }
 
@@ -11,6 +12,7 @@ export default function OpenVialDialog({
   cell,
   loading,
   onConfirm,
+  onViewLot,
   onCancel,
 }: Props) {
   const vial = cell.vial;
@@ -25,10 +27,7 @@ export default function OpenVialDialog({
         className="open-vial-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3>Open Vial</h3>
-        <p>
-          <strong>{vial.antibody_target} - {vial.antibody_fluorochrome}</strong>
-        </p>
+        <h3>{vial.antibody_target} - {vial.antibody_fluorochrome}</h3>
         <p>
           Lot: {vial.lot_number} | Cell: {cell.label}
         </p>
@@ -36,7 +35,6 @@ export default function OpenVialDialog({
         {needsQcWarning && (
           <div className="qc-confirm-warning">
             This lot hasn't been approved yet (QC: {vial.qc_status}).
-            Are you sure you wish to open this vial?
           </div>
         )}
 
@@ -49,8 +47,11 @@ export default function OpenVialDialog({
             {loading
               ? "Opening..."
               : needsQcWarning
-              ? "Yes, Open Anyway"
-              : "Confirm Open"}
+              ? "Open Vial"
+              : "Open Vial"}
+          </button>
+          <button onClick={onViewLot}>
+            View Lot
           </button>
           <button className="btn-secondary" onClick={onCancel}>
             Cancel

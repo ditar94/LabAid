@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, subqueryload
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.models import Antibody, Lot, QCStatus, User, UserRole, Vial, VialStatus
+from app.models.models import Antibody, Lab, Lot, LotDocument, QCStatus, User, UserRole, Vial, VialStatus
 from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotUpdateQC, LotWithCounts, VialCounts, VialOut
 from app.services.audit import log_audit, snapshot_lot
 from app.services.vial_service import deplete_all_opened, deplete_all_lot
@@ -71,6 +71,15 @@ def list_lots(
     abs_q = db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all()
     ab_map = {ab.id: ab for ab in abs_q}
 
+    # Batch query: which lots have a QC document
+    qc_doc_lot_ids = {
+        r[0]
+        for r in db.query(LotDocument.lot_id)
+        .filter(LotDocument.lot_id.in_(lot_ids), LotDocument.is_qc_document.is_(True))
+        .distinct()
+        .all()
+    }
+
     results = []
     for lot in lots:
         ab = ab_map.get(lot.antibody_id)
@@ -91,6 +100,7 @@ def list_lots(
                 antibody_target=ab.target if ab else None,
                 antibody_fluorochrome=ab.fluorochrome if ab else None,
                 documents=lot.documents,
+                has_qc_document=lot.id in qc_doc_lot_ids,
             )
         )
 
@@ -151,6 +161,20 @@ def update_qc_status(
         raise HTTPException(status_code=404, detail="Lot not found")
 
     before = snapshot_lot(lot)
+
+    # Enforce QC document requirement if lab has the setting enabled
+    if body.qc_status == QCStatus.APPROVED:
+        lab = db.get(Lab, lot.lab_id)
+        if lab and (lab.settings or {}).get("qc_doc_required", False):
+            has_qc_doc = db.query(LotDocument.id).filter(
+                LotDocument.lot_id == lot_id,
+                LotDocument.is_qc_document.is_(True),
+            ).first() is not None
+            if not has_qc_doc:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A QC document must be uploaded before this lot can be approved. Your lab requires QC documentation for lot approval.",
+                )
 
     lot.qc_status = body.qc_status
     if body.qc_status == QCStatus.APPROVED:

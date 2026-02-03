@@ -6,6 +6,7 @@ export default function LotCardList({
   lots,
   sealedOnly,
   canQC,
+  qcDocRequired,
   lotAgeBadgeMap,
   onApproveQC,
   onDeplete,
@@ -79,21 +80,30 @@ export default function LotCardList({
                   <span className="badge" style={{ fontSize: "0.7em", background: "#9ca3af", color: "#fff" }} title={lot.archive_note || undefined}>Archived</span>
                 )}
               </div>
-              <span
-                className={`badge ${
-                  lot.qc_status === "approved"
-                    ? "badge-green"
-                    : lot.qc_status === "failed"
-                    ? "badge-red"
-                    : "badge-yellow"
-                }`}
-              >
-                {lot.qc_status}
+              <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <span
+                  className={`badge ${
+                    lot.qc_status === "approved"
+                      ? "badge-green"
+                      : lot.qc_status === "failed"
+                      ? "badge-red"
+                      : "badge-yellow"
+                  }`}
+                >
+                  {lot.qc_status}
+                </span>
+                {qcDocRequired && lot.qc_status === "pending" && !lot.has_qc_document && (
+                  <span className="badge badge-orange needs-doc-badge">Needs QC</span>
+                )}
               </span>
             </div>
 
             {/* Body: details */}
             <div className="lot-card-body">
+              <div className="lot-card-row">
+                <span>Received</span>
+                <span>{new Date(lot.created_at).toLocaleDateString()}</span>
+              </div>
               <div className="lot-card-row">
                 <span>Expiration</span>
                 <span>{lot.expiration_date || "\u2014"}</span>
