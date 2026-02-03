@@ -312,7 +312,6 @@ export default function DashboardPage() {
                     opened: 0,
                     depleted: 0,
                     total: 0,
-                    opened_for_qc: 0,
                   };
                   const label = lotLabel(lot);
                   const color = lot.antibody_fluorochrome
@@ -466,7 +465,6 @@ export default function DashboardPage() {
                     opened: 0,
                     depleted: 0,
                     total: 0,
-                    opened_for_qc: 0,
                   };
                   const label = lotLabel(lot);
                   const ab = antibodyMap.get(lot.antibody_id);

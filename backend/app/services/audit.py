@@ -41,7 +41,6 @@ def snapshot_vial(vial, *, db=None) -> dict:
         "opened_at": str(vial.opened_at) if vial.opened_at else None,
         "opened_by": str(vial.opened_by) if vial.opened_by else None,
         "depleted_at": str(vial.depleted_at) if vial.depleted_at else None,
-        "opened_for_qc": vial.opened_for_qc,
     }
     # Resolve storage location if db session provided
     if db and vial.location_cell_id:

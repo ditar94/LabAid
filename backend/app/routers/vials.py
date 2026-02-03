@@ -99,7 +99,7 @@ def return_to_storage_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
 ):
-    return return_to_storage(db, vial_id=vial_id, cell_id=body.cell_id, user=current_user, opened_for_qc=body.opened_for_qc)
+    return return_to_storage(db, vial_id=vial_id, cell_id=body.cell_id, user=current_user)
 
 
 @router.post("/{vial_id}/correct/revert-open", response_model=VialOut)

@@ -204,8 +204,6 @@ def open_vial(
         )
     else:
         vial.status = VialStatus.OPENED
-        if qc_override:
-            vial.opened_for_qc = True
         vial.opened_at = now
         vial.opened_by = user.id
         vial.location_cell_id = None  # free the cell
@@ -395,7 +393,6 @@ def return_to_storage(
     vial_id: UUID,
     cell_id: UUID,
     user: User,
-    opened_for_qc: bool | None = None,
 ) -> Vial:
     """Place an opened vial back into a storage cell."""
     vial = (
@@ -435,8 +432,6 @@ def return_to_storage(
     before = snapshot_vial(vial, db=db)
 
     vial.location_cell_id = cell_id
-    if opened_for_qc is not None:
-        vial.opened_for_qc = opened_for_qc
 
     log_audit(
         db,

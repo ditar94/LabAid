@@ -188,7 +188,6 @@ class VialCounts(BaseModel):
     opened: int = 0
     depleted: int = 0
     total: int = 0
-    opened_for_qc: int = 0
 
 
 class LotDocumentOut(BaseModel):
@@ -261,7 +260,6 @@ class VialOut(BaseModel):
     open_expiration: date | None
     depleted_at: datetime | None
     depleted_by: UUID | None
-    opened_for_qc: bool = False
 
     class Config:
         from_attributes = True
@@ -375,7 +373,6 @@ class ScanEnrichResult(BaseModel):
 
 class ReturnToStorageRequest(BaseModel):
     cell_id: UUID
-    opened_for_qc: bool | None = None
 
 
 # ── Audit ──────────────────────────────────────────────────────────────────

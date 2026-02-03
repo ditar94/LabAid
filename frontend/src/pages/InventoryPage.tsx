@@ -322,7 +322,6 @@ export default function InventoryPage() {
         opened: 0,
         depleted: 0,
         total: 0,
-        opened_for_qc: 0,
       };
       const entry = counts.get(lot.antibody_id) || {
         lots: 0,

@@ -53,7 +53,6 @@ export interface VialCounts {
   opened: number;
   depleted: number;
   total: number;
-  opened_for_qc: number;
 }
 
 export interface Lot {
@@ -98,7 +97,6 @@ export interface Vial {
   open_expiration: string | null;
   depleted_at: string | null;
   depleted_by: string | null;
-  opened_for_qc: boolean;
 }
 
 export interface StorageUnit {
@@ -169,7 +167,7 @@ export interface ScanEnrichResult {
   warnings: string[];
 }
 
-export type ScanIntent = "open" | "return" | "receive" | "deplete" | "store_open" | null;
+export type ScanIntent = "open" | "receive" | "deplete" | "store_open" | null;
 
 export interface LotSummary {
   id: string;

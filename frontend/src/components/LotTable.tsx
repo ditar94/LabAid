@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Lot } from "../api/types";
 
 export interface LotListProps {
@@ -26,6 +26,19 @@ export default function LotTable({
 }: LotListProps) {
   const [expandedBarcode, setExpandedBarcode] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+  }, [openMenuId]);
 
   const handleCopy = async (lot: Lot) => {
     if (!lot.vendor_barcode) return;
@@ -128,47 +141,36 @@ export default function LotTable({
             {!sealedOnly && <td>{lot.vial_counts?.depleted ?? 0}</td>}
             <td>{lot.vial_counts?.total ?? 0}</td>
             {canQC && (
-              <td className="action-btns">
-                {lot.qc_status !== "approved" && (
+              <td className="lot-actions-cell">
+                <div className="lot-actions-wrapper" ref={openMenuId === lot.id ? menuRef : undefined}>
                   <button
-                    className="btn-sm btn-green"
-                    onClick={() => onApproveQC(lot.id)}
+                    className="lot-actions-trigger"
+                    onClick={() => setOpenMenuId(openMenuId === lot.id ? null : lot.id)}
                   >
-                    Approve
+                    Show
+                    <span className="lot-actions-caret">{openMenuId === lot.id ? "\u25B2" : "\u25BC"}</span>
                   </button>
-                )}
-                {(lot.vial_counts?.opened ?? 0) > 0 && (
-                  <button
-                    className="btn-sm btn-red"
-                    onClick={() => onDeplete(lot)}
-                    title={`Deplete vials for lot ${lot.lot_number}`}
-                  >
-                    Deplete
-                  </button>
-                )}
-                {(lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.total ?? 0) > 0 && (
-                  <button
-                    className="btn-sm btn-red"
-                    onClick={() => onDeplete(lot)}
-                    title={`Deplete all ${lot.vial_counts?.total ?? 0} active vials (sealed + opened)`}
-                  >
-                    Deplete
-                  </button>
-                )}
-                <button
-                  className="btn-sm"
-                  onClick={() => onOpenDocs(lot)}
-                  title="QC documents"
-                >
-                  Docs{lot.documents?.length ? ` (${lot.documents.length})` : ""}
-                </button>
-                <button
-                  className="btn-sm"
-                  onClick={() => onArchive(lot.id, lot.lot_number, lot.is_archived)}
-                  title={lot.is_archived ? "Unarchive this lot" : "Archive this lot"}
-                >
-                  {lot.is_archived ? "Unarchive" : "Archive"}
-                </button>
+                  {openMenuId === lot.id && (
+                    <div className="lot-actions-menu">
+                      {lot.qc_status !== "approved" && (
+                        <button className="btn-sm btn-green" onClick={() => { onApproveQC(lot.id); setOpenMenuId(null); }}>
+                          Approve
+                        </button>
+                      )}
+                      {(lot.vial_counts?.total ?? 0) > 0 && (
+                        <button className="btn-sm btn-red" onClick={() => { onDeplete(lot); setOpenMenuId(null); }}>
+                          Deplete
+                        </button>
+                      )}
+                      <button className="btn-sm" onClick={() => { onOpenDocs(lot); setOpenMenuId(null); }}>
+                        Docs{lot.documents?.length ? ` (${lot.documents.length})` : ""}
+                      </button>
+                      <button className="btn-sm" onClick={() => { onArchive(lot.id, lot.lot_number, lot.is_archived); setOpenMenuId(null); }}>
+                        {lot.is_archived ? "Unarchive" : "Archive"}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </td>
             )}
           </tr>

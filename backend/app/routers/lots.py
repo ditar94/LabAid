@@ -49,7 +49,6 @@ def list_lots(
             func.sum(case((Vial.status == VialStatus.OPENED, 1), else_=0)).label("opened"),
             func.sum(case((Vial.status == VialStatus.DEPLETED, 1), else_=0)).label("depleted"),
             func.sum(case((Vial.status != VialStatus.DEPLETED, 1), else_=0)).label("total"),
-            func.sum(case((Vial.opened_for_qc == True, 1), else_=0)).label("opened_for_qc"),
         )
         .filter(Vial.lot_id.in_(lot_ids))
         .group_by(Vial.lot_id)
@@ -61,7 +60,6 @@ def list_lots(
             opened=row.opened or 0,
             depleted=row.depleted or 0,
             total=row.total or 0,
-            opened_for_qc=row.opened_for_qc or 0,
         )
         for row in counts_q
     }

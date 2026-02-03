@@ -15,7 +15,8 @@ import { useAuth } from "../context/AuthContext";
 import DatePicker from "../components/DatePicker";
 
 export default function ScanPage() {
-  const { user } = useAuth();
+  const { user, labSettings } = useAuth();
+  const sealedOnly = labSettings.sealed_counts_only ?? false;
   const [barcode, setBarcode] = useState("");
   const [result, setResult] = useState<ScanLookupResult | null>(null);
   const [intent, setIntent] = useState<ScanIntent>(null);
@@ -42,10 +43,6 @@ export default function ScanPage() {
 
   // QC confirmation state
   const [showQcConfirm, setShowQcConfirm] = useState(false);
-
-  // QC return prompt state (shown when returning a vial that was opened for QC)
-  const [showQcReturnPrompt, setShowQcReturnPrompt] = useState(false);
-  const [pendingReturnCell, setPendingReturnCell] = useState<StorageCell | null>(null);
 
   // Receive More form state
   const [receiveQty, setReceiveQty] = useState(1);
@@ -221,36 +218,21 @@ export default function ScanPage() {
     }
   };
 
-  // ── Intent: Return to Storage ───────────────────────────────────────
+  // ── Intent: Store Open Vial ─────────────────────────────────────────
 
-  const confirmReturn = async (openedForQcOverride?: boolean) => {
+  const confirmStoreOpen = async () => {
     const vial = selectedVial;
-    const cell = openedForQcOverride !== undefined ? pendingReturnCell : selectedCell;
+    const cell = selectedCell;
     if (!vial || !cell) return;
 
-    // If vial was opened for QC and we haven't asked yet, show the prompt
-    if (vial.opened_for_qc && openedForQcOverride === undefined) {
-      setPendingReturnCell(cell);
-      setShowQcReturnPrompt(true);
-      return;
-    }
-
-    setShowQcReturnPrompt(false);
-    setPendingReturnCell(null);
     setLoading(true);
     try {
-      const body: Record<string, unknown> = { cell_id: cell.id };
-      if (openedForQcOverride !== undefined) {
-        body.opened_for_qc = openedForQcOverride;
-      }
-      await api.post(`/vials/${vial.id}/return-to-storage`, body);
-      setMessage(
-        `Vial returned to storage at cell ${cell.label}.`
-      );
+      await api.post(`/vials/${vial.id}/return-to-storage`, { cell_id: cell.id });
+      setMessage(`Open vial stored in cell ${cell.label}.`);
       resetActionState();
       await refreshScan();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to return vial");
+      setError(err.response?.data?.detail || "Failed to store vial");
     } finally {
       setLoading(false);
     }
@@ -346,14 +328,14 @@ export default function ScanPage() {
       )
     : null;
 
-  // First empty cell for return-to-storage suggestion
+  // First empty cell for store-open suggestion
   const firstEmptyCell = result?.storage_grid?.cells.find(
     (c) => !c.vial_id
   );
 
   // Intent button enabled states
   const canOpen = (result?.vials.length ?? 0) > 0;
-  const canReturn =
+  const canStoreOpen =
     (result?.opened_vials?.length ?? 0) > 0 && !!result?.storage_grid;
   const canDeplete = (result?.opened_vials?.length ?? 0) > 0;
 
@@ -541,8 +523,12 @@ export default function ScanPage() {
               </span>
             </p>
             <p>
-              Sealed: <strong>{result.vials.length}</strong> | Opened:{" "}
-              <strong>{result.opened_vials?.length ?? 0}</strong>
+              Sealed: <strong>{result.vials.length}</strong>
+              {!sealedOnly && (
+                <>
+                  {" "}| Opened: <strong>{result.opened_vials?.length ?? 0}</strong>
+                </>
+              )}
             </p>
 
             {result.qc_warning && (
@@ -566,19 +552,21 @@ export default function ScanPage() {
               disabled={!canOpen}
               title={!canOpen ? "No sealed vials" : ""}
             >
-              Open New
+              {sealedOnly ? "Use Vial" : "Open New"}
             </button>
-            <button
-              className={`intent-btn ${intent === "return" ? "active" : ""}`}
-              onClick={() => {
-                resetActionState();
-                setIntent("return");
-              }}
-              disabled={!canReturn}
-              title={!canReturn ? "No opened vials or no storage grid" : ""}
-            >
-              Return to Storage
-            </button>
+            {!sealedOnly && (
+              <button
+                className={`intent-btn ${intent === "store_open" ? "active" : ""}`}
+                onClick={() => {
+                  resetActionState();
+                  setIntent("store_open");
+                }}
+                disabled={!canStoreOpen}
+                title={!canStoreOpen ? "No opened vials or no storage grid" : ""}
+              >
+                Store Open Vial
+              </button>
+            )}
             <button
               className={`intent-btn ${intent === "receive" ? "active" : ""}`}
               onClick={() => {
@@ -592,17 +580,19 @@ export default function ScanPage() {
             >
               Receive More
             </button>
-            <button
-              className={`intent-btn ${intent === "deplete" ? "active" : ""}`}
-              onClick={() => {
-                resetActionState();
-                setIntent("deplete");
-              }}
-              disabled={!canDeplete}
-              title={!canDeplete ? "No opened vials" : ""}
-            >
-              Deplete
-            </button>
+            {!sealedOnly && (
+              <button
+                className={`intent-btn ${intent === "deplete" ? "active" : ""}`}
+                onClick={() => {
+                  resetActionState();
+                  setIntent("deplete");
+                }}
+                disabled={!canDeplete}
+                title={!canDeplete ? "No opened vials" : ""}
+              >
+                Deplete
+              </button>
+            )}
           </div>
 
           {/* ── Intent: Open New ─────────────────────────────────────── */}
@@ -682,12 +672,12 @@ export default function ScanPage() {
             </div>
           )}
 
-          {/* ── Intent: Return to Storage ────────────────────────────── */}
-          {intent === "return" && result.storage_grid && (
+          {/* ── Intent: Store Open Vial ─────────────────────────────── */}
+          {intent === "store_open" && result.storage_grid && (
             <div className="intent-panel">
               <p className="page-desc">
-                Select the opened vial to return, then click an empty cell in
-                the grid.
+                Select the opened vial to store, then click an empty cell in the
+                grid.
               </p>
 
               <div className="vial-select-list">
@@ -745,43 +735,19 @@ export default function ScanPage() {
                     />
                   </div>
 
-                  {selectedCell && !showQcReturnPrompt && (
+                  {selectedCell && (
                     <div className="confirm-action">
                       <p>
-                        Return vial to cell{" "}
+                        Store vial in cell{" "}
                         <strong>{selectedCell.label}</strong>.
                       </p>
                       <button
                         className="btn-green"
-                        onClick={() => confirmReturn()}
+                        onClick={() => confirmStoreOpen()}
                         disabled={loading}
                       >
-                        Confirm Return to Storage
+                        Confirm Store Open Vial
                       </button>
-                    </div>
-                  )}
-
-                  {showQcReturnPrompt && (
-                    <div className="confirm-action qc-return-prompt">
-                      <p>
-                        This vial was opened for <strong>QC verification</strong>. Was it used for QC?
-                      </p>
-                      <div className="action-btns">
-                        <button
-                          className="btn-green"
-                          onClick={() => confirmReturn(true)}
-                          disabled={loading}
-                        >
-                          Yes, opened for QC
-                        </button>
-                        <button
-                          className="btn-sm"
-                          onClick={() => confirmReturn(false)}
-                          disabled={loading}
-                        >
-                          No, regular use
-                        </button>
-                      </div>
                     </div>
                   )}
                 </>

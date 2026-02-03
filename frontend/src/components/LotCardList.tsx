@@ -41,25 +41,11 @@ export default function LotCardList({
     }
   };
 
-  const getPrimaryAction = (lot: Lot) => {
-    if (!canQC) return null;
-    if (lot.qc_status !== "approved") {
-      return { label: "Approve", className: "btn-sm btn-green", handler: () => onApproveQC(lot.id) };
-    }
-    const hasVials = (lot.vial_counts?.opened ?? 0) > 0 || (lot.vial_counts?.total ?? 0) > 0;
-    if (hasVials) {
-      return { label: "Deplete", className: "btn-sm btn-red", handler: () => onDeplete(lot) };
-    }
-    return null;
-  };
-
   return (
     <div className="lot-card-list">
       {lots.map((lot) => {
-        const primary = getPrimaryAction(lot);
-        const isApprovalPrimary = primary?.label === "Approve";
-        const isDepletePrimary = primary?.label === "Deplete";
-        const hasVialsToDep = (lot.vial_counts?.opened ?? 0) > 0 || (lot.vial_counts?.total ?? 0) > 0;
+        const canApprove = lot.qc_status !== "approved";
+        const hasVialsToDep = (lot.vial_counts?.total ?? 0) > 0;
 
         return (
           <div
@@ -150,37 +136,30 @@ export default function LotCardList({
             {/* Actions: primary + overflow */}
             {canQC && (
               <div className="lot-card-actions">
-                {primary && (
+                <div className="lot-actions-wrapper" ref={openMenuId === lot.id ? menuRef : undefined}>
                   <button
-                    className={`${primary.className} lot-card-primary-btn`}
-                    onClick={primary.handler}
-                  >
-                    {primary.label}
-                  </button>
-                )}
-                <div className="lot-card-overflow-wrapper" ref={openMenuId === lot.id ? menuRef : undefined}>
-                  <button
-                    className="lot-card-overflow-btn"
+                    className="lot-actions-trigger"
                     onClick={() => setOpenMenuId(openMenuId === lot.id ? null : lot.id)}
                   >
-                    {"\u22EE"}
+                    Show
+                    <span className="lot-actions-caret">{openMenuId === lot.id ? "\u25B2" : "\u25BC"}</span>
                   </button>
                   {openMenuId === lot.id && (
-                    <div className="lot-card-overflow-menu">
-                      {!isApprovalPrimary && lot.qc_status !== "approved" && (
-                        <button onClick={() => { onApproveQC(lot.id); setOpenMenuId(null); }}>
+                    <div className="lot-actions-menu">
+                      {canApprove && (
+                        <button className="btn-sm btn-green" onClick={() => { onApproveQC(lot.id); setOpenMenuId(null); }}>
                           Approve QC
                         </button>
                       )}
-                      {!isDepletePrimary && hasVialsToDep && (
-                        <button onClick={() => { onDeplete(lot); setOpenMenuId(null); }}>
+                      {hasVialsToDep && (
+                        <button className="btn-sm btn-red" onClick={() => { onDeplete(lot); setOpenMenuId(null); }}>
                           Deplete
                         </button>
                       )}
-                      <button onClick={() => { onOpenDocs(lot); setOpenMenuId(null); }}>
+                      <button className="btn-sm" onClick={() => { onOpenDocs(lot); setOpenMenuId(null); }}>
                         Docs{lot.documents?.length ? ` (${lot.documents.length})` : ""}
                       </button>
-                      <button onClick={() => { onArchive(lot.id, lot.lot_number, lot.is_archived); setOpenMenuId(null); }}>
+                      <button className="btn-sm" onClick={() => { onArchive(lot.id, lot.lot_number, lot.is_archived); setOpenMenuId(null); }}>
                         {lot.is_archived ? "Unarchive" : "Archive"}
                       </button>
                     </div>
