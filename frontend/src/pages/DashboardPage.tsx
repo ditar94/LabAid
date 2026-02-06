@@ -8,6 +8,15 @@ import type {
 import StorageGrid from "../components/StorageGrid";
 import { useAuth } from "../context/AuthContext";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import {
+  Clock,
+  Thermometer,
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  ChevronDown,
+} from "lucide-react";
+import { useToast } from "../context/ToastContext";
 
 const DEFAULT_EXPIRY_WARN_DAYS = 30;
 const CURRENT_LOT_EXPIRY_WARN_DAYS = 7;
@@ -42,6 +51,7 @@ export default function DashboardPage() {
   const [tempError, setTempError] = useState<string | null>(null);
 
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const { addToast } = useToast();
 
   useEffect(() => {
     if (user?.role === "super_admin") {
@@ -254,10 +264,10 @@ export default function DashboardPage() {
   }, [lowStock, abVialStats]);
 
   const cards = [
-    { key: "pending", label: "Pending QC", count: pendingLots.length, className: "warn" },
-    { key: "temp", label: "Vials in Temp Storage", count: tempSummary?.total_vials ?? 0, className: "warn" },
-    { key: "low", label: "Low Stock", count: lowStock.length, className: "danger" },
-    { key: "expiring", label: "Expiring Lots", count: expiringLots.length, className: "warn" },
+    { key: "pending", label: "Pending QC", count: pendingLots.length, className: "warn", icon: Clock },
+    { key: "temp", label: "Temp Storage", count: tempSummary?.total_vials ?? 0, className: "warn", icon: Thermometer },
+    { key: "low", label: "Low Stock", count: lowStock.length, className: "danger", icon: AlertTriangle },
+    { key: "expiring", label: "Expiring Lots", count: expiringLots.length, className: "warn", icon: CalendarClock },
   ] as const;
 
   const navigateToInventory = (antibodyId: string) => {
@@ -412,6 +422,7 @@ export default function DashboardPage() {
       }
       const res = await api.post<VialMoveResult>("/vials/move", movePayload);
       setTempMessage(`Moved ${res.data.moved_count} vial(s) successfully.`);
+      addToast(`Moved ${res.data.moved_count} vial(s) successfully`, "success");
       // Refresh temp summary
       const tempRes = await api.get<TempStorageSummary>("/storage/temp-storage/summary", {
         params: { lab_id: selectedLab },
@@ -428,17 +439,21 @@ export default function DashboardPage() {
       setTempDestPickedCellIds(new Set());
     } catch {
       setTempError("Failed to move vials.");
+      addToast("Failed to move vials", "danger");
     } finally {
       setTempMoveLoading(false);
     }
   }, [tempMoveTargetUnitId, tempMoveSelectedIds, tempDestMode, tempDestStartCellId, tempDestPickedCellIds, selectedLab]);
+
+  const allClear = cards.every((c) => c.count === 0);
 
   return (
     <div>
       <div className="page-header">
         <h1>Dashboard</h1>
         {user?.role === "super_admin" && (
-          <div className="filters">
+          <div className="lab-selector">
+            <ChevronDown size={14} className="lab-selector-icon" />
             <select
               value={selectedLab}
               onChange={(e) => setSelectedLab(e.target.value)}
@@ -452,22 +467,39 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {allClear && (
+        <div className="dashboard-all-clear">
+          <CheckCircle2 size={32} />
+          <div>
+            <div className="all-clear-title">All clear</div>
+            <div className="all-clear-desc">No pending actions or alerts right now.</div>
+          </div>
+        </div>
+      )}
+
       <div className="stats-grid">
-        {cards.map((card) => (
-          <button
-            key={card.key}
-            type="button"
-            className={`stat-card priority-card ${card.className} ${
-              selectedCard === card.key ? "selected" : ""
-            }`}
-            onClick={() =>
-              setSelectedCard(selectedCard === card.key ? null : card.key)
-            }
-          >
-            <div className="stat-value">{card.count}</div>
-            <div className="stat-label">{card.label}</div>
-          </button>
-        ))}
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <button
+              key={card.key}
+              type="button"
+              className={`stat-card priority-card ${card.className} ${
+                selectedCard === card.key ? "selected" : ""
+              }${card.count === 0 ? " clear" : ""}`}
+              onClick={() =>
+                setSelectedCard(selectedCard === card.key ? null : card.key)
+              }
+            >
+              <div className={`stat-icon-wrap`}>
+                {card.count === 0 ? <CheckCircle2 size={20} /> : <Icon size={20} />}
+              </div>
+              <div className="stat-value">{card.count}</div>
+              <div className="stat-label">{card.label}</div>
+            </button>
+          );
+        })}
       </div>
 
       {selectedCard === "pending" && (

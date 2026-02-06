@@ -550,9 +550,171 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] User can dismiss and proceed with the scanned lot if they choose
 - [x] If user proceeds with the newer lot, offer an option to note "Lot verification / QC in progress" on the older lot — explains why it's being skipped (e.g., opened for lot verification) and logs the reason in the audit trail
 
+### UI/UX Overhaul — Visual & Interaction Redesign
+> Transform LabAid from a functional internal tool into a visually striking, professional, seamless-to-use product. Every change preserves existing functionality — this is a skin + interaction upgrade, not a feature rewrite.
+
+**Phase 1 — Design Foundation (do first, everything else builds on this)**
+
+- [x] **Design tokens & CSS architecture**: Replace the monolithic 3000-line `App.css` with a structured system:
+  - `tokens.css` — all CSS custom properties (colors, spacing scale, typography scale, radii, shadows, transitions)
+  - Spacing scale: `--space-xs` (4px) through `--space-3xl` (48px) — eliminate all hardcoded pixel values
+  - Border-radius scale: `--radius-sm` (4px), `--radius-md` (8px), `--radius-lg` (12px), `--radius-xl` (16px), `--radius-full` (9999px)
+  - Shadow scale: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-xl` — layered, realistic shadows
+  - Transition presets: `--ease-out`, `--ease-spring`, `--duration-fast` (150ms), `--duration-normal` (250ms), `--duration-slow` (400ms)
+- [x] **Typography overhaul**: Replace system font stack with distinctive paired fonts
+  - Display/heading font: something with character (e.g. DM Sans, Outfit, General Sans, Satoshi — NOT Inter/Roboto/Arial)
+  - Body/data font: clean readable companion (e.g. IBM Plex Sans, Source Sans 3)
+  - Monospace for barcodes/lot numbers: JetBrains Mono or IBM Plex Mono
+  - Define full type scale: `--text-xs` (0.75rem) through `--text-3xl` (1.875rem) with matching line-heights
+  - Heading weights: 700 for h1, 600 for h2/h3, 500 for labels
+- [x] **Color palette upgrade**: Richer, more layered palette with depth
+  - Primary: shift from flat #3b82f6 to a richer blue with tonal variations (50–900 scale)
+  - Page background: subtle warm gray or cool-toned off-white with depth (not flat #f5f6fa)
+  - Card surfaces: slight elevation with layered shadows instead of flat 1px borders
+  - Accent colors: tighten the semantic palette (success, warning, danger, info) with matching tints for backgrounds
+  - Neutral scale: 10 shades from near-white to near-black for text, borders, backgrounds
+  - Status colors should work on both light and dark surfaces
+
+**Phase 2 — Layout & Navigation**
+
+- [x] **Sidebar redesign**:
+  - Add icons to every nav item (use a lightweight icon set — Lucide, Phosphor, or inline SVG)
+  - Group nav items visually: "Core" (Dashboard, Scan, Inventory, Receive, Storage), "Review" (Audit), "Admin" (Users, Labs, Support, Fluorochromes)
+  - Section dividers with subtle labels between groups
+  - Branded header: LabAid logo/wordmark with subtle background treatment, not just plain text
+  - Active state: left accent bar + tinted background + icon color change (not just blue text + right border)
+  - Hover state: smooth background transition, not abrupt color swap
+  - User info section: avatar placeholder (initials circle), name, role badge styled distinctly
+  - Sidebar footer: version + copyright in refined small text
+- [x] **Page header pattern**: Every page gets a consistent header zone:
+  - Page title (h1) + optional subtitle/description
+  - Action buttons right-aligned in the header row
+  - Breadcrumb or context line where useful (e.g. "Inventory > CD3 FITC > Lot 12345")
+  - Subtle bottom border or shadow to separate header from content
+- [x] **Content area improvements**:
+  - Max-width container for readability on ultra-wide screens (e.g. `max-width: 1400px; margin: 0 auto`)
+  - Consistent page padding using spacing tokens
+  - Section spacing between major content blocks
+
+**Phase 3 — Component Redesign**
+
+- [x] **Card system overhaul**:
+  - Layered shadows instead of flat borders (cards should float above the page)
+  - Subtle hover lift effect (translateY -2px + shadow increase) on interactive cards
+  - Card header with distinct background tint or top accent bar
+  - Consistent internal spacing using spacing scale
+  - Inventory cards: fluorochrome color as a top border or left accent strip (not just a circle)
+- [x] **Button system**:
+  - Primary: solid fill with subtle gradient or shadow, satisfying hover/press states
+  - Secondary: ghost/outline style with tinted hover background
+  - Destructive: red variant with confirmation-style weight
+  - Button sizes: sm, md, lg with proportional padding/font
+  - Icon + text buttons where appropriate
+  - Loading state: spinner replaces text, button stays same width (no layout shift)
+  - Disabled: reduced opacity + pattern change (not just opacity alone)
+- [x] **Table redesign**:
+  - Alternating row tinting (very subtle, 2-3% opacity difference)
+  - Sticky header on scroll
+  - Row hover highlight
+  - Better column alignment and spacing
+  - Sortable column indicators where applicable
+  - Empty state: illustration or styled message, not blank space
+- [x] **Form inputs**:
+  - Floating labels or animated label-on-focus pattern
+  - Input focus: smooth border color transition + subtle glow (refined ring, not harsh)
+  - Select dropdowns: custom styled (not browser default)
+  - Consistent field sizing and label positioning
+  - Inline validation with smooth reveal animation
+- [x] **Badge/pill consolidation**:
+  - Reduce to 4 core semantic variants: success, warning, danger, info
+  - Consistent size and weight across all badge types
+  - Dot indicator variant for compact status (e.g. table rows)
+  - Count pill variant clearly distinct from status badges
+- [x] **Modal/dialog upgrade**:
+  - Backdrop blur effect (not just semi-transparent black)
+  - Modal enter/exit animation (scale + fade, not instant appear/disappear)
+  - Consistent header/body/footer structure
+  - Close button positioned consistently (top-right corner)
+  - Focus trap and ESC-to-close for accessibility
+
+**Phase 4 — Animations & Micro-interactions**
+
+- [x] **Page transitions**: Subtle fade + slide on route change (use React transition or CSS)
+- [ ] **Staggered list/card reveals**: When data loads, cards/rows animate in with staggered delay (50-80ms per item)
+- [x] **Skeleton loading screens**: Replace blank loading states with content-shaped skeleton placeholders
+  - Dashboard stat cards: pulsing rectangles matching card layout
+  - Tables: pulsing rows matching column widths
+  - Storage grid: pulsing cell grid
+  - Inventory cards: pulsing card shapes
+- [x] **Toast/notification system**: Slide-in toast for action confirmations
+  - "Vial opened successfully" (success)
+  - "Lot received — 10 vials added" (info)
+  - "Error: could not connect" (danger)
+  - Auto-dismiss after 4s, manual dismiss, stack multiple
+- [x] **Button feedback**: Subtle press effect (scale 0.97 on active), ripple or flash on click
+- [ ] **Scroll-triggered reveals**: Content sections fade in as they enter the viewport (subtle, not dramatic)
+- [ ] **Storage grid cell interactions**: Smoother hover popout with spring-like easing; cell selection with satisfying snap
+
+**Phase 5 — Dashboard Redesign**
+
+- [x] **Visual hierarchy**: Hero stat cards at top (large, prominent) → priority action cards (medium) → detail lists (compact)
+  - Hero cards: large numbers with supporting label and trend indicator
+  - Use icon + number + label pattern for at-a-glance reading
+  - Priority cards (Pending QC, Low Stock, Expiring): use left color accent and count badge
+- [x] **Empty/zero state**: When no alerts, show a positive "All clear" state with illustration or icon, not just missing cards
+- [ ] **Card click interaction**: Smooth expand/collapse with content reveal animation (not instant DOM swap)
+- [x] **Lab selector** (super admin): Styled dropdown or segmented control, not plain `<select>`
+
+**Phase 6 — Storage Grid Polish**
+
+- [x] **Grid container**: Subtle inset shadow or recessed background to make the grid feel embedded
+- [x] **Cell refinement**: Slightly rounded corners (4px), smoother color transitions, refined popout shadow
+- [x] **Legend redesign**: Compact inline legend with actual cell examples (mini cells showing each state), not just text descriptions
+- [ ] **Grid header**: Storage unit name + metadata (temp, capacity used) in a styled header bar above the grid
+- [ ] **Selection state**: More prominent selected styling (not just green fill — add checkmark icon overlay or distinct border pattern)
+- [ ] **Mobile grid**: Pinch-to-zoom or horizontal scroll with snap points for large grids
+
+**Phase 7 — Login & Onboarding**
+
+- [x] **Login page redesign**: Full-bleed background with atmosphere (gradient mesh, subtle pattern, or branded illustration)
+  - Login card with refined shadow and generous spacing
+  - LabAid branding prominent (logo + tagline)
+  - Input focus states with smooth animation
+  - "Remember me" checkbox styled custom
+  - Error state: shake animation + red highlight
+- [ ] **First-login password change**: Styled as a welcome/onboarding moment, not a bare form
+- [ ] **Setup page** (`/setup`): Step-by-step wizard feel with progress indicator
+
+**Phase 8 — Mobile & Responsive Polish**
+
+- [ ] **Tablet breakpoint** (1024px): Two-column layouts where appropriate, sidebar can be collapsible rail
+- [ ] **Mobile navigation**: Bottom tab bar option for primary nav (Dashboard, Scan, Inventory, Storage) — faster than hamburger menu
+- [ ] **Touch targets**: Minimum 44px hit areas on all interactive elements
+- [ ] **Mobile cards**: Full-bleed on small screens (no side margins), larger touch targets
+- [ ] **Scan page mobile**: Camera viewfinder should feel native/app-like, not a browser widget
+- [ ] **Pull-to-refresh gesture** on data pages (optional enhancement)
+
+**Phase 9 — Accessibility & Polish**
+
+- [x] **Focus indicators**: Visible, styled focus rings (not browser default) on all interactive elements
+- [ ] **Keyboard navigation**: Tab order verified, Enter/Space activate buttons, ESC closes modals
+- [ ] **ARIA labels**: Modals (`aria-modal`, `aria-labelledby`), live regions for toasts, expandable sections (`aria-expanded`)
+- [ ] **Color contrast**: Verify all text/background combos meet WCAG AA (4.5:1 for body text, 3:1 for large text)
+- [x] **Reduced motion**: `prefers-reduced-motion` media query disables animations for users who need it
+- [ ] **Print stylesheet**: Clean print layout for audit log, inventory reports, storage grid maps
+
+**Implementation notes:**
+- All changes are CSS/component-level — no backend changes needed
+- Preserve every existing feature and interaction; this is purely visual + UX
+- TypeScript check must pass after every phase: `cd frontend && npx tsc --noEmit`
+- Test each phase on both desktop (1440px+) and mobile (375px) before moving to next
+- Fonts loaded via Google Fonts or self-hosted in `/public/fonts/` for performance
+- Consider CSS modules or scoped styles if `App.css` split becomes unwieldy
+- Each phase is independently deployable — no phase depends on a later phase being complete
+
 ### Backlog / Nice-to-Have
 - [ ] Export audit log to CSV
 - [ ] Bulk vial operations (open/deplete multiple)
 - [ ] Print storage grid labels
-- [ ] Dark mode
-- [ ] Mobile-responsive layout for tablet use at the bench
+- [ ] Dark mode (prep work done in Phase 1 with CSS custom properties)
+- [ ] Mobile-responsive layout for tablet use at the bench (covered in Phase 8)

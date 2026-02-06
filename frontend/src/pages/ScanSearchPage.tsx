@@ -19,6 +19,7 @@ import StorageGrid from "../components/StorageGrid";
 import OpenVialDialog from "../components/OpenVialDialog";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import DatePicker from "../components/DatePicker";
 
 type ResultMode = "idle" | "scan" | "search" | "register";
@@ -29,6 +30,7 @@ const DEFAULT_FLUORO_COLOR = "#9ca3af";
 export default function ScanSearchPage() {
   const { user, labSettings } = useAuth();
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const sealedOnly = labSettings.sealed_counts_only ?? false;
   const [input, setInput] = useState("");
@@ -333,10 +335,12 @@ export default function ScanSearchPage() {
       if (olderLotDismissed && olderLotSkipNote) params.set("skip_older_lot_note", olderLotSkipNote);
       await api.post(`/vials/${vial.id}/open?${params}`, { cell_id: selectedCell.id });
       setMessage(`Vial opened from cell ${selectedCell.label}. Status updated.`);
+      addToast(`Vial opened from ${selectedCell.label}`, "success");
       resetScanState();
       await refreshScan();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to open vial");
+      addToast("Failed to open vial", "danger");
     } finally {
       setLoading(false);
     }
@@ -365,6 +369,7 @@ export default function ScanSearchPage() {
           storage_unit_id: overflowSecondUnitId,
         });
         setMessage(`${receiveQty} vial(s) received: ${firstQty} + ${secondQty} split across containers.`);
+        addToast(`${receiveQty} vial(s) received (split)`, "success");
       } else if (needsOverflow && overflowMode === "temp") {
         await api.post("/vials/receive", {
           lot_id: result.lot.id,
@@ -372,6 +377,7 @@ export default function ScanSearchPage() {
           storage_unit_id: null,
         });
         setMessage(`${receiveQty} vial(s) received into temporary storage.`);
+        addToast(`${receiveQty} vial(s) received into temp storage`, "info");
       } else {
         await api.post("/vials/receive", {
           lot_id: result.lot.id,
@@ -379,6 +385,7 @@ export default function ScanSearchPage() {
           storage_unit_id: receiveStorageId || null,
         });
         setMessage(`${receiveQty} vial(s) received for lot ${result.lot.lot_number}.`);
+        addToast(`${receiveQty} vial(s) received`, "success");
       }
 
       setReceiveQty(1);
@@ -387,6 +394,7 @@ export default function ScanSearchPage() {
       await refreshScan();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to receive vials");
+      addToast("Failed to receive vials", "danger");
     } finally {
       setLoading(false);
     }
@@ -399,10 +407,12 @@ export default function ScanSearchPage() {
     try {
       await api.post(`/vials/${selectedVial.id}/deplete`);
       setMessage("Vial depleted. Status updated.");
+      addToast("Vial depleted", "success");
       resetScanState();
       await refreshScan();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to deplete vial");
+      addToast("Failed to deplete vial", "danger");
     } finally {
       setLoading(false);
     }
@@ -415,10 +425,12 @@ export default function ScanSearchPage() {
     try {
       const res = await api.post(`/lots/${result.lot.id}/deplete-all`);
       setMessage(`${res.data.length} vial(s) depleted for lot ${result.lot.lot_number}.`);
+      addToast(`${res.data.length} vial(s) depleted`, "success");
       resetScanState();
       await refreshScan();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to deplete all vials");
+      addToast("Failed to deplete vials", "danger");
     } finally {
       setLoading(false);
     }
@@ -634,6 +646,7 @@ export default function ScanSearchPage() {
       }
       const res = await api.post<VialMoveResult>("/vials/move", movePayload);
       setMessage(`Moved ${res.data.moved_count} vial(s) successfully.`);
+      addToast(`Moved ${res.data.moved_count} vial(s)`, "success");
       setMoveSelectedVialIds(new Set());
       setMoveTargetUnitId("");
       setMoveTargetGrid(null);
@@ -644,6 +657,7 @@ export default function ScanSearchPage() {
       await loadMoveGrids();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to move vials");
+      addToast("Failed to move vials", "danger");
     } finally {
       setLoading(false);
     }

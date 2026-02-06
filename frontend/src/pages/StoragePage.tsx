@@ -13,9 +13,11 @@ import StorageGrid from "../components/StorageGrid";
 import OpenVialDialog from "../components/OpenVialDialog";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 
 export default function StoragePage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [consolidateLotId, setConsolidateLotId] = useState<string | null>(null);
@@ -232,10 +234,12 @@ export default function StoragePage() {
         cell_id: openTarget.id,
       });
       setMessage(`Vial opened from cell ${openTarget.label}. Status updated.`);
+      addToast(`Vial opened from ${openTarget.label}`, "success");
       setOpenTarget(null);
       if (selectedGrid) await loadGrid(selectedGrid.unit.id);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to open vial");
+      addToast("Failed to open vial", "danger");
       setOpenTarget(null);
     } finally {
       setOpenLoading(false);
@@ -248,10 +252,12 @@ export default function StoragePage() {
     try {
       await api.post(`/vials/${openTarget.vial.id}/deplete`);
       setMessage(`Vial depleted from cell ${openTarget.label}. Status updated.`);
+      addToast(`Vial depleted from ${openTarget.label}`, "success");
       setOpenTarget(null);
       if (selectedGrid) await loadGrid(selectedGrid.unit.id);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to deplete vial");
+      addToast("Failed to deplete vial", "danger");
       setOpenTarget(null);
     } finally {
       setOpenLoading(false);
@@ -415,6 +421,7 @@ export default function StoragePage() {
       }
       const res = await api.post<VialMoveResult>("/vials/move", movePayload);
       setMessage(`Moved ${res.data.moved_count} vial(s) successfully.`);
+      addToast(`Moved ${res.data.moved_count} vial(s)`, "success");
       setSelectedVialIds(new Set());
       setTargetUnitId("");
       setMoveTargetGrid(null);
@@ -426,6 +433,7 @@ export default function StoragePage() {
       setMoveMode(true); // Stay in move mode for more moves
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to move vials");
+      addToast("Failed to move vials", "danger");
     } finally {
       setMoveLoading(false);
     }
