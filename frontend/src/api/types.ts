@@ -74,6 +74,9 @@ export interface Lot {
   antibody_fluorochrome?: string | null;
   documents?: LotDocument[];
   has_qc_document?: boolean;
+  storage_locations?: LotStorageLocation[];
+  has_temp_storage?: boolean;
+  is_split?: boolean;
 }
 
 export interface LotDocument {
@@ -107,7 +110,15 @@ export interface StorageUnit {
   cols: number;
   temperature: string | null;
   is_active: boolean;
+  is_temporary: boolean;
   created_at: string;
+}
+
+export interface LotStorageLocation {
+  unit_id: string;
+  unit_name: string;
+  is_temporary: boolean;
+  vial_count: number;
 }
 
 export interface VialSummary {
@@ -138,13 +149,32 @@ export interface StorageGrid {
   cells: StorageCell[];
 }
 
+export interface AvailableSlots {
+  unit_id: string;
+  unit_name: string;
+  total_cells: number;
+  occupied_cells: number;
+  available_cells: number;
+  is_temporary: boolean;
+}
+
+export interface OlderLotSummary {
+  id: string;
+  lot_number: string;
+  vendor_barcode: string | null;
+  created_at: string;
+  sealed_count: number;
+  storage_summary: string;
+}
+
 export interface ScanLookupResult {
   lot: Lot;
   antibody: Antibody;
   vials: Vial[];
   opened_vials: Vial[];
-  storage_grid: StorageGrid | null;
+  storage_grids: StorageGrid[];
   qc_warning: string | null;
+  older_lots?: OlderLotSummary[];
 }
 
 export interface GUDIDDevice {
@@ -167,7 +197,7 @@ export interface ScanEnrichResult {
   warnings: string[];
 }
 
-export type ScanIntent = "open" | "receive" | "deplete" | "store_open" | null;
+export type ScanIntent = "open" | "receive" | "deplete" | "store_open" | "view_storage" | "move" | null;
 
 export interface LotSummary {
   id: string;
@@ -175,6 +205,8 @@ export interface LotSummary {
   expiration_date: string | null;
   qc_status: QCStatus;
   vial_counts: VialCounts;
+  is_archived: boolean;
+  created_at: string | null;
 }
 
 export interface StorageLocation {
@@ -182,6 +214,26 @@ export interface StorageLocation {
   unit_name: string;
   temperature: string | null;
   vial_ids: string[];
+}
+
+export interface TempStorageSummaryItem {
+  lot_id: string;
+  lot_number: string;
+  antibody_target: string;
+  antibody_fluorochrome: string;
+  vial_count: number;
+  vial_ids: string[];
+}
+
+export interface TempStorageSummary {
+  total_vials: number;
+  unit_id: string | null;
+  lots: TempStorageSummaryItem[];
+}
+
+export interface VialMoveResult {
+  moved_count: number;
+  vials: Vial[];
 }
 
 export interface AntibodySearchResult {

@@ -7,10 +7,13 @@ from app.core.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.models import Antibody, Lot, QCStatus, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
 from app.routers.storage import _build_cell_out
+from sqlalchemy import func as sa_func
+
 from app.schemas.schemas import (
     AntibodyOut,
     GUDIDDevice,
     LotOut,
+    OlderLotSummary,
     ScanEnrichRequest,
     ScanEnrichResult,
     ScanLookupRequest,
@@ -70,18 +73,24 @@ def scan_lookup(
         .all()
     )
 
-    # Find storage grids containing these vials
-    storage_grid = None
-    cell_ids = [v.location_cell_id for v in vials if v.location_cell_id]
+    # Find all storage grids containing vials from this lot
+    storage_grids: list[StorageGridOut] = []
 
-    if cell_ids:
-        first_cell = db.query(StorageCell).filter(StorageCell.id == cell_ids[0]).first()
-        if first_cell:
-            unit = (
-                db.query(StorageUnit)
-                .filter(StorageUnit.id == first_cell.storage_unit_id)
-                .first()
-            )
+    # Collect cell IDs from both sealed and opened vials
+    all_vial_cell_ids = [v.location_cell_id for v in vials + opened_vials if v.location_cell_id]
+
+    if all_vial_cell_ids:
+        # Get all unique storage unit IDs that contain vials from this lot
+        cells_with_vials = (
+            db.query(StorageCell)
+            .filter(StorageCell.id.in_(all_vial_cell_ids))
+            .all()
+        )
+        unit_ids = list(set(c.storage_unit_id for c in cells_with_vials))
+
+        # Build a grid for each storage unit
+        for unit_id in unit_ids:
+            unit = db.query(StorageUnit).filter(StorageUnit.id == unit_id).first()
             if unit:
                 all_cells = (
                     db.query(StorageCell)
@@ -89,23 +98,80 @@ def scan_lookup(
                     .order_by(StorageCell.row, StorageCell.col)
                     .all()
                 )
-                storage_grid = StorageGridOut(
+                storage_grids.append(StorageGridOut(
                     unit=unit,
                     cells=[_build_cell_out(db, cell) for cell in all_cells],
-                )
+                ))
 
     # QC warning
     qc_warning = None
     if lot.qc_status != QCStatus.APPROVED:
         qc_warning = f"WARNING: Lot QC status is '{lot.qc_status.value}'. Lot must be approved before opening vials."
 
+    # Older lots of the same antibody that still have sealed vials
+    older_lot_summaries: list[OlderLotSummary] = []
+    older_lot_rows = (
+        db.query(Lot)
+        .filter(
+            Lot.antibody_id == lot.antibody_id,
+            Lot.lab_id == lot.lab_id,
+            Lot.id != lot.id,
+            Lot.is_archived == False,  # noqa: E712
+            Lot.created_at < lot.created_at,
+        )
+        .order_by(Lot.created_at.asc())
+        .all()
+    )
+    for older_lot in older_lot_rows:
+        sealed_count = (
+            db.query(sa_func.count(Vial.id))
+            .filter(Vial.lot_id == older_lot.id, Vial.status == VialStatus.SEALED)
+            .scalar()
+        )
+        if not sealed_count:
+            continue
+        # Build storage summary
+        storage_parts: list[str] = []
+        stored_vials = (
+            db.query(Vial.location_cell_id)
+            .filter(
+                Vial.lot_id == older_lot.id,
+                Vial.status == VialStatus.SEALED,
+                Vial.location_cell_id.isnot(None),
+            )
+            .all()
+        )
+        if stored_vials:
+            cell_ids = [v[0] for v in stored_vials]
+            unit_counts = (
+                db.query(StorageUnit.name, sa_func.count(StorageCell.id))
+                .join(StorageCell, StorageCell.storage_unit_id == StorageUnit.id)
+                .filter(StorageCell.id.in_(cell_ids))
+                .group_by(StorageUnit.name)
+                .all()
+            )
+            storage_parts = [f"{count} in {name}" for name, count in unit_counts]
+        storage_summary = ", ".join(storage_parts) if storage_parts else "not stored"
+
+        older_lot_summaries.append(
+            OlderLotSummary(
+                id=older_lot.id,
+                lot_number=older_lot.lot_number,
+                vendor_barcode=older_lot.vendor_barcode,
+                created_at=older_lot.created_at,
+                sealed_count=sealed_count,
+                storage_summary=storage_summary,
+            )
+        )
+
     return ScanLookupResult(
         lot=lot,
         antibody=antibody,
         vials=vials,
         opened_vials=opened_vials,
-        storage_grid=storage_grid,
+        storage_grids=storage_grids,
         qc_warning=qc_warning,
+        older_lots=older_lot_summaries,
     )
 
 

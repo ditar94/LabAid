@@ -13,8 +13,70 @@ Full-stack web application for Flow Cytometry labs to track antibody inventory, 
 ## Getting Started
 
 ```bash
+# Start all containers (database, backend, frontend)
+# Migrations run automatically on backend startup
 docker compose up -d --build
+```
+
+### Common Commands
+
+```bash
+# View logs (all services)
+docker compose logs -f
+
+# View logs (specific service)
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f db
+
+# Restart everything
+docker compose restart
+
+# Stop everything
+docker compose down
+
+# Full rebuild (use after major changes or if things break)
+docker compose down && docker compose up -d --build && docker compose exec backend alembic upgrade head && docker compose restart backend
+
+# Check migration status
+docker compose exec backend alembic current
+docker compose exec backend alembic history
+
+# Reset admin password to 'admin' (if locked out)
+docker compose exec db psql -U labaid -d labaid -c "UPDATE users SET hashed_password = '\$2b\$12\$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.G5j8kFqMwNxmPC' WHERE email = 'admin@labaid.com';"
+```
+
+### Troubleshooting
+
+Migrations now run automatically on backend startup. If you still see database errors:
+```bash
+# Check migration status
+docker compose exec backend alembic current
+docker compose exec backend alembic history
+
+# Force re-run migrations
 docker compose exec backend alembic upgrade head
+docker compose restart backend
+```
+
+If login doesn't work after a restart:
+```bash
+# Check backend logs for errors
+docker compose logs backend | grep -i error
+
+# Verify the database has users
+docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
+```
+
+### Database Backup (IMPORTANT)
+
+Before any debugging or troubleshooting, always backup the database first:
+```bash
+# Create backup
+docker compose exec db pg_dump -U labaid labaid > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# Restore from backup (if needed)
+cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 ```
 
 ## Testing the App
@@ -40,13 +102,13 @@ docker compose exec backend alembic upgrade head
 - **Database**: PostgreSQL with full audit trail; every mutation is logged with before/after state
 - **Data retention**: Lab data is never deleted — suspension revokes write access but preserves all records (inventory, audit logs, uploaded documents)
 - **File storage**: QC documents and lot verification PDFs stored on server filesystem alongside the database
-- **Future**: Cloud object storage + retention policies — see Recommended Azure Stack
-- **Recommended Azure Stack (Simple + Scalable)**
-    >   App Service (Linux) — host API + frontend; autoscale as labs grow
-    >   Azure Database for PostgreSQL (Flexible Server) — managed DB with automatic backups + PITR
-    >   Azure Blob Storage (Standard) — store documents with versioning + soft delete
-    >   Azure Key Vault — secrets (JWT, DB creds, storage keys)
-    >   Application Insights — logs, metrics, alerts
+- **Future**: Cloud object storage + retention policies — see Recommended GCP Stack
+- **Recommended GCP Stack (Simple + Scalable)**
+    >   Cloud Run — host API + frontend containers; autoscale as labs grow
+    >   Cloud SQL for PostgreSQL — managed DB with automatic backups + PITR
+    >   Cloud Storage (GCS) — store documents with versioning + soft delete
+    >   Secret Manager — secrets (JWT, DB creds, storage keys)
+    >   Cloud Logging + Monitoring — logs, metrics, alerts
 
 - **Data Retention (Practical Default)**
     >   Active labs: keep documents in Hot tier for 12–24 months
@@ -77,7 +139,7 @@ docker compose exec backend alembic upgrade head
 ### Top Priority (Env + Staging Readiness)
 
 - [ ] Add `VITE_API_BASE_URL` and use it in `frontend/src/api/client.ts`
-- [ ] Create a storage interface with env-based switch (local disk vs Azure Blob)
+- [ ] Create a storage interface with env-based switch (local disk vs GCS)
 - [ ] Add staging `.env` + deployment notes to mirror prod config
 - [ ] Add minimal integration tests (auth + document upload/download) and run against staging
 
@@ -90,9 +152,9 @@ docker compose exec backend alembic upgrade head
 
 ### Production-Only Tasks
 
-- [ ] Support env-based storage backend (local disk for dev, Azure Blob for prod)
+- [ ] Support env-based storage backend (local disk for dev, GCS for prod)
 - [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
-- [ ] Enable Azure Blob redundancy + soft delete/versioning + lifecycle policies
+- [ ] Enable GCS redundancy + soft delete/versioning + lifecycle policies
 - [ ] Document backup/restore process and run periodic restore tests
 - [ ] Define RPO/RTO targets (e.g., 15 min / 4 hrs) and align backup cadence to them
 - [ ] Enable Postgres PITR (WAL archiving) + daily snapshots + retention policy
@@ -266,6 +328,43 @@ docker compose exec backend alembic upgrade head
 - [x] Opening a vial frees its cell for future use
 - [x] Cell de-allocation on Deplete — logically clear grid coordinate when a vial is depleted (not just opened)
 - [x] Allow opening vials anywhere a storage grid is shown (storage screen, search results, etc.)
+- [x] Opened vials clickable on storage grid — shows Deplete / View Lot / Cancel dialog
+- [x] Stock button fix on storage page (was passing MouseEvent as barcode)
+- [x] Backend stocking supports opened vials (fallback after sealed vials exhausted)
+- [x] "View Storage" intent on scan screen — reveals rack with full open/deplete actions
+- [x] "Store Open Vial" intent on scan screen — pick vial, pick unit, click empty cell
+
+### Temporary Storage & Vial Movement
+> Automatic temporary storage for vials not yet assigned to a rack, plus the ability to move vials between storage locations.
+
+**Temporary Storage**
+- [x] Each lab has a special "Temporary Storage" unit auto-created (non-deletable, `is_temporary` flag)
+- [x] Vials received without a storage_unit_id automatically go to Temporary Storage
+- [x] Dynamic grid sizing: `ceil(sqrt(vialCount))` for dimensions (1→1×1, 2-4→2×2, 5-9→3×3, etc.)
+- [x] Visual distinction on Storage page (different styling)
+- [x] Always shown first on Storage page (ordering by `is_temporary`)
+- [x] "In Temp Storage" badge on lots that have vials in temporary storage
+- [x] Dashboard priority card: "Vials in Temporary Storage" with count, click to see grouped by lot
+
+**Move Vials (Storage Page)**
+- [x] "Move Vials" mode button on Storage page (like "Stock Vials" mode)
+- [x] Click-to-toggle cell selection: click cells to select/deselect, selected cells highlighted
+- [x] "Select entire lot" dropdown: choose a lot to select all its vials across all containers
+- [x] Selection summary: "Selected 8 vials (3 in Freezer A, 2 in Freezer B, 3 in Temp Storage)"
+- [x] Destination picker: choose target storage unit, then either auto-fill or click starting cell
+- [x] Backend endpoint: `POST /vials/move` with `{ vial_ids[], target_unit_id, start_cell_id? }`
+- [x] Audit log entry for vial movements with before/after storage locations
+
+**Move Vials (Scan Screen)**
+- [x] "Move Vials" intent added to scan result action menu
+- [x] Shows all storage locations for the scanned lot with grids
+- [x] Click-to-toggle or "Select All" to pick vials from the lot
+- [x] Choose destination → move vials (same flow as Storage page)
+
+**Lot Location Summary (Inventory Page)**
+- [x] Lot row shows storage summary: "5 in Freezer A, 3 in Temp Storage"
+- [x] "Split" badge when lot vials are in multiple containers
+- [x] "Consolidate" button opens Storage page with that lot pre-selected for moving
 
 ### Scan Screen UX
 - [x] Auto-focused scan input for hardware scanner convenience
@@ -296,7 +395,11 @@ docker compose exec backend alembic upgrade head
 - [x] User management page for admins
 - [x] Super Admin can suspend/reactivate labs (access revoked or restored without deleting data)
 - [x] Support ticket system for Lab Admins and Supervisors
-- [x] Clarify account ownership/hosting model (site-managed vs. AWS/Azure) and data durability guarantees
+- [x] Clarify account ownership/hosting model (site-managed on GCP) and data durability guarantees
+- [ ] Super Admin Impersonation: Logic to generate temporary "Support JWTs" for troubleshooting.
+- [ ] Audit Trail Attribution: Ensure the audit_log records when a Super Admin performs an action for a lab.
+- [ ] Support Access Toggle: Lab-level setting to grant/revoke temporary database access for troubleshooting.
+- [ ] Global Search for Support: Search for any lab_id, antibody_id, or lot_id across the entire database (Super Admin only).
 
 ### Role Hierarchy Rework
 > Rethink roles to match real hospital/lab structure. Current roles (super_admin, lab_admin, tech, read_only) need to be refined.
@@ -363,8 +466,8 @@ docker compose exec backend alembic upgrade head
 - [x] Antibody archive flow on Antibodies screen — top-right Active/Inactive switch on each card; toggle opens optional-note dialog; write to audit log
 - [x] Inactive antibodies list at bottom of Antibodies screen (shows all inactive)
 - [x] Current lot + New lot badges — default current lot is oldest lot; auto-update when lot is archived or depleted
-- [ ] Lot drill-down from Inventory — clicking a lot row shows storage locations for its vials; if unstored, offer inline stocking workflow; if stored, allow opening a vial from the grid
-- [ ] Smart overflow on receive — when the selected storage container lacks enough open slots, prompt the user to split across another container or create a new one
+- [x] Lot drill-down from Inventory — clicking a lot row shows storage locations for its vials; if unstored, offer inline stocking workflow; if stored, allow opening a vial from the grid
+- [x] Smart overflow on receive — when the selected storage container lacks enough open slots, prompt the user to split across another container, move all to another container, or create a new one
 
 ### Dashboard & Reporting
 - [x] Dashboard: show only priority cards (Pending QC, Low Stock, Expiring Lots); clicking a card shows the relevant antibody list with all needed info
@@ -391,39 +494,61 @@ docker compose exec backend alembic upgrade head
 - [ ] Payment/account automation: track billing status and trigger lab suspension/reactivation without data loss
 - [ ] Storage templates/racks: ability to remove
 
-### Storage Grid Visual Language
-> Each grid cell should communicate vial state at a glance through a layered system of color dots, shading, and borders. No ambiguity — a user should be able to read the grid without clicking anything.
+### Unified Storage Grid — Compact + Hover Expand
+> One `StorageGrid` component used identically across the entire app (Storage page, Scan/Search scan result, Scan/Search "View Storage" intent, Search page locator). All views show the same info and interactions — the only difference is which vials are highlighted when viewing a specific lot.
 
-- [ ] Storage screen: make rack smaller so the full grid fits on screen without scrolling
+**Design goals:**
+- Compact default grid (cells ~28-32px) so a 10x10 rack fits on screen / mobile without scrolling
+- At-a-glance state via color + borders — no reading required at default size
+- Hover/tap to expand a cell and see full details without leaving the grid
+- Unified component, consistent everywhere
 
-**Cell content (occupied cells)**
-- [x] Show antibody target name **and** fluorochrome in each cell (not just target)
-- [x] Show lot expiration date in the cell (compact format, e.g. "03/26")
-- [x] Fluorochrome color dot — small colored circle in the cell corner; each fluorochrome gets a distinct color (e.g., FITC = green, PE = yellow, APC = red), configurable per lab
-- [x] Fluorochrome colors carry through to Lots table, scan results, antibody list, and dashboard for consistency
+**Phase 1 — Compact cells with fluorochrome tint**
+- [x] Shrink default cell size to ~28-32px square (remove `aspect-ratio: 1` in favor of fixed dimensions)
+- [x] Occupied cells: very light tint of the fluorochrome color as background (10-15% opacity)
+- [x] Cell text at default size: short antibody abbreviation (e.g. "CD3") in the fluorochrome's color — readable but small
+- [x] Empty cells: neutral light gray, show cell label (A1, B2) in muted text
+- [x] Row/column headers shrink proportionally
 
-**Vial status shading on storage view**
-- [ ] Sealed vial — solid/full-opacity cell background
-- [ ] Opened vial — lighter/faded shading to visually distinguish from sealed
-- [ ] Depleted vial — greyed out or hatched (if still shown in grid before de-allocation)
+**Phase 2 — Hover/tap expand (popout detail card)**
+- [x] On hover (desktop) or tap (mobile), the cell expands using `position: absolute` + `z-index` to float a detail card over neighbors — grid layout is NOT disturbed
+- [x] Expanded card shows: antibody target + fluorochrome, lot number, expiration date, vial status (sealed/opened), QC status badge
+- [x] Expansion is CSS-only where possible (`:hover` pseudo-class + `transform: scale()` or absolutely positioned child)
+- [x] On mobile (touch), first tap expands the card; second tap (or tap on an action) triggers the cell click handler (open/deplete dialog)
+- [x] Transition is smooth (150-200ms) with subtle shadow for depth
 
-**QC status via grid square border color on storage view **
-- [ ] Approved lot — default border (or subtle green border)
-- [ ] Pending QC — yellow/amber border to flag "needs QC"
-- [ ] Failed QC — red border
+**Phase 3 — Visual encoding (no hover needed to read state)**
+- [x] **Sealed vial** — solid fluorochrome-tinted background (the default occupied state)
+- [x] **Opened vial** — dashed border (2px dashed) around the cell; intuitively "opened/broken into"; works at small sizes
+- [x] **QC status via left-edge accent bar** (3px left border): green = approved, yellow = pending, red = failed — avoids conflict with dashed border for opened status
+- [x] **Highlighted cells** (viewing a specific lot): stronger fluorochrome saturation + subtle pulsing ring; non-relevant cells dimmed to 30% opacity
+- [x] Grid legend below the grid explaining: solid = sealed, dashed = opened, left-edge color = QC status, highlight = current lot
 
-**Lot age indicators**
-- [ ] Visually distinguish "current" (oldest active) lot vs. "new" (newer) lots — e.g., a small badge, dot, or subtle background tint per cell
-- [ ] Grid legend explaining the visual encoding (dot colors, shading meanings, border meanings)
+**Phase 4 — Unified usage across the app**
+- [x] `StoragePage`: use unified grid; cell click opens `OpenVialDialog` (Open for sealed, Deplete for opened)
+- [x] `ScanSearchPage` "Open New" intent: use unified grid with lot vials highlighted; confirm dialog above grid
+- [x] `ScanSearchPage` "View Storage" intent: use unified grid with full cell click (same as Storage page)
+- [x] `ScanSearchPage` "Store Open Vial" intent: use unified grid in "empty" click mode
+- [x] `SearchPage` / `ScanSearchPage` search results: use unified grid with lot vials highlighted
+- [x] Remove all one-off grid styling and `showVialInfo` branching — the grid always shows the compact+hover view
+- [x] Pass `fluorochromes` prop consistently everywhere (already done in most places)
+
+**Implementation notes:**
+- The `StorageGrid` component props stay similar: `rows`, `cols`, `cells`, `highlightVialIds`, `onCellClick`, `clickMode`, `fluorochromes`
+- Remove `showVialInfo` prop — all grids show info via hover/tap now
+- Add a `.grid-cell-popout` absolutely-positioned child div inside each occupied cell for the hover card
+- Use `pointer-events: none` on the popout by default, `pointer-events: auto` on hover/focus
+- For mobile: use a `useState` for `expandedCellId` and toggle on tap; clear on outside tap or scroll
+- CSS custom property `--fluoro-color` set per cell via inline style for the tint + text color
 
 ### Older-Lot Enforcement on Scan
 > When a user scans a lot and selects "Open New", check whether an older active lot of the same antibody exists with sealed vials. If so, prompt the user before proceeding.
 
-- [ ] On "Open New" intent, check for older lots of the same antibody that still have sealed vials
-- [ ] If an older lot exists, show prompt: "An older lot (Lot #XXXX) has N sealed vials in [Storage Unit] at [cell(s)]. Use the older lot first?"
-- [ ] Prompt includes a direct link/button to switch to the older lot's grid view
-- [ ] User can dismiss and proceed with the scanned lot if they choose
-- [ ] If user proceeds with the newer lot, offer an option to note "Lot verification / QC in progress" on the older lot — explains why it's being skipped (e.g., QC docs pending, verification underway) and logs the reason in the audit trail
+- [x] On "Open New" intent, check for older lots of the same antibody that still have sealed vials
+- [x] If an older lot exists, show prompt: "An older lot (Lot #XXXX) has N sealed vials in [Storage Unit] at [cell(s)]. Use the older lot first?" and if yes, show that storage container and highlight the current lot prompting user to select a vial to open (or cancel).
+- [x] Prompt includes a direct link/button to switch to the older lot's grid view
+- [x] User can dismiss and proceed with the scanned lot if they choose
+- [x] If user proceeds with the newer lot, offer an option to note "Lot verification / QC in progress" on the older lot — explains why it's being skipped (e.g., opened for lot verification) and logs the reason in the audit trail
 
 ### Backlog / Nice-to-Have
 - [ ] Export audit log to CSV

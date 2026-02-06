@@ -8,6 +8,7 @@ import type {
   Antibody,
   StorageUnit,
   Fluorochrome,
+  VialMoveResult,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
@@ -70,6 +71,8 @@ export default function ScanPage() {
     setSelectedCell(null);
     setSelectedVial(null);
     setShowQcConfirm(false);
+    setSelectedMoveVialIds(new Set());
+    setTargetMoveUnitId("");
     setError(null);
   };
 
@@ -286,6 +289,12 @@ export default function ScanPage() {
 
   const [showDepleteAllConfirm, setShowDepleteAllConfirm] = useState(false);
 
+  // ── Intent: Move Vials ─────────────────────────────────────────────
+
+  const [selectedMoveVialIds, setSelectedMoveVialIds] = useState<Set<string>>(new Set());
+  const [targetMoveUnitId, setTargetMoveUnitId] = useState<string>("");
+  const [moveLoading, setMoveLoading] = useState(false);
+
   const confirmDepleteAll = async () => {
     if (!result) return;
     setLoading(true);
@@ -302,14 +311,93 @@ export default function ScanPage() {
     }
   };
 
+  // ── Intent: Move Vials ────────────────────────────────────────────
+
+  const getVialsInStorage = () => {
+    if (!result) return [];
+    const vialsInStorage: { vial: Vial; cell?: StorageCell }[] = [];
+    // Helper to find cell across all grids
+    const findCell = (cellId: string) => {
+      for (const grid of result.storage_grids) {
+        const cell = grid.cells.find((c) => c.id === cellId);
+        if (cell) return cell;
+      }
+      return undefined;
+    };
+    // Add sealed vials
+    for (const v of result.vials) {
+      if (v.location_cell_id) {
+        const cell = findCell(v.location_cell_id);
+        vialsInStorage.push({ vial: v, cell });
+      }
+    }
+    // Add opened vials
+    for (const v of result.opened_vials ?? []) {
+      if (v.location_cell_id) {
+        const cell = findCell(v.location_cell_id);
+        vialsInStorage.push({ vial: v, cell });
+      }
+    }
+    return vialsInStorage;
+  };
+
+  const toggleMoveVial = (vialId: string) => {
+    setSelectedMoveVialIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(vialId)) {
+        next.delete(vialId);
+      } else {
+        next.add(vialId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllVialsForMove = () => {
+    const vialsInStorage = getVialsInStorage();
+    setSelectedMoveVialIds(new Set(vialsInStorage.map((v) => v.vial.id)));
+  };
+
+  const handleMoveVials = async () => {
+    if (selectedMoveVialIds.size === 0 || !targetMoveUnitId) return;
+    setMoveLoading(true);
+    setError(null);
+    try {
+      const res = await api.post<VialMoveResult>("/vials/move", {
+        vial_ids: Array.from(selectedMoveVialIds),
+        target_unit_id: targetMoveUnitId,
+      });
+      setMessage(`Moved ${res.data.moved_count} vial(s) successfully.`);
+      setSelectedMoveVialIds(new Set());
+      setTargetMoveUnitId("");
+      await refreshScan();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to move vials");
+    } finally {
+      setMoveLoading(false);
+    }
+  };
+
   // ── Computed values ─────────────────────────────────────────────────
 
-  // Sealed vials highlighted in grid
+  // Helper to find cell across all grids
+  const findCellInGrids = (cellId: string | null) => {
+    if (!cellId || !result) return null;
+    for (const grid of result.storage_grids) {
+      const cell = grid.cells.find((c) => c.id === cellId);
+      if (cell) return cell;
+    }
+    return null;
+  };
+
+  // Sealed vials highlighted in grid (by vial ID for each grid)
   const highlightCellVialIds = new Set<string>();
-  if (result?.storage_grid && intent === "open") {
-    for (const cell of result.storage_grid.cells) {
-      if (cell.vial_id && result.vials.some((v) => v.id === cell.vial_id)) {
-        highlightCellVialIds.add(cell.vial_id);
+  if (result?.storage_grids.length && intent === "open") {
+    for (const grid of result.storage_grids) {
+      for (const cell of grid.cells) {
+        if (cell.vial_id && result.vials.some((v) => v.id === cell.vial_id)) {
+          highlightCellVialIds.add(cell.vial_id);
+        }
       }
     }
   }
@@ -323,20 +411,25 @@ export default function ScanPage() {
     )[0];
 
   const recommendedCell = recommendation
-    ? result?.storage_grid?.cells.find(
-        (c) => c.id === recommendation.location_cell_id
-      )
+    ? findCellInGrids(recommendation.location_cell_id)
     : null;
 
-  // First empty cell for store-open suggestion
-  const firstEmptyCell = result?.storage_grid?.cells.find(
+  // Find which grid contains the recommended cell
+  const recommendedGridIndex = recommendation
+    ? result?.storage_grids.findIndex((g) =>
+        g.cells.some((c) => c.id === recommendation.location_cell_id)
+      ) ?? -1
+    : -1;
+
+  // First empty cell for store-open suggestion (from first grid)
+  const firstEmptyCell = result?.storage_grids[0]?.cells.find(
     (c) => !c.vial_id
   );
 
   // Intent button enabled states
   const canOpen = (result?.vials.length ?? 0) > 0;
   const canStoreOpen =
-    (result?.opened_vials?.length ?? 0) > 0 && !!result?.storage_grid;
+    (result?.opened_vials?.length ?? 0) > 0 && result?.storage_grids.length > 0;
   const canDeplete = (result?.opened_vials?.length ?? 0) > 0;
 
   const fluoroMap = new Map<string, string>();
@@ -573,7 +666,7 @@ export default function ScanPage() {
                 resetActionState();
                 setIntent("receive");
                 setReceiveQty(1);
-                setReceiveStorageId(result.storage_grid?.unit.id ?? "");
+                setReceiveStorageId(result.storage_grids[0]?.unit.id ?? "");
                 // Load storage units for the dropdown
                 api.get("/storage/units").then((r) => setStorageUnits(r.data));
               }}
@@ -593,6 +686,29 @@ export default function ScanPage() {
                 Deplete
               </button>
             )}
+            <button
+              className={`intent-btn ${intent === "move" ? "active" : ""}`}
+              onClick={() => {
+                resetActionState();
+                setIntent("move");
+                api.get("/storage/units").then((r) => setStorageUnits(r.data));
+              }}
+              disabled={getVialsInStorage().length === 0}
+              title={getVialsInStorage().length === 0 ? "No vials in storage for this lot" : ""}
+            >
+              Move Vials
+            </button>
+            <button
+              className={`intent-btn ${intent === "view_storage" ? "active" : ""}`}
+              onClick={() => {
+                resetActionState();
+                setIntent("view_storage");
+              }}
+              disabled={result.storage_grids.length === 0}
+              title={result.storage_grids.length === 0 ? "No vials in storage" : ""}
+            >
+              View Storage
+            </button>
           </div>
 
           {/* ── Intent: Open New ─────────────────────────────────────── */}
@@ -607,73 +723,73 @@ export default function ScanPage() {
                 </p>
               )}
 
-              {result.storage_grid && (
-                <div className="grid-container">
-                  <h3>{result.storage_grid.unit.name}</h3>
-                  <StorageGrid
-                    rows={result.storage_grid.unit.rows}
-                    cols={result.storage_grid.unit.cols}
-                    cells={result.storage_grid.cells}
-                    highlightVialIds={highlightCellVialIds}
-                    recommendedCellId={recommendedCell?.id}
-                    onCellClick={handleCellClick}
-                    selectedCellId={selectedCell?.id}
-                    clickMode="highlighted"
-                    fluorochromes={fluorochromes}
-                  />
-
-                  {selectedCell && !showQcConfirm && (
-                    <div className="confirm-action">
-                      <p>
-                        You selected cell <strong>{selectedCell.label}</strong>.
-                      </p>
-                      <button
-                        className="btn-green"
-                        onClick={() => confirmOpen()}
-                        disabled={loading}
-                      >
-                        Confirm Open Vial
-                      </button>
-                    </div>
-                  )}
-
-                  {showQcConfirm && (
-                    <div className="qc-confirm-dialog">
-                      <p className="qc-confirm-warning">
-                        This lot hasn't been approved yet. Are you sure you wish
-                        to open this vial?
-                      </p>
-                      <div className="qc-confirm-actions">
-                        <button
-                          className="btn-red"
-                          onClick={() => confirmOpen(true)}
-                          disabled={loading}
-                        >
-                          Yes, Open Anyway
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          onClick={() => setShowQcConfirm(false)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!result.storage_grid && result.vials.length > 0 && (
+              {result.storage_grids.length > 0 ? (
+                result.storage_grids.map((grid, idx) => (
+                  <div key={grid.unit.id} className="grid-container">
+                    <h3>{grid.unit.name}</h3>
+                    <StorageGrid
+                      rows={grid.unit.rows}
+                      cols={grid.unit.cols}
+                      cells={grid.cells}
+                      highlightVialIds={highlightCellVialIds}
+                      recommendedCellId={idx === recommendedGridIndex ? recommendedCell?.id : undefined}
+                      onCellClick={handleCellClick}
+                      selectedCellId={selectedCell?.id}
+                      clickMode="highlighted"
+                      fluorochromes={fluorochromes}
+                    />
+                  </div>
+                ))
+              ) : result.vials.length > 0 ? (
                 <p className="info">
                   Vials found but not assigned to storage. Assign vials to a
                   storage unit to use the grid selection.
                 </p>
+              ) : null}
+
+              {selectedCell && !showQcConfirm && (
+                <div className="confirm-action">
+                  <p>
+                    You selected cell <strong>{selectedCell.label}</strong>.
+                  </p>
+                  <button
+                    className="btn-green"
+                    onClick={() => confirmOpen()}
+                    disabled={loading}
+                  >
+                    Confirm Open Vial
+                  </button>
+                </div>
+              )}
+
+              {showQcConfirm && (
+                <div className="qc-confirm-dialog">
+                  <p className="qc-confirm-warning">
+                    This lot hasn't been approved yet. Are you sure you wish
+                    to open this vial?
+                  </p>
+                  <div className="qc-confirm-actions">
+                    <button
+                      className="btn-red"
+                      onClick={() => confirmOpen(true)}
+                      disabled={loading}
+                    >
+                      Yes, Open Anyway
+                    </button>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setShowQcConfirm(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           )}
 
           {/* ── Intent: Store Open Vial ─────────────────────────────── */}
-          {intent === "store_open" && result.storage_grid && (
+          {intent === "store_open" && result.storage_grids.length > 0 && (
             <div className="intent-panel">
               <p className="page-desc">
                 Select the opened vial to store, then click an empty cell in the
@@ -719,21 +835,25 @@ export default function ScanPage() {
 
               {selectedVial && (
                 <>
-                  <div className="grid-container">
-                    <h3>{result.storage_grid.unit.name}</h3>
-                    <StorageGrid
-                      rows={result.storage_grid.unit.rows}
-                      cols={result.storage_grid.unit.cols}
-                      cells={result.storage_grid.cells}
-                      highlightVialIds={new Set()}
-                      highlightNextCellId={firstEmptyCell?.id}
-                      onCellClick={handleCellClick}
-                      selectedCellId={selectedCell?.id}
-                      clickMode="empty"
-                      showVialInfo
-                      fluorochromes={fluorochromes}
-                    />
-                  </div>
+                  {result.storage_grids.map((grid, idx) => {
+                    const gridFirstEmpty = grid.cells.find((c) => !c.vial_id);
+                    return (
+                      <div key={grid.unit.id} className="grid-container">
+                        <h3>{grid.unit.name}</h3>
+                        <StorageGrid
+                          rows={grid.unit.rows}
+                          cols={grid.unit.cols}
+                          cells={grid.cells}
+                          highlightVialIds={new Set()}
+                          highlightNextCellId={idx === 0 ? gridFirstEmpty?.id : undefined}
+                          onCellClick={handleCellClick}
+                          selectedCellId={selectedCell?.id}
+                          clickMode="empty"
+                          fluorochromes={fluorochromes}
+                        />
+                      </div>
+                    );
+                  })}
 
                   {selectedCell && (
                     <div className="confirm-action">
@@ -890,6 +1010,132 @@ export default function ScanPage() {
                     Confirm Deplete
                   </button>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Intent: Move Vials ───────────────────────────────────── */}
+          {intent === "move" && (
+            <div className="intent-panel">
+              <p className="page-desc">
+                Select vials from this lot to move to a different storage unit.
+              </p>
+
+              <div className="move-controls" style={{ marginBottom: "1rem" }}>
+                <button
+                  onClick={selectAllVialsForMove}
+                  disabled={getVialsInStorage().length === 0}
+                >
+                  Select All ({getVialsInStorage().length})
+                </button>
+                <button
+                  onClick={() => setSelectedMoveVialIds(new Set())}
+                  disabled={selectedMoveVialIds.size === 0}
+                >
+                  Clear Selection
+                </button>
+              </div>
+
+              <div className="vial-select-list">
+                {getVialsInStorage().map(({ vial, cell }) => (
+                  <div
+                    key={vial.id}
+                    className={`vial-select-item ${
+                      selectedMoveVialIds.has(vial.id) ? "selected" : ""
+                    }`}
+                    onClick={() => toggleMoveVial(vial.id)}
+                  >
+                    <span className="vial-id">{vial.id.slice(0, 8)}</span>
+                    <span className="vial-detail">
+                      {vial.status === "sealed" ? "Sealed" : "Opened"}
+                    </span>
+                    {cell && (
+                      <span className="vial-detail">
+                        Cell {cell.label}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {selectedMoveVialIds.size > 0 && (
+                <div className="move-action" style={{ marginTop: "1rem" }}>
+                  <p>
+                    <strong>{selectedMoveVialIds.size}</strong> vial(s) selected.
+                    Choose destination:
+                  </p>
+                  <div className="form-row" style={{ marginTop: "0.5rem" }}>
+                    <select
+                      value={targetMoveUnitId}
+                      onChange={(e) => setTargetMoveUnitId(e.target.value)}
+                      style={{ minWidth: "200px" }}
+                    >
+                      <option value="">Select destination...</option>
+                      {storageUnits
+                        .filter((u) => !result.storage_grids.some((g) => g.unit.id === u.id))
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} {u.is_temporary ? "(Temp)" : ""}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      className="btn-green"
+                      onClick={handleMoveVials}
+                      disabled={!targetMoveUnitId || moveLoading}
+                    >
+                      {moveLoading ? "Moving..." : `Move ${selectedMoveVialIds.size} Vial(s)`}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Intent: View Storage ─────────────────────────────────── */}
+          {intent === "view_storage" && (
+            <div className="intent-panel">
+              <p className="page-desc">
+                Showing all storage locations for lot <strong>{result.lot.lot_number}</strong>.
+              </p>
+
+              {result.storage_grids.length > 0 ? (
+                result.storage_grids.map((grid) => {
+                  // Highlight vials from this lot
+                  const lotVialIds = new Set<string>();
+                  for (const cell of grid.cells) {
+                    if (cell.vial_id && (
+                      result.vials.some((v) => v.id === cell.vial_id) ||
+                      result.opened_vials.some((v) => v.id === cell.vial_id)
+                    )) {
+                      lotVialIds.add(cell.vial_id);
+                    }
+                  }
+                  return (
+                    <div key={grid.unit.id} className="grid-container">
+                      <h3>
+                        {grid.unit.name}
+                        {grid.unit.is_temporary && <span className="temp-badge">Temp</span>}
+                      </h3>
+                      <StorageGrid
+                        rows={grid.unit.rows}
+                        cols={grid.unit.cols}
+                        cells={grid.cells}
+                        highlightVialIds={lotVialIds}
+                        clickMode="highlighted"
+                        fluorochromes={fluorochromes}
+                      />
+                      <div className="grid-legend">
+                        <span className="legend-item"><span className="legend-box sealed" /> Sealed</span>
+                        <span className="legend-item"><span className="legend-box opened" /> Opened</span>
+                        <span className="legend-item"><span className="legend-box" /> Empty</span>
+                        <span className="legend-item"><span className="legend-box highlighted-legend" /> This lot</span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="empty">No vials from this lot are currently in storage.</p>
               )}
             </div>
           )}

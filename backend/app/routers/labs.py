@@ -9,6 +9,7 @@ from app.models import models
 from app.schemas import schemas
 from app.middleware.auth import get_current_user, require_role
 from app.services.audit import log_audit, snapshot_lab
+from app.services.storage import create_temporary_storage
 
 router = APIRouter(
     prefix="/api/labs",
@@ -31,6 +32,9 @@ def create_lab(
     db_lab = models.Lab(name=lab.name)
     db.add(db_lab)
     db.flush()
+
+    # Create temporary storage for the new lab
+    create_temporary_storage(db, db_lab.id)
 
     log_audit(
         db,

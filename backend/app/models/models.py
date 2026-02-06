@@ -193,6 +193,7 @@ class StorageUnit(Base):
     cols = Column(Integer, nullable=False)
     temperature = Column(String(50))  # e.g., "-20°C", "4°C"
     is_active = Column(Boolean, default=True, nullable=False)
+    is_temporary = Column(Boolean, default=False, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lab = relationship("Lab", back_populates="storage_units")

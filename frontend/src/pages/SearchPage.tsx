@@ -5,6 +5,7 @@ import type {
   AntibodySearchResult,
   StorageGrid as StorageGridType,
   StorageCell,
+  Fluorochrome,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import OpenVialDialog from "../components/OpenVialDialog";
@@ -24,6 +25,7 @@ export default function SearchPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [openTarget, setOpenTarget] = useState<StorageCell | null>(null);
   const [openLoading, setOpenLoading] = useState(false);
+  const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const canOpen =
@@ -34,6 +36,7 @@ export default function SearchPage() {
 
   useEffect(() => {
     inputRef.current?.focus();
+    api.get("/fluorochromes/").then((r) => setFluorochromes(r.data));
   }, []);
 
   const handleSearch = async (override?: string) => {
@@ -85,7 +88,7 @@ export default function SearchPage() {
   };
 
   const handleGridCellClick = (cell: StorageCell) => {
-    if (!cell.vial || cell.vial.status !== "sealed") return;
+    if (!cell.vial || (cell.vial.status !== "sealed" && cell.vial.status !== "opened")) return;
     setOpenTarget(cell);
   };
 
@@ -99,6 +102,22 @@ export default function SearchPage() {
       setMessage(`Vial opened from cell ${openTarget.label}. Status updated.`);
       setOpenTarget(null);
       // Refresh grids
+      if (selectedResult) await handleSelect(selectedResult);
+    } catch (err: any) {
+      setMessage(null);
+      setOpenTarget(null);
+    } finally {
+      setOpenLoading(false);
+    }
+  };
+
+  const handleDepleteVial = async () => {
+    if (!openTarget?.vial) return;
+    setOpenLoading(true);
+    try {
+      await api.post(`/vials/${openTarget.vial.id}/deplete`);
+      setMessage(`Vial depleted from cell ${openTarget.label}. Status updated.`);
+      setOpenTarget(null);
       if (selectedResult) await handleSelect(selectedResult);
     } catch (err: any) {
       setMessage(null);
@@ -246,8 +265,15 @@ export default function SearchPage() {
                     highlightVialIds={highlightIds}
                     onCellClick={canOpen ? handleGridCellClick : undefined}
                     clickMode={canOpen ? "occupied" : "highlighted"}
-                    showVialInfo
+                    fluorochromes={fluorochromes}
                   />
+                  <div className="grid-legend">
+                    <span className="legend-item"><span className="legend-box sealed" /> Sealed</span>
+                    <span className="legend-item"><span className="legend-box opened" /> Opened</span>
+                    <span className="legend-item"><span className="legend-box" /> Empty</span>
+                    <span className="legend-item"><span className="legend-box highlighted-legend" /> Current antibody</span>
+                    {canOpen && <span className="legend-item">Click a vial to open or deplete it</span>}
+                  </div>
                 </div>
               );
             })
@@ -260,6 +286,7 @@ export default function SearchPage() {
           cell={openTarget}
           loading={openLoading}
           onConfirm={handleOpenVial}
+          onDeplete={handleDepleteVial}
           onViewLot={() => {
             const abId = openTarget.vial?.antibody_id;
             setOpenTarget(null);

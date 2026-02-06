@@ -19,19 +19,30 @@ export default function Layout() {
 
   return (
     <div className="app-layout">
-      <button
-        className="hamburger-btn"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        aria-label="Toggle menu"
-      >
-        {sidebarOpen ? "\u2715" : "\u2630"}
-      </button>
+      {!sidebarOpen && (
+        <button
+          className="hamburger-btn"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
+      )}
       {sidebarOpen && (
         <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
       )}
       <nav className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-header">
-          <h2>LabAid</h2>
+          <div className="sidebar-header-row">
+            <h2>LabAid</h2>
+            <button
+              className="sidebar-close-btn"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close menu"
+            >
+              ✕
+            </button>
+          </div>
           <span className="user-name">{user?.full_name}</span>
           <span className="user-role">{user?.role.replaceAll("_", " ")}</span>
         </div>

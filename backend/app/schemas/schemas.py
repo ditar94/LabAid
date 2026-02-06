@@ -202,12 +202,22 @@ class LotDocumentOut(BaseModel):
         from_attributes = True
 
 
+class LotStorageLocation(BaseModel):
+    unit_id: UUID
+    unit_name: str
+    is_temporary: bool = False
+    vial_count: int
+
+
 class LotWithCounts(LotOut):
     vial_counts: VialCounts = VialCounts()
     antibody_target: str | None = None
     antibody_fluorochrome: str | None = None
     documents: list[LotDocumentOut] = []
     has_qc_document: bool = False
+    storage_locations: list[LotStorageLocation] = []
+    has_temp_storage: bool = False
+    is_split: bool = False  # True when vials are in multiple containers
 
 
 class LotUpdateQC(BaseModel):
@@ -223,6 +233,8 @@ class LotSummary(BaseModel):
     expiration_date: date | None
     qc_status: QCStatus
     vial_counts: VialCounts = VialCounts()
+    is_archived: bool = False
+    created_at: datetime | None = None
 
 
 class StorageLocation(BaseModel):
@@ -273,6 +285,18 @@ class VialCorrectionRequest(BaseModel):
     note: str  # reason for correction
 
 
+class VialMoveRequest(BaseModel):
+    vial_ids: list[UUID]
+    target_unit_id: UUID
+    start_cell_id: UUID | None = None  # Optional: specify starting cell, otherwise auto-assign
+    target_cell_ids: list[UUID] | None = None  # Optional: place vials into exactly these cells
+
+
+class VialMoveResult(BaseModel):
+    moved_count: int
+    vials: list["VialOut"]
+
+
 # ── Storage ────────────────────────────────────────────────────────────────
 
 
@@ -291,6 +315,7 @@ class StorageUnitOut(BaseModel):
     cols: int
     temperature: str | None
     is_active: bool
+    is_temporary: bool = False
     created_at: datetime
 
     class Config:
@@ -338,13 +363,26 @@ class ScanLookupRequest(BaseModel):
     barcode: str
 
 
+class OlderLotSummary(BaseModel):
+    id: UUID
+    lot_number: str
+    vendor_barcode: str | None
+    created_at: datetime
+    sealed_count: int
+    storage_summary: str
+
+    class Config:
+        from_attributes = True
+
+
 class ScanLookupResult(BaseModel):
     lot: LotOut
     antibody: AntibodyOut
     vials: list[VialOut]
     opened_vials: list[VialOut] = []
-    storage_grid: StorageGridOut | None = None
+    storage_grids: list[StorageGridOut] = []
     qc_warning: str | None = None
+    older_lots: list[OlderLotSummary] = []
 
 
 class ScanEnrichRequest(BaseModel):

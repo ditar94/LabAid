@@ -11,6 +11,7 @@ const ACTION_OPTIONS = [
     { value: "vial.depleted", label: "Depleted" },
     { value: "vial.returned_to_storage", label: "Returned to Storage" },
     { value: "vial.corrected", label: "Corrected" },
+    { value: "vials.moved", label: "Vials Moved" },
   ]},
   { group: "Lots", items: [
     { value: "lot.created", label: "Lot Created" },
@@ -232,11 +233,14 @@ function MonthPicker({
   );
 }
 
+const PAGE_SIZE = 100;
+
 export default function AuditPage() {
   const { user } = useAuth();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [hasMore, setHasMore] = useState(false);
 
   // Filter state
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
@@ -290,9 +294,12 @@ export default function AuditPage() {
     api.get("/lots/", { params }).then((r) => setLots(r.data));
   }, [filterAntibody, selectedLab]);
 
-  // Load audit logs
-  useEffect(() => {
-    const params: Record<string, string> = { limit: "200" };
+  // Build shared query params for audit fetches
+  const buildAuditParams = (offset: number): Record<string, string> => {
+    const params: Record<string, string> = {
+      limit: String(PAGE_SIZE),
+      offset: String(offset),
+    };
     if (user?.role === "super_admin" && selectedLab) params.lab_id = selectedLab;
     if (filterAntibody) params.antibody_id = filterAntibody;
     if (filterLot) params.lot_id = filterLot;
@@ -302,8 +309,25 @@ export default function AuditPage() {
       params.date_from = dp.date_from;
       params.date_to = dp.date_to;
     }
-    api.get("/audit/", { params }).then((r) => setLogs(r.data));
+    return params;
+  };
+
+  // Load first page of audit logs when filters change
+  useEffect(() => {
+    const params = buildAuditParams(0);
+    api.get("/audit/", { params }).then((r) => {
+      setLogs(r.data);
+      setHasMore(r.data.length === PAGE_SIZE);
+    });
   }, [filterAntibody, filterLot, filterActions, dateRange, selectedLab]);
+
+  const loadMore = () => {
+    const params = buildAuditParams(logs.length);
+    api.get("/audit/", { params }).then((r) => {
+      setLogs((prev) => [...prev, ...r.data]);
+      setHasMore(r.data.length === PAGE_SIZE);
+    });
+  };
 
   useEffect(() => {
     setRangeNoticeDismissed(false);
@@ -650,6 +674,13 @@ export default function AuditPage() {
           )}
         </tbody>
       </table>
+      {hasMore && (
+        <div style={{ textAlign: "center", padding: "1rem" }}>
+          <button className="btn-sm btn-secondary" onClick={loadMore}>
+            Load more
+          </button>
+        </div>
+      )}
     </div>
   );
 }

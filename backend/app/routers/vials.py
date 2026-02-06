@@ -10,12 +10,15 @@ from app.schemas.schemas import (
     ReturnToStorageRequest,
     VialCorrectionRequest,
     VialIntakeRequest,
+    VialMoveRequest,
+    VialMoveResult,
     VialOpenRequest,
     VialOut,
 )
 from app.services.vial_service import (
     correct_vial,
     deplete_vial,
+    move_vials,
     open_vial,
     receive_vials,
     return_to_storage,
@@ -77,10 +80,18 @@ def open_vial_endpoint(
     vial_id: UUID,
     body: VialOpenRequest,
     force: bool = False,
+    skip_older_lot_note: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
 ):
-    return open_vial(db, vial_id=vial_id, cell_id=body.cell_id, user=current_user, force=force)
+    return open_vial(
+        db,
+        vial_id=vial_id,
+        cell_id=body.cell_id,
+        user=current_user,
+        force=force,
+        skip_older_lot_note=skip_older_lot_note,
+    )
 
 
 @router.post("/{vial_id}/deplete", response_model=VialOut)
@@ -134,3 +145,21 @@ def revert_deplete(
         user=current_user,
         revert_to=VialStatus.OPENED,
     )
+
+
+@router.post("/move", response_model=VialMoveResult)
+def move_vials_endpoint(
+    body: VialMoveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
+):
+    """Move one or more vials to a different storage unit."""
+    vials = move_vials(
+        db,
+        vial_ids=body.vial_ids,
+        target_unit_id=body.target_unit_id,
+        start_cell_id=body.start_cell_id,
+        target_cell_ids=body.target_cell_ids,
+        user=current_user,
+    )
+    return VialMoveResult(moved_count=len(vials), vials=vials)

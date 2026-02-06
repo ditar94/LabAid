@@ -12,6 +12,9 @@ export default function LotCardList({
   onDeplete,
   onOpenDocs,
   onArchive,
+  onConsolidate,
+  onLotClick,
+  selectedLotId,
 }: LotListProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [expandedBarcode, setExpandedBarcode] = useState<string | null>(null);
@@ -50,7 +53,8 @@ export default function LotCardList({
         return (
           <div
             key={lot.id}
-            className={`lot-card${lot.is_archived ? " archived" : ""}`}
+            className={`lot-card${lot.is_archived || ((lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0) ? " archived" : ""}${onLotClick ? " clickable" : ""}${selectedLotId === lot.id ? " active" : ""}`}
+            onClick={() => onLotClick?.(lot)}
           >
             {/* Header: lot number + QC badge */}
             <div className="lot-card-header">
@@ -64,6 +68,12 @@ export default function LotCardList({
                 )}
                 {lot.is_archived && (
                   <span className="badge" style={{ fontSize: "0.7em", background: "#9ca3af", color: "#fff" }} title={lot.archive_note || undefined}>Archived</span>
+                )}
+                {!lot.is_archived && (lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0 && (
+                  <span className="badge" style={{ fontSize: "0.7em", background: "#9ca3af", color: "#fff" }}>Depleted</span>
+                )}
+                {lot.has_temp_storage && (
+                  <span className="temp-badge" style={{ fontSize: "0.65em", padding: "0.1rem 0.35rem" }}>In Temp Storage</span>
                 )}
               </div>
               <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -109,6 +119,24 @@ export default function LotCardList({
                 <span><strong>{lot.vial_counts?.total ?? 0}</strong></span>
               </div>
 
+              {/* Storage location */}
+              {lot.storage_locations && lot.storage_locations.length > 0 && (
+                <div className="lot-card-row" style={{ alignItems: "flex-start" }}>
+                  <span>Location</span>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
+                    {lot.storage_locations.map((loc) => (
+                      <span key={loc.unit_id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span>{loc.unit_name}</span>
+                        <span style={{ color: "var(--text-muted)" }}>({loc.vial_count})</span>
+                      </span>
+                    ))}
+                    {lot.is_split && (
+                      <span className="badge badge-yellow" style={{ fontSize: "0.65em" }}>Split</span>
+                    )}
+                  </span>
+                </div>
+              )}
+
               {/* Barcode tap-to-view */}
               {lot.vendor_barcode && (
                 <div className="lot-card-barcode">
@@ -135,13 +163,13 @@ export default function LotCardList({
 
             {/* Actions: primary + overflow */}
             {canQC && (
-              <div className="lot-card-actions">
+              <div className="lot-card-actions" onClick={(e) => e.stopPropagation()}>
                 <div className="lot-actions-wrapper" ref={openMenuId === lot.id ? menuRef : undefined}>
                   <button
                     className="lot-actions-trigger"
                     onClick={() => setOpenMenuId(openMenuId === lot.id ? null : lot.id)}
                   >
-                    Show
+                    Actions
                     <span className="lot-actions-caret">{openMenuId === lot.id ? "\u25B2" : "\u25BC"}</span>
                   </button>
                   {openMenuId === lot.id && (
@@ -159,9 +187,14 @@ export default function LotCardList({
                       <button className="btn-sm" onClick={() => { onOpenDocs(lot); setOpenMenuId(null); }}>
                         Docs{lot.documents?.length ? ` (${lot.documents.length})` : ""}
                       </button>
-                      <button className="btn-sm" onClick={() => { onArchive(lot.id, lot.lot_number, lot.is_archived); setOpenMenuId(null); }}>
+                      <button className="btn-sm" onClick={() => { onArchive(lot); setOpenMenuId(null); }}>
                         {lot.is_archived ? "Unarchive" : "Archive"}
                       </button>
+                      {lot.is_split && onConsolidate && (
+                        <button className="btn-sm" onClick={() => { onConsolidate(lot); setOpenMenuId(null); }}>
+                          Consolidate
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

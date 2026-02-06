@@ -1,13 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type FormEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
-import type { Antibody, Fluorochrome, Lab, Lot, StorageUnit, VialCounts } from "../api/types";
+import type { Antibody, Fluorochrome, Lab, Lot, StorageUnit, StorageGrid as StorageGridData, StorageCell, VialCounts } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import DatePicker from "../components/DatePicker";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import LotTable from "../components/LotTable";
 import LotCardList from "../components/LotCardList";
+import StorageGrid from "../components/StorageGrid";
+import OpenVialDialog from "../components/OpenVialDialog";
 
 function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
   lot: Lot;
@@ -140,6 +142,7 @@ type InventoryRow = {
 
 export default function InventoryPage() {
   const { user, labSettings } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedAntibodyId = searchParams.get("antibodyId");
   const requestedLabId = searchParams.get("labId");
@@ -158,7 +161,7 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [gridColumns, setGridColumns] = useState(1);
   const gridRef = useRef<HTMLDivElement>(null);
-  const [showArchived, setShowArchived] = useState(false);
+  const [showInactiveLots, setShowInactiveLots] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     lotId: string;
     lotNumber: string;
@@ -168,6 +171,11 @@ export default function InventoryPage() {
   } | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [archivePrompt, setArchivePrompt] = useState<{ lotId: string; lotNumber: string } | null>(null);
+  const [archiveWarning, setArchiveWarning] = useState<{
+    lotId: string;
+    lotNumber: string;
+    sealedCount: number;
+  } | null>(null);
   const [archiveNote, setArchiveNote] = useState("");
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [autoExpandedId, setAutoExpandedId] = useState<string | null>(null);
@@ -192,6 +200,16 @@ export default function InventoryPage() {
   const [modalLot, setModalLot] = useState<Lot | null>(null);
   const [qcBlockedLot, setQcBlockedLot] = useState<Lot | null>(null);
   const [docModalApproveAfter, setDocModalApproveAfter] = useState(false);
+
+  // Lot drill-down
+  const [drilldownLotId, setDrilldownLotId] = useState<string | null>(null);
+  const [drilldownGrids, setDrilldownGrids] = useState<Map<string, StorageGridData>>(new Map());
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
+  const [drilldownOpenTarget, setDrilldownOpenTarget] = useState<StorageCell | null>(null);
+  const [drilldownOpenLoading, setDrilldownOpenLoading] = useState(false);
+  const [drilldownStockUnitId, setDrilldownStockUnitId] = useState("");
+  const [drilldownStockLoading, setDrilldownStockLoading] = useState(false);
+  const [lotFormAvailableSlots, setLotFormAvailableSlots] = useState<number | null>(null);
 
   const [abForm, setAbForm] = useState({
     target: "",
@@ -243,8 +261,7 @@ export default function InventoryPage() {
     const params: Record<string, string> = { lab_id: selectedLab };
     const abParams: Record<string, string> = { ...params };
     if (showInactive) abParams.include_inactive = "true";
-    const lotParams: Record<string, string> = { ...params };
-    if (showArchived) lotParams.include_archived = "true";
+    const lotParams: Record<string, string> = { ...params, include_archived: "true" };
     const [abRes, lotRes, fluoroRes, storageRes] = await Promise.all([
       api.get<Antibody[]>("/antibodies/", { params: abParams }),
       api.get<Lot[]>("/lots/", { params: lotParams }),
@@ -261,7 +278,7 @@ export default function InventoryPage() {
     if (selectedLab) {
       loadData();
     }
-  }, [selectedLab, showArchived, showInactive]);
+  }, [selectedLab, showInactive]);
 
   useEffect(() => {
     if (!requestedAntibodyId) return;
@@ -309,7 +326,10 @@ export default function InventoryPage() {
     return map;
   }, [fluorochromes]);
 
-  const activeLots = useMemo(() => lots.filter((l) => !l.is_archived), [lots]);
+  const isLotInactive = (l: Lot) =>
+    l.is_archived || ((l.vial_counts?.sealed ?? 0) + (l.vial_counts?.opened ?? 0) === 0);
+
+  const activeLots = useMemo(() => lots.filter((l) => !isLotInactive(l)), [lots]);
 
   const allInventoryRows: InventoryRow[] = useMemo(() => {
     const counts = new Map<
@@ -484,11 +504,126 @@ export default function InventoryPage() {
       quantity: "1",
       storage_unit_id: "",
     });
+    setDrilldownLotId(null);
+    setDrilldownGrids(new Map());
+    setDrilldownOpenTarget(null);
   }, [expandedId]);
 
   const resetMessages = () => {
     setMessage(null);
     setError(null);
+  };
+
+  // ── Lot drill-down handlers ────────────────────────────────────────
+  const handleLotClick = async (lot: Lot) => {
+    if (drilldownLotId === lot.id) {
+      setDrilldownLotId(null);
+      setDrilldownGrids(new Map());
+      setDrilldownOpenTarget(null);
+      return;
+    }
+    setDrilldownLotId(lot.id);
+    setDrilldownOpenTarget(null);
+    setDrilldownGrids(new Map());
+    setDrilldownStockUnitId("");
+    const locations = lot.storage_locations ?? [];
+    if (locations.length === 0) return;
+    setDrilldownLoading(true);
+    try {
+      const grids = new Map<string, StorageGridData>();
+      await Promise.all(
+        locations.map(async (loc) => {
+          try {
+            const res = await api.get<StorageGridData>(`/storage/units/${loc.unit_id}/grid`);
+            grids.set(loc.unit_id, res.data);
+          } catch { /* skip failed grids */ }
+        })
+      );
+      setDrilldownGrids(grids);
+    } finally {
+      setDrilldownLoading(false);
+    }
+  };
+
+  const handleDrilldownCellClick = (cell: StorageCell) => {
+    if (!cell.vial || cell.vial.lot_id !== drilldownLotId) return;
+    if (cell.vial.status !== "sealed" && cell.vial.status !== "opened") return;
+    setDrilldownOpenTarget(cell);
+  };
+
+  const getDrilldownPopoutActions = useCallback(
+    (cell: StorageCell) => {
+      if (!cell.vial) return [];
+      const vial = cell.vial;
+      const actions: Array<{ label: string; onClick: () => void; variant?: "primary" | "danger" | "default" }> = [];
+      if (vial.status === "sealed") {
+        actions.push({ label: "Open", variant: "primary", onClick: () => handleDrilldownCellClick(cell) });
+      } else if (vial.status === "opened") {
+        actions.push({ label: "Deplete", variant: "danger", onClick: () => handleDrilldownCellClick(cell) });
+      }
+      return actions;
+    },
+    [drilldownLotId]
+  );
+
+  const handleDrilldownOpen = async (force: boolean) => {
+    if (!drilldownOpenTarget?.vial) return;
+    setDrilldownOpenLoading(true);
+    try {
+      await api.post(`/vials/${drilldownOpenTarget.vial.id}/open?force=${force}`);
+      setMessage(`Vial opened from cell ${drilldownOpenTarget.label}.`);
+      setDrilldownOpenTarget(null);
+      await loadData();
+      // Re-fetch grids
+      const lot = lots.find((l) => l.id === drilldownLotId);
+      if (lot) {
+        setDrilldownLotId(null);
+        setTimeout(() => handleLotClick(lot), 50);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to open vial");
+      setDrilldownOpenTarget(null);
+    } finally {
+      setDrilldownOpenLoading(false);
+    }
+  };
+
+  const handleDrilldownDeplete = async () => {
+    if (!drilldownOpenTarget?.vial) return;
+    setDrilldownOpenLoading(true);
+    try {
+      await api.post(`/vials/${drilldownOpenTarget.vial.id}/deplete`);
+      setMessage(`Vial depleted from cell ${drilldownOpenTarget.label}.`);
+      setDrilldownOpenTarget(null);
+      await loadData();
+      const lot = lots.find((l) => l.id === drilldownLotId);
+      if (lot) {
+        setDrilldownLotId(null);
+        setTimeout(() => handleLotClick(lot), 50);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to deplete vial");
+      setDrilldownOpenTarget(null);
+    } finally {
+      setDrilldownOpenLoading(false);
+    }
+  };
+
+  const handleDrilldownStock = async () => {
+    const lot = lots.find((l) => l.id === drilldownLotId);
+    if (!lot?.vendor_barcode || !drilldownStockUnitId) return;
+    setDrilldownStockLoading(true);
+    try {
+      await api.post(`/storage/units/${drilldownStockUnitId}/stock`, { barcode: lot.vendor_barcode });
+      setMessage("Vial stocked successfully.");
+      await loadData();
+      setDrilldownLotId(null);
+      setTimeout(() => handleLotClick(lot), 50);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to stock vial");
+    } finally {
+      setDrilldownStockLoading(false);
+    }
   };
 
   const handleCreateAntibody = async (e: FormEvent) => {
@@ -668,11 +803,38 @@ export default function InventoryPage() {
       await api.patch(`/lots/${lotId}/archive`, body);
       await loadData();
       setArchivePrompt(null);
+      setArchiveWarning(null);
       setArchiveNote("");
     } catch {
       // keep UI stable on failure
     } finally {
       setArchiveLoading(false);
+    }
+  };
+
+  const initiateArchive = (lot: Lot) => {
+    // If unarchiving, just do it directly
+    if (lot.is_archived) {
+      handleArchive(lot.id);
+      return;
+    }
+
+    const sealedCount = lot.vial_counts?.sealed ?? 0;
+    const isExpired = lot.expiration_date
+      ? new Date(lot.expiration_date) < new Date()
+      : false;
+
+    // Show warning if there are sealed vials and lot isn't expired
+    if (sealedCount > 0 && !isExpired) {
+      setArchiveWarning({
+        lotId: lot.id,
+        lotNumber: lot.lot_number,
+        sealedCount,
+      });
+    } else {
+      // Go directly to archive note prompt
+      setArchiveNote("");
+      setArchivePrompt({ lotId: lot.id, lotNumber: lot.lot_number });
     }
   };
 
@@ -913,7 +1075,8 @@ export default function InventoryPage() {
             row.antibody.fluorochrome.toLowerCase()
           );
           const expanded = expandedId === row.antibody.id;
-          const cardLots = lotsByAntibody.get(row.antibody.id) || [];
+          const allCardLots = lotsByAntibody.get(row.antibody.id) || [];
+          const cardLots = showInactiveLots ? allCardLots : allCardLots.filter((l) => !isLotInactive(l));
           const rowIndex = Math.floor(index / gridColumns) + 1;
           return (
             <div
@@ -940,31 +1103,36 @@ export default function InventoryPage() {
               <span className="corner-arrow corner-br" />
               <div className="inventory-card-header">
                 <div className="inventory-title">
-                  {fluoro && (
-                    <span
-                      className="color-dot"
-                      style={{ backgroundColor: fluoro.color }}
-                    />
-                  )}
+                  <div
+                    className={`fluoro-circle${canEdit ? " editable" : ""}`}
+                    style={{ backgroundColor: fluoro?.color || DEFAULT_FLUORO_COLOR }}
+                    title={canEdit ? "Click to change color" : undefined}
+                  >
+                    {canEdit && (
+                      <>
+                        <span className="fluoro-circle-icon">✎</span>
+                        <input
+                          type="color"
+                          className="fluoro-circle-input"
+                          value={fluoro?.color || DEFAULT_FLUORO_COLOR}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleUpdateFluoroColor(
+                              row.antibody.fluorochrome,
+                              e.target.value
+                            );
+                          }}
+                        />
+                      </>
+                    )}
+                  </div>
                   <span>
                     {row.antibody.target}-{row.antibody.fluorochrome}
                   </span>
                 </div>
                 {canEdit && (
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <input
-                      type="color"
-                      className="fluoro-color-input"
-                      value={fluoro?.color || DEFAULT_FLUORO_COLOR}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        handleUpdateFluoroColor(
-                          row.antibody.fluorochrome,
-                          e.target.value
-                        );
-                      }}
-                    />
                     <div
                       className="active-switch"
                       onClick={(e) => {
@@ -1037,10 +1205,10 @@ export default function InventoryPage() {
                       <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input
                           type="checkbox"
-                          checked={showArchived}
-                          onChange={() => setShowArchived(!showArchived)}
+                          checked={showInactiveLots}
+                          onChange={() => setShowInactiveLots(!showInactiveLots)}
                         />
-                        Show archived
+                        Show inactive
                       </label>
                       {canEdit && (
                         <button onClick={() => openEditForm(row.antibody)}>
@@ -1106,12 +1274,16 @@ export default function InventoryPage() {
                       />
                       <select
                         value={lotForm.storage_unit_id}
-                        onChange={(e) =>
-                          setLotForm({
-                            ...lotForm,
-                            storage_unit_id: e.target.value,
-                          })
-                        }
+                        onChange={(e) => {
+                          setLotForm({ ...lotForm, storage_unit_id: e.target.value });
+                          if (e.target.value) {
+                            api.get(`/storage/units/${e.target.value}/available-slots`)
+                              .then((r) => setLotFormAvailableSlots(r.data.available_cells))
+                              .catch(() => setLotFormAvailableSlots(null));
+                          } else {
+                            setLotFormAvailableSlots(null);
+                          }
+                        }}
                       >
                         <option value="">No storage assignment</option>
                         {storageUnits.map((u) => (
@@ -1120,6 +1292,14 @@ export default function InventoryPage() {
                           </option>
                         ))}
                       </select>
+                      {lotFormAvailableSlots !== null && lotForm.storage_unit_id && parseInt(lotForm.quantity) > lotFormAvailableSlots && (
+                        <p className="overflow-hint">
+                          Only {lotFormAvailableSlots} slot{lotFormAvailableSlots !== 1 ? "s" : ""} available.{" "}
+                          <button type="button" className="btn-sm" onClick={() => { setLotForm({ ...lotForm, storage_unit_id: "" }); setLotFormAvailableSlots(null); }}>
+                            Use Temp Storage
+                          </button>
+                        </p>
+                      )}
                       <button type="submit" disabled={loading}>
                         {loading ? "Saving..." : "Create Lot"}
                       </button>
@@ -1145,14 +1325,13 @@ export default function InventoryPage() {
                           })
                         }
                         onOpenDocs={(lot) => setModalLot(lot)}
-                        onArchive={(lotId, lotNumber, isArchived) => {
-                          if (isArchived) {
-                            handleArchive(lotId);
-                          } else {
-                            setArchiveNote("");
-                            setArchivePrompt({ lotId, lotNumber });
-                          }
+                        onArchive={initiateArchive}
+                        onConsolidate={(lot) => {
+                          const unitId = lot.storage_locations?.[0]?.unit_id;
+                          if (unitId) navigate(`/storage?lotId=${lot.id}&unitId=${unitId}`);
                         }}
+                        onLotClick={handleLotClick}
+                        selectedLotId={drilldownLotId}
                       />
                     ) : (
                       <LotTable
@@ -1172,19 +1351,90 @@ export default function InventoryPage() {
                           })
                         }
                         onOpenDocs={(lot) => setModalLot(lot)}
-                        onArchive={(lotId, lotNumber, isArchived) => {
-                          if (isArchived) {
-                            handleArchive(lotId);
-                          } else {
-                            setArchiveNote("");
-                            setArchivePrompt({ lotId, lotNumber });
-                          }
+                        onArchive={initiateArchive}
+                        onConsolidate={(lot) => {
+                          const unitId = lot.storage_locations?.[0]?.unit_id;
+                          if (unitId) navigate(`/storage?lotId=${lot.id}&unitId=${unitId}`);
                         }}
+                        onLotClick={handleLotClick}
+                        selectedLotId={drilldownLotId}
                       />
                     )
                   ) : (
                     <p className="empty">No lots for this antibody yet.</p>
                   )}
+
+                  {/* Lot drill-down panel */}
+                  {drilldownLotId && (() => {
+                    const ddLot = cardLots.find((l) => l.id === drilldownLotId);
+                    if (!ddLot) return null;
+                    const locations = ddLot.storage_locations ?? [];
+
+                    const highlightIds = new Set<string>();
+                    for (const [, grid] of drilldownGrids) {
+                      for (const cell of grid.cells) {
+                        if (cell.vial_id && cell.vial?.lot_id === drilldownLotId) {
+                          highlightIds.add(cell.vial_id);
+                        }
+                      }
+                    }
+
+                    const storedCount = locations.reduce((s, l) => s + l.vial_count, 0);
+                    const activeCount = (ddLot.vial_counts?.sealed ?? 0) + (ddLot.vial_counts?.opened ?? 0);
+                    const unstoredCount = Math.max(0, activeCount - storedCount);
+
+                    return (
+                      <div className="lot-drilldown-panel">
+                        <h4>Storage for Lot {ddLot.lot_number}</h4>
+                        {drilldownLoading && <p className="info">Loading grids...</p>}
+
+                        {locations.length === 0 && !drilldownLoading && (
+                          <p className="empty">No vials in storage for this lot.</p>
+                        )}
+
+                        {unstoredCount > 0 && !drilldownLoading && (
+                          <div className="lot-drilldown-stock">
+                            <span>{unstoredCount} unstored vial{unstoredCount !== 1 ? "s" : ""}.</span>
+                            {ddLot.vendor_barcode ? (
+                              <>
+                                <select value={drilldownStockUnitId} onChange={(e) => setDrilldownStockUnitId(e.target.value)}>
+                                  <option value="">Select storage unit</option>
+                                  {storageUnits.filter((u) => !u.is_temporary).map((u) => (
+                                    <option key={u.id} value={u.id}>{u.name} ({u.rows}x{u.cols})</option>
+                                  ))}
+                                </select>
+                                <button disabled={!drilldownStockUnitId || drilldownStockLoading} onClick={handleDrilldownStock}>
+                                  {drilldownStockLoading ? "Stocking..." : "Stock 1 Vial"}
+                                </button>
+                              </>
+                            ) : (
+                              <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Set vendor barcode to enable stocking.</span>
+                            )}
+                          </div>
+                        )}
+
+                        {locations.map((loc) => {
+                          const grid = drilldownGrids.get(loc.unit_id);
+                          if (!grid) return null;
+                          return (
+                            <div key={loc.unit_id} className="grid-container">
+                              <h4>{loc.unit_name}{grid.unit.temperature ? ` (${grid.unit.temperature})` : ""}</h4>
+                              <StorageGrid
+                                rows={grid.unit.rows}
+                                cols={grid.unit.cols}
+                                cells={grid.cells}
+                                highlightVialIds={highlightIds}
+                                onCellClick={handleDrilldownCellClick}
+                                clickMode="highlighted"
+                                fluorochromes={fluorochromes}
+                                popoutActions={getDrilldownPopoutActions}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -1451,6 +1701,16 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+      {drilldownOpenTarget && (
+        <OpenVialDialog
+          cell={drilldownOpenTarget}
+          loading={drilldownOpenLoading}
+          onConfirm={handleDrilldownOpen}
+          onDeplete={handleDrilldownDeplete}
+          onViewLot={() => setDrilldownOpenTarget(null)}
+          onCancel={() => setDrilldownOpenTarget(null)}
+        />
+      )}
       {modalLot && (
         <DocumentModal
           lot={modalLot}
@@ -1491,6 +1751,38 @@ export default function InventoryPage() {
                 Continue
               </button>
               <button className="btn-secondary" onClick={() => setQcBlockedLot(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {archiveWarning && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Archive Lot {archiveWarning.lotNumber}?</h2>
+            <p className="page-desc" style={{ color: "var(--warning)" }}>
+              This lot still has <strong>{archiveWarning.sealedCount}</strong> sealed vial{archiveWarning.sealedCount === 1 ? "" : "s"} available and is not expired.
+            </p>
+            <p className="page-desc">
+              Are you sure you want to archive this lot? Archived lots will no longer appear in storage grids.
+            </p>
+            <div className="action-btns" style={{ marginTop: "1rem" }}>
+              <button
+                className="btn-red"
+                onClick={() => {
+                  const { lotId, lotNumber } = archiveWarning;
+                  setArchiveWarning(null);
+                  setArchiveNote("");
+                  setArchivePrompt({ lotId, lotNumber });
+                }}
+              >
+                Yes, Continue to Archive
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => setArchiveWarning(null)}
+              >
                 Cancel
               </button>
             </div>

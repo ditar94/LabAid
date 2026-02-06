@@ -41,7 +41,11 @@ def _resolve_entity_label(db: Session, entity_type: str, entity_id: UUID) -> str
         elif entity_type == "vial":
             vial = db.get(Vial, entity_id)
             if vial and vial.lot:
-                label = f"Vial ({vial.lot.lot_number})"
+                ab = db.get(Antibody, vial.lot.antibody_id) if vial.lot.antibody_id else None
+                if ab:
+                    label = f"{ab.target}-{ab.fluorochrome} (Lot {vial.lot.lot_number})"
+                else:
+                    label = f"Vial ({vial.lot.lot_number})"
                 if vial.location_cell_id:
                     from app.models.models import StorageCell
                     cell = db.get(StorageCell, vial.location_cell_id)

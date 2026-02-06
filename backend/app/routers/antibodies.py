@@ -159,12 +159,15 @@ def search_antibodies(
         }
 
     # 4. Batch-query vials with storage locations (sealed or opened, in storage)
+    #    Exclude vials from archived lots so they don't create ghost locations
+    archived_lot_ids = {lot.id for lot in lots if lot.is_archived}
+    active_lot_ids = [lid for lid in lot_ids if lid not in archived_lot_ids]
     stored_vials = []
-    if lot_ids:
+    if active_lot_ids:
         stored_vials = (
             db.query(Vial.id, Vial.lot_id, Vial.location_cell_id)
             .filter(
-                Vial.lot_id.in_(lot_ids),
+                Vial.lot_id.in_(active_lot_ids),
                 Vial.location_cell_id.isnot(None),
                 Vial.status.in_([VialStatus.SEALED, VialStatus.OPENED]),
             )
@@ -210,6 +213,8 @@ def search_antibodies(
                 expiration_date=lot.expiration_date,
                 qc_status=lot.qc_status,
                 vial_counts=counts_map.get(lot.id, VialCounts()),
+                is_archived=lot.is_archived,
+                created_at=lot.created_at,
             )
             for lot in ab_lots
         ]

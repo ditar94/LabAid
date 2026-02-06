@@ -99,6 +99,23 @@ body {
   margin-bottom: 1rem;
 }
 
+.sidebar-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-close-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--sidebar-text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+}
+
 .sidebar-header h2 {
   color: #fff;
   font-size: 1.25rem;
@@ -583,11 +600,15 @@ td.mono {
   min-width: 300px;
 }
 
+/* ── Compact Storage Grid ────────────────────────────────────────────── */
+
 .storage-grid {
   background: var(--card-bg);
   border-radius: 8px;
   padding: 0.5rem;
   border: 1px solid var(--border);
+  width: fit-content;
+  overflow: visible;
 }
 
 .grid-header-corner {
@@ -596,65 +617,87 @@ td.mono {
 
 .grid-header {
   text-align: center;
-  font-size: 0.75rem;
+  font-size: 0.6rem;
   font-weight: 600;
   color: var(--text-muted);
-  padding: 0.25rem;
+  padding: 0;
+  line-height: 42px;
 }
 
 .grid-row-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.6rem;
   font-weight: 600;
   color: var(--text-muted);
+  height: 42px;
 }
 
 .grid-cell {
-  aspect-ratio: 1;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.65rem;
-  border-radius: 4px;
+  border-radius: 3px;
   background: #f1f5f9;
-  color: var(--text-muted);
   border: 2px solid transparent;
   transition: all 0.15s;
-  min-width: 28px;
-  min-height: 28px;
+  overflow: visible;
+  position: relative;
 }
 
+/* Occupied cell — uses fluorochrome tint from CSS custom property */
 .grid-cell.occupied {
-  background: #e2e8f0;
-  color: var(--text);
+  background: var(--fluoro-bg, #e2e8f0);
 }
 
+/* Occupied + clickable (storage page default) */
+.grid-cell.occupied-clickable {
+  background: var(--fluoro-bg, #e2e8f0);
+  cursor: pointer;
+}
+
+.grid-cell.occupied-clickable:hover {
+  background: var(--fluoro-bg-strong, #cbd5e1);
+  outline: 2px solid var(--fluoro-color, var(--primary));
+  outline-offset: -2px;
+  z-index: 50;
+}
+
+.grid-cell.occupied:hover {
+  z-index: 50;
+}
+
+/* Highlighted cells (viewing a specific lot) */
 .grid-cell.highlighted {
-  background: #3b82f6;
-  color: white;
+  background: var(--fluoro-bg-strong, #3b82f6);
   cursor: pointer;
   font-weight: 700;
+  outline: 2px solid var(--fluoro-color, #3b82f6);
+  outline-offset: -2px;
   animation: pulse 1.5s ease-in-out infinite;
 }
 
 .grid-cell.highlighted:hover {
-  background: #2563eb;
-  transform: scale(1.1);
+  transform: scale(1.15);
+  z-index: 50;
 }
 
+/* Recommended cell (oldest vial) */
 .grid-cell.recommended {
-  background: #f59e0b;
-  color: white;
+  background: var(--fluoro-bg-strong, #fef3c7);
   cursor: pointer;
   font-weight: 700;
+  outline: 2px solid #f59e0b;
+  outline-offset: -2px;
   animation: pulse-amber 1.5s ease-in-out infinite;
 }
 
 .grid-cell.recommended:hover {
-  background: #d97706;
-  transform: scale(1.1);
+  transform: scale(1.15);
+  z-index: 50;
 }
 
 @keyframes pulse-amber {
@@ -662,24 +705,20 @@ td.mono {
   50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2); }
 }
 
-.grid-cell.occupied-clickable {
-  background: #e2e8f0;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.grid-cell.occupied-clickable:hover {
-  background: #cbd5e1;
-  outline: 2px solid var(--primary);
-}
-
+/* Selected cell */
 .grid-cell.selected {
   background: var(--green);
   color: white;
   font-weight: 700;
-  border-color: #166534;
+  outline: 2px solid #166534;
+  outline-offset: -2px;
 }
 
+.grid-cell.selected .cell-abbrev {
+  color: white !important;
+}
+
+/* Next empty slot (stocking mode) */
 .grid-cell.next-empty {
   background: var(--orange);
   color: white;
@@ -687,31 +726,220 @@ td.mono {
   animation: pulse-orange 1.5s ease-in-out infinite;
 }
 
-.grid-cell.occupied .cell-vial-info {
-  font-size: 0.55rem;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+.grid-cell.next-empty .cell-label {
+  color: white;
 }
 
 @keyframes pulse-orange {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0);
-  }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(249, 115, 22, 0); }
 }
 
 @keyframes pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0);
-  }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
+}
+
+/* Cell content: abbreviated antibody target */
+.cell-abbrev {
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 38px;
+  text-align: center;
+}
+
+/* Cell content: position label for empty cells */
+.grid-cell .cell-label {
+  font-size: 0.5rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ── Phase 3: Visual encoding ────────────────────────────────────────── */
+
+/* Opened vial — thin dashed border (stays within the 2px transparent base) */
+.grid-cell.vial-opened {
+  border: 1.5px dashed var(--fluoro-color, #94a3b8);
+}
+
+
+/* Dimmed cells (non-relevant when viewing a specific lot) */
+.grid-cell.dimmed {
+  opacity: 0.3;
+}
+.grid-cell.dimmed:hover {
+  opacity: 1;
+}
+
+/* ── Cell Popout Detail Card ─────────────────────────────────────────── */
+
+.cell-popout {
+  position: absolute;
+  z-index: 100;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  white-space: nowrap;
+}
+
+/* Positioning: horizontal */
+.cell-popout.pop-right { left: 100%; margin-left: 4px; }
+.cell-popout.pop-left  { right: 100%; margin-right: 4px; }
+
+/* Positioning: vertical */
+.cell-popout.pop-down  { top: -4px; }
+.cell-popout.pop-up    { bottom: -4px; }
+
+/* Show on hover (desktop) — only when no cell is expanded */
+.storage-grid:not(.has-expanded) .grid-cell:hover > .cell-popout {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Show on tap (mobile) — via .expanded class */
+.grid-cell.expanded > .cell-popout {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Popout internals */
+.popout-header {
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+  line-height: 1.2;
+}
+
+.popout-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--text-secondary, #555);
+}
+
+.popout-label {
+  font-weight: 600;
+  color: var(--text-muted, #888);
+  min-width: 36px;
+}
+
+.popout-status {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+
+.popout-status-sealed { color: var(--blue, #3b82f6); }
+.popout-status-opened { color: var(--orange, #f97316); }
+.popout-status-depleted { color: var(--text-muted, #94a3b8); }
+
+.popout-cell-label {
+  font-size: 0.6rem;
+  color: var(--text-muted, #94a3b8);
+  margin-top: 0.25rem;
+  text-align: right;
+}
+
+.popout-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: var(--bg, #f8fafc);
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.popout-close:hover {
+  background: var(--border, #e2e8f0);
+  color: var(--text, #1e293b);
+}
+
+/* Enable pointer events on expanded popout so action buttons are clickable */
+.grid-cell.expanded > .cell-popout {
+  pointer-events: auto;
+}
+
+.popout-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.popout-action-btn {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--text);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.popout-action-btn:hover {
+  background: var(--border);
+}
+
+.popout-action-primary {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.popout-action-primary:hover {
+  background: var(--primary-hover, #1d4ed8);
+}
+
+.popout-action-danger {
+  background: var(--red, #ef4444);
+  color: white;
+  border-color: var(--red, #ef4444);
+}
+
+.popout-action-danger:hover {
+  background: #dc2626;
+}
+
+.badge-sm {
+  font-size: 0.6rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+}
+
+/* Ensure expanded cell is above neighbors */
+.grid-cell.expanded {
+  z-index: 50;
+  outline: 2px solid var(--fluoro-color, var(--primary));
+  outline-offset: -2px;
+  background: var(--fluoro-bg-strong, #cbd5e1);
 }
 
 /* ── Storage List ─────────────────────────────────────────────────────── */
@@ -751,6 +979,34 @@ td.mono {
   color: var(--text-muted);
 }
 
+.storage-card.temp-storage {
+  border-style: dashed;
+  border-color: var(--warning);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.storage-card.temp-storage.active {
+  border-color: var(--warning);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+
+.temp-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 4px;
+  background: var(--warning);
+  color: #000;
+  vertical-align: middle;
+}
+
+h2 .temp-badge {
+  font-size: 0.65rem;
+}
+
 /* ── Grid Legend ───────────────────────────────────────────────────────── */
 
 .grid-legend {
@@ -777,6 +1033,27 @@ td.mono {
 
 .legend-box.occupied {
   background: #e2e8f0;
+}
+
+.legend-box.sealed {
+  background: #dbeafe;
+  border: 2px solid transparent;
+}
+
+.legend-box.opened {
+  background: #dbeafe;
+  border: 1.5px dashed #94a3b8;
+}
+
+
+.legend-box.highlighted-legend {
+  background: rgba(59, 130, 246, 0.25);
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
+.grid-legend {
+  flex-wrap: wrap;
 }
 
 /* ── Feedback Messages ────────────────────────────────────────────────── */
@@ -1136,6 +1413,32 @@ td.mono {
   border-color: var(--orange) !important;
 }
 
+/* ── Move Vials Panel ─────────────────────────────────────────────────── */
+
+.move-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.move-controls {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.move-controls select {
+  min-width: 180px;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* ── Inline Registration Panel ────────────────────────────────────────── */
 
 .register-panel {
@@ -1320,6 +1623,15 @@ td.mono {
   background: #eff6ff;
 }
 
+.grid-cell.empty-clickable .cell-label {
+  color: var(--primary);
+}
+
+.grid-cell.preview-fill {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border: 2px dashed var(--primary) !important;
+}
+
 /* ── Temp Password Banner ────────────────────────────────────────────── */
 
 .temp-password-banner {
@@ -1445,6 +1757,139 @@ td.mono {
   gap: 0.5rem;
 }
 
+/* ── Older Lot Warning ───────────────────────────────────────────────── */
+
+.older-lot-warning {
+  background: #fff7ed;
+  border: 2px solid #f97316;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.older-lot-warning p {
+  margin: 0;
+  color: #9a3412;
+}
+
+.older-lot-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.older-lot-note {
+  margin-bottom: 0.75rem;
+  color: #78716c;
+}
+
+/* ── Lot Drill-Down Panel ────────────────────────────────────────────── */
+
+.lot-drilldown-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.lot-drilldown-panel h4 {
+  margin-bottom: 0.75rem;
+}
+
+.lot-drilldown-stock {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: #eff6ff;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.lot-drilldown-stock select {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.lot-drilldown-stock button {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.lot-card.clickable {
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.lot-card.clickable:hover {
+  border-color: var(--primary);
+}
+
+.lot-card.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+/* ── Smart Overflow ──────────────────────────────────────────────────── */
+
+.overflow-warning {
+  background: #fff7ed;
+  border: 2px solid #f97316;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin: 0.75rem 0;
+}
+
+.overflow-message {
+  margin-bottom: 0.75rem;
+  color: #9a3412;
+}
+
+.overflow-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.overflow-option {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  background: var(--card-bg);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.overflow-option:hover {
+  border-color: var(--primary);
+}
+
+.overflow-option.active {
+  border-color: var(--primary);
+  background: #eff6ff;
+}
+
+.overflow-split-config {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.overflow-split-config select {
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.overflow-hint {
+  color: #f97316;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
 /* ── Stability & Expiration ───────────────────────────────────────────── */
 
 .stability-input {
@@ -1498,26 +1943,7 @@ td.mono {
   flex-shrink: 0;
 }
 
-/* ── Storage Grid Cell Info ──────────────────────────────────────────── */
-
-.cell-vial-info {
-  font-size: 0.55rem;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.2;
-}
-
-.cell-exp-date {
-  font-size: 0.5rem;
-  font-weight: 400;
-  color: var(--text-muted);
-}
+/* (old cell-vial-info / cell-exp-date removed — replaced by compact .cell-abbrev) */
 
 /* ── Modal ───────────────────────────────────────────────────────────── */
 
@@ -1705,6 +2131,61 @@ td.mono {
   border: none;
   background: transparent;
   cursor: pointer;
+}
+
+/* Combined fluorochrome color circle + picker */
+.fluoro-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fluoro-circle.editable {
+  cursor: pointer;
+}
+
+.fluoro-circle.editable:hover {
+  border-color: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+}
+
+.fluoro-circle-icon {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.fluoro-circle.editable:hover .fluoro-circle-icon {
+  opacity: 1;
+}
+
+/* Always show icon on touch devices */
+@media (hover: none) {
+  .fluoro-circle-icon {
+    opacity: 0.7;
+    font-size: 0.6rem;
+  }
+}
+
+.fluoro-circle-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
 }
 
 .detail-header {
@@ -2255,6 +2736,52 @@ td.mono {
   margin-bottom: 0.25rem;
 }
 
+/* ── Dashboard Card List (mobile) ─────────────────────────────────────── */
+
+.dash-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dash-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+}
+
+.dash-card:active {
+  background: var(--hover-bg, #f8fafc);
+}
+
+.dash-card.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.dash-card-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.dash-card-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  padding: 0.15rem 0;
+}
+
+.dash-card-row > span:first-child {
+  color: var(--text-muted);
+}
+
 /* ── Dashboard Sections ───────────────────────────────────────────────── */
 
 .dashboard-section {
@@ -2396,18 +2923,28 @@ td.mono {
     justify-content: center;
   }
 
+  .sidebar-close-btn {
+    display: block;
+  }
+
   .sidebar {
     position: fixed;
     top: 0;
     left: 0;
-    bottom: 0;
     z-index: 1050;
+    height: 100dvh;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
+    overflow-y: hidden;
   }
 
   .sidebar.sidebar-open {
     transform: translateX(0);
+  }
+
+  .sidebar .nav-links {
+    overflow-y: auto;
+    min-height: 0;
   }
 
   .sidebar-overlay {
@@ -2421,6 +2958,12 @@ td.mono {
   /* ── Typography ─────────────────────────────────────────────────── */
   h1 {
     font-size: 1.25rem;
+  }
+
+  /* ── Lot actions menu: left-align on mobile ─────────────────── */
+  .lot-actions-menu {
+    right: auto;
+    left: 0;
   }
 
   /* ── Tables: wrap instead of scroll ──────────────────────────── */

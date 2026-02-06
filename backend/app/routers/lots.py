@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session, subqueryload
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.models import Antibody, Lab, Lot, LotDocument, QCStatus, User, UserRole, Vial, VialStatus
-from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotUpdateQC, LotWithCounts, VialCounts, VialOut
+from app.models.models import Antibody, Lab, Lot, LotDocument, QCStatus, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
+from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotStorageLocation, LotUpdateQC, LotWithCounts, VialCounts, VialOut
 from app.services.audit import log_audit, snapshot_lot
 from app.services.vial_service import deplete_all_opened, deplete_all_lot
 
@@ -78,9 +78,46 @@ def list_lots(
         .all()
     }
 
+    # Batch query: storage locations per lot
+    storage_locations_q = (
+        db.query(
+            Vial.lot_id,
+            StorageUnit.id.label("unit_id"),
+            StorageUnit.name.label("unit_name"),
+            StorageUnit.is_temporary,
+            func.count(Vial.id).label("vial_count"),
+        )
+        .join(StorageCell, Vial.location_cell_id == StorageCell.id)
+        .join(StorageUnit, StorageCell.storage_unit_id == StorageUnit.id)
+        .filter(
+            Vial.lot_id.in_(lot_ids),
+            Vial.location_cell_id.isnot(None),
+            Vial.status.in_([VialStatus.SEALED, VialStatus.OPENED]),
+        )
+        .group_by(Vial.lot_id, StorageUnit.id, StorageUnit.name, StorageUnit.is_temporary)
+        .all()
+    )
+
+    # Build storage locations map per lot
+    storage_map: dict[UUID, list[LotStorageLocation]] = {}
+    for row in storage_locations_q:
+        if row.lot_id not in storage_map:
+            storage_map[row.lot_id] = []
+        storage_map[row.lot_id].append(
+            LotStorageLocation(
+                unit_id=row.unit_id,
+                unit_name=row.unit_name,
+                is_temporary=row.is_temporary,
+                vial_count=row.vial_count,
+            )
+        )
+
     results = []
     for lot in lots:
         ab = ab_map.get(lot.antibody_id)
+        locations = storage_map.get(lot.id, [])
+        has_temp = any(loc.is_temporary for loc in locations)
+        is_split = len(locations) > 1
         results.append(
             LotWithCounts(
                 id=lot.id,
@@ -93,12 +130,16 @@ def list_lots(
                 qc_approved_by=lot.qc_approved_by,
                 qc_approved_at=lot.qc_approved_at,
                 is_archived=lot.is_archived,
+                archive_note=lot.archive_note,
                 created_at=lot.created_at,
                 vial_counts=counts_map.get(lot.id, VialCounts()),
                 antibody_target=ab.target if ab else None,
                 antibody_fluorochrome=ab.fluorochrome if ab else None,
                 documents=lot.documents,
                 has_qc_document=lot.id in qc_doc_lot_ids,
+                storage_locations=locations,
+                has_temp_storage=has_temp,
+                is_split=is_split,
             )
         )
 

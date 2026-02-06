@@ -4,6 +4,7 @@ interface Props {
   cell: StorageCell;
   loading: boolean;
   onConfirm: (force: boolean) => void;
+  onDeplete?: () => void;
   onViewLot: () => void;
   onCancel: () => void;
 }
@@ -12,14 +13,17 @@ export default function OpenVialDialog({
   cell,
   loading,
   onConfirm,
+  onDeplete,
   onViewLot,
   onCancel,
 }: Props) {
   const vial = cell.vial;
   if (!vial) return null;
 
+  const isOpened = vial.status === "opened";
+
   const needsQcWarning =
-    vial.qc_status && vial.qc_status !== "approved";
+    !isOpened && vial.qc_status && vial.qc_status !== "approved";
 
   return (
     <div className="open-vial-dialog-overlay" onClick={onCancel}>
@@ -29,7 +33,7 @@ export default function OpenVialDialog({
       >
         <h3>{vial.antibody_target} - {vial.antibody_fluorochrome}</h3>
         <p>
-          Lot: {vial.lot_number} | Cell: {cell.label}
+          Lot: {vial.lot_number} | Cell: {cell.label} | Status: {vial.status}
         </p>
 
         {needsQcWarning && (
@@ -39,17 +43,23 @@ export default function OpenVialDialog({
         )}
 
         <div className="action-btns">
-          <button
-            className={needsQcWarning ? "btn-red" : "btn-green"}
-            onClick={() => onConfirm(!!needsQcWarning)}
-            disabled={loading}
-          >
-            {loading
-              ? "Opening..."
-              : needsQcWarning
-              ? "Open Vial"
-              : "Open Vial"}
-          </button>
+          {isOpened && onDeplete ? (
+            <button
+              className="btn-red"
+              onClick={onDeplete}
+              disabled={loading}
+            >
+              {loading ? "Depleting..." : "Deplete"}
+            </button>
+          ) : (
+            <button
+              className={needsQcWarning ? "btn-red" : "btn-green"}
+              onClick={() => onConfirm(!!needsQcWarning)}
+              disabled={loading}
+            >
+              {loading ? "Opening..." : "Open Vial"}
+            </button>
+          )}
           <button onClick={onViewLot}>
             View Lot
           </button>
