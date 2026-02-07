@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import api from "../api/client";
 import type { Antibody, AuditLogEntry, AuditLogRange, Lab, Lot } from "../api/types";
 import { useAuth } from "../context/AuthContext";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Download } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 
 const ACTION_OPTIONS = [
@@ -238,6 +238,34 @@ function MonthPicker({
       )}
     </div>
   );
+}
+
+function csvEscape(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function exportAuditCsv(logs: AuditLogEntry[]) {
+  const headers = ["Timestamp", "User", "Action", "Entity Type", "Entity", "Note", "Support Action"];
+  const rows = logs.map((log) => [
+    new Date(log.created_at).toISOString(),
+    log.user_full_name || log.user_id,
+    log.action,
+    log.entity_type,
+    log.entity_label || log.entity_id,
+    log.note || "",
+    log.is_support_action ? "Yes" : "No",
+  ]);
+  const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 const PAGE_SIZE = 100;
@@ -482,6 +510,14 @@ export default function AuditPage() {
     <div>
       <div className="page-header">
         <h1>Audit Log</h1>
+        <button
+          className="btn-sm btn-secondary"
+          onClick={() => exportAuditCsv(logs)}
+          disabled={logs.length === 0}
+        >
+          <Download size={14} style={{ marginRight: 4, verticalAlign: -2 }} />
+          Export CSV
+        </button>
       </div>
 
       <div className="audit-filters">

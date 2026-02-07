@@ -108,12 +108,9 @@ export default function UsersPage() {
       { value: "tech", label: "Tech" },
       { value: "read_only", label: "Read Only" }
     );
-  } else if (currentUser?.role === "supervisor") {
-    roleOptions.push(
-      { value: "tech", label: "Tech" },
-      { value: "read_only", label: "Read Only" }
-    );
   }
+
+  const canManage = currentUser?.role === "super_admin" || currentUser?.role === "lab_admin";
 
   return (
     <div>
@@ -132,9 +129,11 @@ export default function UsersPage() {
               ))}
             </select>
           )}
-          <button onClick={() => setShowForm(!showForm)}>
-            {showForm ? "Cancel" : "+ New User"}
-          </button>
+          {canManage && (
+            <button onClick={() => setShowForm(!showForm)}>
+              {showForm ? "Cancel" : "+ New User"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -221,7 +220,7 @@ export default function UsersPage() {
                 <td>{u.role.replaceAll("_", " ")}</td>
                 <td>{u.is_active ? "Yes" : "No"}</td>
                 <td className="action-btns">
-                  {u.id !== currentUser?.id && (
+                  {canManage && u.id !== currentUser?.id && (
                     <button
                       className="btn-sm"
                       onClick={() => handleResetPassword(u.id)}

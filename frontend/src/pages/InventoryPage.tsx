@@ -179,7 +179,7 @@ export default function InventoryPage() {
   const [archiveNote, setArchiveNote] = useState("");
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [autoExpandedId, setAutoExpandedId] = useState<string | null>(null);
-  const [archiveAbPrompt, setArchiveAbPrompt] = useState<{ id: string; target: string; fluorochrome: string } | null>(null);
+  const [archiveAbPrompt, setArchiveAbPrompt] = useState<{ id: string; label: string } | null>(null);
   const [archiveAbNote, setArchiveAbNote] = useState("");
   const [archiveAbLoading, setArchiveAbLoading] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
@@ -195,7 +195,8 @@ export default function InventoryPage() {
     catalog_number: "",
     designation: "ruo" as Designation,
     name: "",
-    components: [] as Array<{ target: string; fluorochrome: string; clone: string }>,
+    short_code: "",
+    color: "#6366f1",
     stability_days: "",
     low_stock_threshold: "",
     approved_low_threshold: "",
@@ -214,6 +215,9 @@ export default function InventoryPage() {
   const [drilldownStockUnitId, setDrilldownStockUnitId] = useState("");
   const [drilldownStockLoading, setDrilldownStockLoading] = useState(false);
   const [lotFormAvailableSlots, setLotFormAvailableSlots] = useState<number | null>(null);
+  const [editLot, setEditLot] = useState<Lot | null>(null);
+  const [editLotForm, setEditLotForm] = useState({ lot_number: "", vendor_barcode: "", expiration_date: "" });
+  const [editLotLoading, setEditLotLoading] = useState(false);
 
   const [abForm, setAbForm] = useState({
     target: "",
@@ -225,7 +229,8 @@ export default function InventoryPage() {
     catalog_number: "",
     designation: "ruo" as Designation,
     name: "",
-    components: [] as Array<{ target: string; fluorochrome: string; clone: string }>,
+    short_code: "",
+    color: "#6366f1",
     stability_days: "",
     low_stock_threshold: "",
     approved_low_threshold: "",
@@ -243,6 +248,7 @@ export default function InventoryPage() {
     user?.role === "super_admin" ||
     user?.role === "lab_admin" ||
     user?.role === "supervisor";
+  const canReceive = canEdit || user?.role === "tech";
   const canQC = canEdit;
   const isMobile = useMediaQuery("(max-width: 768px)");
 
@@ -253,6 +259,7 @@ export default function InventoryPage() {
       if (archivePrompt) { setArchivePrompt(null); return; }
       if (archiveWarning) { setArchiveWarning(null); return; }
       if (qcBlockedLot) { setQcBlockedLot(null); return; }
+      if (editLot) { setEditLot(null); return; }
       if (editAbId) { setEditAbId(null); return; }
       if (confirmAction) { setConfirmAction(null); return; }
       if (archiveAbPrompt) { setArchiveAbPrompt(null); return; }
@@ -260,7 +267,7 @@ export default function InventoryPage() {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [archivePrompt, archiveWarning, qcBlockedLot, editAbId, confirmAction, archiveAbPrompt, modalLot]);
+  }, [archivePrompt, archiveWarning, qcBlockedLot, editLot, editAbId, confirmAction, archiveAbPrompt, modalLot]);
 
   useEffect(() => {
     if (user?.role === "super_admin") {
@@ -397,11 +404,11 @@ export default function InventoryPage() {
             c.sealed < ab.low_stock_threshold,
         };
       })
-      .sort((a, b) =>
-        `${a.antibody.target}-${a.antibody.fluorochrome}`.localeCompare(
-          `${b.antibody.target}-${b.antibody.fluorochrome}`
-        )
-      );
+      .sort((a, b) => {
+        const labelA = a.antibody.name || [a.antibody.target, a.antibody.fluorochrome].filter(Boolean).join("-") || "";
+        const labelB = b.antibody.name || [b.antibody.target, b.antibody.fluorochrome].filter(Boolean).join("-") || "";
+        return labelA.localeCompare(labelB);
+      });
   }, [antibodies, activeLots]);
 
   const inventoryRows = useMemo(
@@ -596,7 +603,7 @@ export default function InventoryPage() {
     if (!drilldownOpenTarget?.vial) return;
     setDrilldownOpenLoading(true);
     try {
-      await api.post(`/vials/${drilldownOpenTarget.vial.id}/open?force=${force}`);
+      await api.post(`/vials/${drilldownOpenTarget.vial.id}/open?force=${force}`, { cell_id: drilldownOpenTarget.id });
       setMessage(`Vial opened from cell ${drilldownOpenTarget.label}.`);
       setDrilldownOpenTarget(null);
       await loadData();
@@ -658,53 +665,56 @@ export default function InventoryPage() {
     resetMessages();
     setLoading(true);
     try {
-      let fluoroName = abForm.fluorochrome_choice;
+      const isIVD = abForm.designation === "ivd";
+      let fluoroName: string | null = null;
       const params: Record<string, string> = {};
       if (user?.role === "super_admin" && selectedLab) {
         params.lab_id = selectedLab;
       }
 
-      if (fluoroName === NEW_FLUORO_VALUE) {
-        const name = abForm.new_fluorochrome.trim();
-        if (!name) {
-          setError("Please enter a fluorochrome name.");
+      if (!isIVD) {
+        fluoroName = abForm.fluorochrome_choice;
+        if (fluoroName === NEW_FLUORO_VALUE) {
+          const name = abForm.new_fluorochrome.trim();
+          if (!name) {
+            setError("Please enter a fluorochrome name.");
+            setLoading(false);
+            return;
+          }
+          const existing = fluorochromeByName.get(name.toLowerCase());
+          if (!existing) {
+            await api.post(
+              "/fluorochromes/",
+              { name, color: abForm.new_fluoro_color },
+              { params }
+            );
+          } else if (existing.color !== abForm.new_fluoro_color) {
+            await api.patch(`/fluorochromes/${existing.id}`, {
+              color: abForm.new_fluoro_color,
+            });
+          }
+          fluoroName = name;
+        }
+
+        if (!fluoroName) {
+          setError("Please select a fluorochrome.");
           setLoading(false);
           return;
         }
-        const existing = fluorochromeByName.get(name.toLowerCase());
-        if (!existing) {
-          await api.post(
-            "/fluorochromes/",
-            { name, color: abForm.new_fluoro_color },
-            { params }
-          );
-        } else if (existing.color !== abForm.new_fluoro_color) {
-          await api.patch(`/fluorochromes/${existing.id}`, {
-            color: abForm.new_fluoro_color,
-          });
-        }
-        fluoroName = name;
-      }
-
-      if (!fluoroName) {
-        setError("Please select a fluorochrome.");
-        setLoading(false);
-        return;
       }
 
       await api.post(
         "/antibodies/",
         {
-          target: abForm.target,
-          fluorochrome: fluoroName,
-          clone: abForm.clone || null,
+          target: isIVD ? null : abForm.target,
+          fluorochrome: isIVD ? null : fluoroName,
+          clone: isIVD ? null : (abForm.clone || null),
           vendor: abForm.vendor || null,
           catalog_number: abForm.catalog_number || null,
           designation: abForm.designation,
           name: abForm.name.trim() || null,
-          components: abForm.designation === "ivd" && abForm.components.length > 0
-            ? abForm.components.map((c, i) => ({ target: c.target, fluorochrome: c.fluorochrome, clone: c.clone || null, ordinal: i }))
-            : null,
+          short_code: isIVD ? (abForm.short_code.trim() || null) : null,
+          color: isIVD ? (abForm.color || null) : null,
           stability_days: abForm.stability_days
             ? parseInt(abForm.stability_days, 10)
             : null,
@@ -728,7 +738,8 @@ export default function InventoryPage() {
         catalog_number: "",
         designation: "ruo",
         name: "",
-        components: [],
+        short_code: "",
+        color: "#6366f1",
         stability_days: "",
         low_stock_threshold: "",
         approved_low_threshold: "",
@@ -763,10 +774,40 @@ export default function InventoryPage() {
     }
   };
 
+  const openEditLot = (lot: Lot) => {
+    setEditLotForm({
+      lot_number: lot.lot_number,
+      vendor_barcode: lot.vendor_barcode || "",
+      expiration_date: lot.expiration_date || "",
+    });
+    setEditLot(lot);
+  };
+
+  const handleEditLot = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editLot) return;
+    resetMessages();
+    setEditLotLoading(true);
+    try {
+      await api.patch(`/lots/${editLot.id}`, {
+        lot_number: editLotForm.lot_number,
+        vendor_barcode: editLotForm.vendor_barcode || null,
+        expiration_date: editLotForm.expiration_date || null,
+      });
+      setMessage("Lot updated.");
+      setEditLot(null);
+      await loadData();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to update lot");
+    } finally {
+      setEditLotLoading(false);
+    }
+  };
+
   const handleCreateLot = async (e: FormEvent) => {
     e.preventDefault();
     const targetAntibody = antibodies.find((a) => a.id === expandedId) || null;
-    if (!canEdit || !targetAntibody) return;
+    if (!canReceive || !targetAntibody) return;
     resetMessages();
     setLoading(true);
     try {
@@ -888,10 +929,10 @@ export default function InventoryPage() {
   };
 
   const openEditForm = (ab: Antibody) => {
-    const fluoro = fluorochromeByName.get(ab.fluorochrome.toLowerCase());
+    const fluoro = ab.fluorochrome ? fluorochromeByName.get(ab.fluorochrome.toLowerCase()) : undefined;
     setEditAbForm({
-      target: ab.target,
-      fluorochrome_choice: ab.fluorochrome,
+      target: ab.target || "",
+      fluorochrome_choice: ab.fluorochrome || "",
       new_fluorochrome: "",
       new_fluoro_color: fluoro?.color || DEFAULT_FLUORO_COLOR,
       clone: ab.clone || "",
@@ -899,7 +940,8 @@ export default function InventoryPage() {
       catalog_number: ab.catalog_number || "",
       designation: ab.designation,
       name: ab.name || "",
-      components: (ab.components || []).map(c => ({ target: c.target, fluorochrome: c.fluorochrome, clone: c.clone || "" })),
+      short_code: ab.short_code || "",
+      color: ab.color || "#6366f1",
       stability_days: ab.stability_days != null ? String(ab.stability_days) : "",
       low_stock_threshold: ab.low_stock_threshold != null ? String(ab.low_stock_threshold) : "",
       approved_low_threshold: ab.approved_low_threshold != null ? String(ab.approved_low_threshold) : "",
@@ -913,12 +955,13 @@ export default function InventoryPage() {
     resetMessages();
     setEditAbLoading(true);
     try {
-      let fluoroName = editAbForm.fluorochrome_choice;
+      const isIVD = editAbForm.designation === "ivd";
+      let fluoroName: string | null = isIVD ? null : editAbForm.fluorochrome_choice;
       const params: Record<string, string> = {};
       if (user?.role === "super_admin" && selectedLab) {
         params.lab_id = selectedLab;
       }
-      if (fluoroName === NEW_FLUORO_VALUE) {
+      if (!isIVD && fluoroName === NEW_FLUORO_VALUE) {
         const name = editAbForm.new_fluorochrome.trim();
         if (!name) {
           setError("Please enter a fluorochrome name.");
@@ -940,16 +983,15 @@ export default function InventoryPage() {
         fluoroName = name;
       }
       await api.patch(`/antibodies/${editAbId}`, {
-        target: editAbForm.target,
-        fluorochrome: fluoroName,
-        clone: editAbForm.clone || null,
+        target: isIVD ? null : editAbForm.target,
+        fluorochrome: isIVD ? null : fluoroName,
+        clone: isIVD ? null : (editAbForm.clone || null),
         vendor: editAbForm.vendor || null,
         catalog_number: editAbForm.catalog_number || null,
         designation: editAbForm.designation,
         name: editAbForm.name.trim() || null,
-        components: editAbForm.designation === "ivd" && editAbForm.components.length > 0
-          ? editAbForm.components.map((c, i) => ({ target: c.target, fluorochrome: c.fluorochrome, clone: c.clone || null, ordinal: i }))
-          : editAbForm.designation === "ivd" ? [] : null,
+        short_code: isIVD ? (editAbForm.short_code.trim() || null) : null,
+        color: isIVD ? (editAbForm.color || null) : null,
         stability_days: editAbForm.stability_days
           ? parseInt(editAbForm.stability_days, 10)
           : null,
@@ -1027,64 +1069,6 @@ export default function InventoryPage() {
 
       {showAbForm && (
         <form className="inline-form" onSubmit={handleCreateAntibody}>
-          <input
-            placeholder="Target (e.g., CD3)"
-            value={abForm.target}
-            onChange={(e) => setAbForm({ ...abForm, target: e.target.value })}
-            required
-          />
-          <select
-            value={abForm.fluorochrome_choice}
-            onChange={(e) =>
-              setAbForm({ ...abForm, fluorochrome_choice: e.target.value })
-            }
-            required
-          >
-            <option value="">Select Fluorochrome</option>
-            <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
-            {fluorochromes.map((f) => (
-              <option key={f.id} value={f.name}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-          {abForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
-            <>
-              <input
-                placeholder="New Fluorochrome"
-                value={abForm.new_fluorochrome}
-                onChange={(e) =>
-                  setAbForm({ ...abForm, new_fluorochrome: e.target.value })
-                }
-                required
-              />
-              <input
-                type="color"
-                value={abForm.new_fluoro_color}
-                onChange={(e) =>
-                  setAbForm({ ...abForm, new_fluoro_color: e.target.value })
-                }
-                required
-              />
-            </>
-          )}
-          <input
-            placeholder="Clone"
-            value={abForm.clone}
-            onChange={(e) => setAbForm({ ...abForm, clone: e.target.value })}
-          />
-          <input
-            placeholder="Vendor"
-            value={abForm.vendor}
-            onChange={(e) => setAbForm({ ...abForm, vendor: e.target.value })}
-          />
-          <input
-            placeholder="Catalog #"
-            value={abForm.catalog_number}
-            onChange={(e) =>
-              setAbForm({ ...abForm, catalog_number: e.target.value })
-            }
-          />
           <select
             value={abForm.designation}
             onChange={(e) =>
@@ -1103,20 +1087,83 @@ export default function InventoryPage() {
                 onChange={(e) => setAbForm({ ...abForm, name: e.target.value })}
                 required
               />
-              <div className="component-picker">
-                <label style={{ fontSize: "0.85em", fontWeight: 500 }}>Components</label>
-                {abForm.components.map((comp, idx) => (
-                  <div key={idx} className="component-picker-row">
-                    <input placeholder="Target" value={comp.target} onChange={(e) => { const c = [...abForm.components]; c[idx] = { ...c[idx], target: e.target.value }; setAbForm({ ...abForm, components: c }); }} required />
-                    <input placeholder="Fluorochrome" value={comp.fluorochrome} onChange={(e) => { const c = [...abForm.components]; c[idx] = { ...c[idx], fluorochrome: e.target.value }; setAbForm({ ...abForm, components: c }); }} required />
-                    <input placeholder="Clone" value={comp.clone} onChange={(e) => { const c = [...abForm.components]; c[idx] = { ...c[idx], clone: e.target.value }; setAbForm({ ...abForm, components: c }); }} />
-                    <button type="button" className="btn-icon" onClick={() => setAbForm({ ...abForm, components: abForm.components.filter((_, i) => i !== idx) })} title="Remove">&times;</button>
-                  </div>
-                ))}
-                <button type="button" className="btn-sm" onClick={() => setAbForm({ ...abForm, components: [...abForm.components, { target: "", fluorochrome: "", clone: "" }] })}>+ Add Component</button>
-              </div>
+              <input
+                placeholder="Short Code (e.g., MT34)"
+                value={abForm.short_code}
+                onChange={(e) => setAbForm({ ...abForm, short_code: e.target.value.slice(0, 5) })}
+                maxLength={5}
+                required
+              />
+              <input
+                type="color"
+                value={abForm.color}
+                onChange={(e) => setAbForm({ ...abForm, color: e.target.value })}
+                title="Grid cell color"
+              />
             </>
           )}
+          {abForm.designation !== "ivd" && (
+            <>
+              <input
+                placeholder="Target (e.g., CD3)"
+                value={abForm.target}
+                onChange={(e) => setAbForm({ ...abForm, target: e.target.value })}
+                required
+              />
+              <select
+                value={abForm.fluorochrome_choice}
+                onChange={(e) =>
+                  setAbForm({ ...abForm, fluorochrome_choice: e.target.value })
+                }
+                required
+              >
+                <option value="">Select Fluorochrome</option>
+                <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
+                {fluorochromes.map((f) => (
+                  <option key={f.id} value={f.name}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+              {abForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
+                <>
+                  <input
+                    placeholder="New Fluorochrome"
+                    value={abForm.new_fluorochrome}
+                    onChange={(e) =>
+                      setAbForm({ ...abForm, new_fluorochrome: e.target.value })
+                    }
+                    required
+                  />
+                  <input
+                    type="color"
+                    value={abForm.new_fluoro_color}
+                    onChange={(e) =>
+                      setAbForm({ ...abForm, new_fluoro_color: e.target.value })
+                    }
+                    required
+                  />
+                </>
+              )}
+              <input
+                placeholder="Clone"
+                value={abForm.clone}
+                onChange={(e) => setAbForm({ ...abForm, clone: e.target.value })}
+              />
+            </>
+          )}
+          <input
+            placeholder="Vendor"
+            value={abForm.vendor}
+            onChange={(e) => setAbForm({ ...abForm, vendor: e.target.value })}
+          />
+          <input
+            placeholder="Catalog #"
+            value={abForm.catalog_number}
+            onChange={(e) =>
+              setAbForm({ ...abForm, catalog_number: e.target.value })
+            }
+          />
           <input
             type="number"
             placeholder="Stability (days)"
@@ -1154,9 +1201,10 @@ export default function InventoryPage() {
 
       <div className="inventory-grid stagger-reveal" ref={gridRef}>
         {inventoryRows.map((row, index) => {
-          const fluoro = fluorochromeByName.get(
+          const fluoro = row.antibody.fluorochrome ? fluorochromeByName.get(
             row.antibody.fluorochrome.toLowerCase()
-          );
+          ) : undefined;
+          const abColor = fluoro?.color || row.antibody.color || undefined;
           const expanded = expandedId === row.antibody.id;
           const allCardLots = lotsByAntibody.get(row.antibody.id) || [];
           const cardLots = showInactiveLots ? allCardLots : allCardLots.filter((l) => !isLotInactive(l));
@@ -1187,11 +1235,11 @@ export default function InventoryPage() {
               <div className="inventory-card-header">
                 <div className="inventory-title">
                   <div
-                    className={`fluoro-circle${canEdit ? " editable" : ""}`}
-                    style={{ backgroundColor: fluoro?.color || DEFAULT_FLUORO_COLOR }}
-                    title={canEdit ? "Click to change color" : undefined}
+                    className={`fluoro-circle${canEdit && row.antibody.fluorochrome ? " editable" : ""}`}
+                    style={{ backgroundColor: abColor || DEFAULT_FLUORO_COLOR }}
+                    title={canEdit && row.antibody.fluorochrome ? "Click to change color" : undefined}
                   >
-                    {canEdit && (
+                    {canEdit && row.antibody.fluorochrome && (
                       <>
                         <span className="fluoro-circle-icon">✎</span>
                         <input
@@ -1202,7 +1250,7 @@ export default function InventoryPage() {
                           onChange={(e) => {
                             e.stopPropagation();
                             handleUpdateFluoroColor(
-                              row.antibody.fluorochrome,
+                              row.antibody.fluorochrome!,
                               e.target.value
                             );
                           }}
@@ -1211,17 +1259,14 @@ export default function InventoryPage() {
                     )}
                   </div>
                   <span>
-                    {row.antibody.name || `${row.antibody.target}-${row.antibody.fluorochrome}`}
-                    {row.antibody.name && (
+                    {row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed"}
+                    {row.antibody.name && row.antibody.target && row.antibody.fluorochrome && (
                       <span className="inventory-subtitle">{row.antibody.target}-{row.antibody.fluorochrome}</span>
                     )}
                   </span>
                   <span className={`badge badge-designation-${row.antibody.designation}`} style={{ fontSize: "0.7em", marginLeft: 6 }}>
                     {row.antibody.designation.toUpperCase()}
                   </span>
-                  {row.antibody.components && row.antibody.components.length > 0 && (
-                    <span className="component-list">Contains: {row.antibody.components.map(c => `${c.target}-${c.fluorochrome}`).join(", ")}</span>
-                  )}
                 </div>
                 {canEdit && (
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -1232,8 +1277,7 @@ export default function InventoryPage() {
                         setArchiveAbNote("");
                         setArchiveAbPrompt({
                           id: row.antibody.id,
-                          target: row.antibody.target,
-                          fluorochrome: row.antibody.fluorochrome,
+                          label: row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed",
                         });
                       }}
                       title="Set this antibody as inactive"
@@ -1307,7 +1351,7 @@ export default function InventoryPage() {
                           Edit Antibody
                         </button>
                       )}
-                      {canEdit && (
+                      {canReceive && (
                         <button onClick={() => setShowLotForm(!showLotForm)}>
                           {showLotForm ? "Cancel" : "+ New Lot"}
                         </button>
@@ -1418,6 +1462,7 @@ export default function InventoryPage() {
                         }
                         onOpenDocs={(lot) => setModalLot(lot)}
                         onArchive={initiateArchive}
+                        onEditLot={openEditLot}
                         onConsolidate={(lot) => {
                           const unitId = lot.storage_locations?.[0]?.unit_id;
                           if (unitId) navigate(`/storage?lotId=${lot.id}&unitId=${unitId}`);
@@ -1444,6 +1489,7 @@ export default function InventoryPage() {
                         }
                         onOpenDocs={(lot) => setModalLot(lot)}
                         onArchive={initiateArchive}
+                        onEditLot={openEditLot}
                         onConsolidate={(lot) => {
                           const unitId = lot.storage_locations?.[0]?.unit_id;
                           if (unitId) navigate(`/storage?lotId=${lot.id}&unitId=${unitId}`);
@@ -1510,7 +1556,10 @@ export default function InventoryPage() {
                           if (!grid) return null;
                           return (
                             <div key={loc.unit_id} className="grid-container">
-                              <h4>{loc.unit_name}{grid.unit.temperature ? ` (${grid.unit.temperature})` : ""}</h4>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-sm)" }}>
+                                <h4 style={{ margin: 0 }}>{loc.unit_name}{grid.unit.temperature ? ` (${grid.unit.temperature})` : ""}</h4>
+                                <button className="link-btn" onClick={() => navigate(`/storage?unitId=${loc.unit_id}`)} title="Open in Storage page">Manage</button>
+                              </div>
                               <StorageGrid
                                 rows={grid.unit.rows}
                                 cols={grid.unit.cols}
@@ -1559,20 +1608,21 @@ export default function InventoryPage() {
             </thead>
             <tbody>
               {inactiveRows.map((row) => {
-                const fluoro = fluorochromeByName.get(
+                const fluoro = row.antibody.fluorochrome ? fluorochromeByName.get(
                   row.antibody.fluorochrome.toLowerCase()
-                );
+                ) : undefined;
+                const inactiveColor = fluoro?.color || row.antibody.color;
                 return (
                   <tr key={row.antibody.id}>
                     <td>
-                      {fluoro && (
+                      {inactiveColor && (
                         <span
                           className="color-dot"
-                          style={{ backgroundColor: fluoro.color }}
+                          style={{ backgroundColor: inactiveColor }}
                         />
                       )}
-                      {row.antibody.name || `${row.antibody.target}-${row.antibody.fluorochrome}`}
-                      {row.antibody.name && <span className="inventory-subtitle">{row.antibody.target}-{row.antibody.fluorochrome}</span>}
+                      {row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed"}
+                      {row.antibody.name && row.antibody.target && row.antibody.fluorochrome && <span className="inventory-subtitle">{row.antibody.target}-{row.antibody.fluorochrome}</span>}
                     </td>
                     <td><span className={`badge badge-designation-${row.antibody.designation}`}>{row.antibody.designation.toUpperCase()}</span></td>
                     <td>{row.antibody.vendor || "—"}</td>
@@ -1601,7 +1651,7 @@ export default function InventoryPage() {
       {archiveAbPrompt && (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Set antibody inactive">
           <div className="modal-content">
-            <h2>Set Inactive: {archiveAbPrompt.target}-{archiveAbPrompt.fluorochrome}</h2>
+            <h2>Set Inactive: {archiveAbPrompt.label}</h2>
             <p className="page-desc">
               This antibody will be moved to the inactive list. You can reactivate it later.
             </p>
@@ -1673,40 +1723,36 @@ export default function InventoryPage() {
             <h2>Edit Antibody</h2>
             <form onSubmit={handleEditAntibody} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
               <div className="form-group">
-                <label>Target</label>
-                <input
-                  value={editAbForm.target}
-                  onChange={(e) => setEditAbForm({ ...editAbForm, target: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Fluorochrome</label>
+                <label>Designation</label>
                 <select
-                  value={editAbForm.fluorochrome_choice}
+                  value={editAbForm.designation}
                   onChange={(e) =>
-                    setEditAbForm({ ...editAbForm, fluorochrome_choice: e.target.value })
+                    setEditAbForm({ ...editAbForm, designation: e.target.value as Designation })
                   }
-                  required
                 >
-                  <option value="">Select Fluorochrome</option>
-                  <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
-                  {fluorochromes.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
+                  <option value="ruo">RUO</option>
+                  <option value="asr">ASR</option>
+                  <option value="ivd">IVD</option>
                 </select>
               </div>
-              {editAbForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
+              {editAbForm.designation === "ivd" ? (
                 <>
                   <div className="form-group">
-                    <label>New Fluorochrome Name</label>
+                    <label>Product Name</label>
                     <input
-                      value={editAbForm.new_fluorochrome}
-                      onChange={(e) =>
-                        setEditAbForm({ ...editAbForm, new_fluorochrome: e.target.value })
-                      }
+                      value={editAbForm.name}
+                      onChange={(e) => setEditAbForm({ ...editAbForm, name: e.target.value })}
+                      placeholder="IVD product name"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Short Code (for grid cells)</label>
+                    <input
+                      value={editAbForm.short_code}
+                      onChange={(e) => setEditAbForm({ ...editAbForm, short_code: e.target.value.slice(0, 5) })}
+                      placeholder="e.g., MT34"
+                      maxLength={5}
                       required
                     />
                   </div>
@@ -1714,21 +1760,72 @@ export default function InventoryPage() {
                     <label>Color</label>
                     <input
                       type="color"
-                      value={editAbForm.new_fluoro_color}
+                      value={editAbForm.color}
+                      onChange={(e) => setEditAbForm({ ...editAbForm, color: e.target.value })}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label>Target</label>
+                    <input
+                      value={editAbForm.target}
+                      onChange={(e) => setEditAbForm({ ...editAbForm, target: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Fluorochrome</label>
+                    <select
+                      value={editAbForm.fluorochrome_choice}
                       onChange={(e) =>
-                        setEditAbForm({ ...editAbForm, new_fluoro_color: e.target.value })
+                        setEditAbForm({ ...editAbForm, fluorochrome_choice: e.target.value })
                       }
+                      required
+                    >
+                      <option value="">Select Fluorochrome</option>
+                      <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
+                      {fluorochromes.map((f) => (
+                        <option key={f.id} value={f.name}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {editAbForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
+                    <>
+                      <div className="form-group">
+                        <label>New Fluorochrome Name</label>
+                        <input
+                          value={editAbForm.new_fluorochrome}
+                          onChange={(e) =>
+                            setEditAbForm({ ...editAbForm, new_fluorochrome: e.target.value })
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Color</label>
+                        <input
+                          type="color"
+                          value={editAbForm.new_fluoro_color}
+                          onChange={(e) =>
+                            setEditAbForm({ ...editAbForm, new_fluoro_color: e.target.value })
+                          }
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="form-group">
+                    <label>Clone</label>
+                    <input
+                      value={editAbForm.clone}
+                      onChange={(e) => setEditAbForm({ ...editAbForm, clone: e.target.value })}
                     />
                   </div>
                 </>
               )}
-              <div className="form-group">
-                <label>Clone</label>
-                <input
-                  value={editAbForm.clone}
-                  onChange={(e) => setEditAbForm({ ...editAbForm, clone: e.target.value })}
-                />
-              </div>
               <div className="form-group">
                 <label>Vendor</label>
                 <input
@@ -1745,46 +1842,6 @@ export default function InventoryPage() {
                   }
                 />
               </div>
-              <div className="form-group">
-                <label>Designation</label>
-                <select
-                  value={editAbForm.designation}
-                  onChange={(e) =>
-                    setEditAbForm({ ...editAbForm, designation: e.target.value as Designation })
-                  }
-                >
-                  <option value="ruo">RUO</option>
-                  <option value="asr">ASR</option>
-                  <option value="ivd">IVD</option>
-                </select>
-              </div>
-              {editAbForm.designation === "ivd" && (
-                <>
-                  <div className="form-group">
-                    <label>Product Name</label>
-                    <input
-                      value={editAbForm.name}
-                      onChange={(e) => setEditAbForm({ ...editAbForm, name: e.target.value })}
-                      placeholder="IVD product name"
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Components</label>
-                    <div className="component-picker">
-                      {editAbForm.components.map((comp, idx) => (
-                        <div key={idx} className="component-picker-row">
-                          <input placeholder="Target" value={comp.target} onChange={(e) => { const c = [...editAbForm.components]; c[idx] = { ...c[idx], target: e.target.value }; setEditAbForm({ ...editAbForm, components: c }); }} required />
-                          <input placeholder="Fluorochrome" value={comp.fluorochrome} onChange={(e) => { const c = [...editAbForm.components]; c[idx] = { ...c[idx], fluorochrome: e.target.value }; setEditAbForm({ ...editAbForm, components: c }); }} required />
-                          <input placeholder="Clone" value={comp.clone} onChange={(e) => { const c = [...editAbForm.components]; c[idx] = { ...c[idx], clone: e.target.value }; setEditAbForm({ ...editAbForm, components: c }); }} />
-                          <button type="button" className="btn-icon" onClick={() => setEditAbForm({ ...editAbForm, components: editAbForm.components.filter((_, i) => i !== idx) })} title="Remove">&times;</button>
-                        </div>
-                      ))}
-                      <button type="button" className="btn-sm" onClick={() => setEditAbForm({ ...editAbForm, components: [...editAbForm.components, { target: "", fluorochrome: "", clone: "" }] })}>+ Add Component</button>
-                    </div>
-                  </div>
-                </>
-              )}
               <div className="form-group">
                 <label>Stability (days after opening)</label>
                 <input
@@ -1829,6 +1886,46 @@ export default function InventoryPage() {
                   className="btn-secondary"
                   onClick={() => setEditAbId(null)}
                 >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {editLot && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Edit lot">
+          <div className="modal-content">
+            <h2>Edit Lot</h2>
+            <form onSubmit={handleEditLot} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <div className="form-group">
+                <label>Lot Number</label>
+                <input
+                  value={editLotForm.lot_number}
+                  onChange={(e) => setEditLotForm({ ...editLotForm, lot_number: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Vendor Barcode</label>
+                <input
+                  value={editLotForm.vendor_barcode}
+                  onChange={(e) => setEditLotForm({ ...editLotForm, vendor_barcode: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Expiration Date</label>
+                <input
+                  type="date"
+                  value={editLotForm.expiration_date}
+                  onChange={(e) => setEditLotForm({ ...editLotForm, expiration_date: e.target.value })}
+                />
+              </div>
+              <div className="action-btns" style={{ marginTop: "0.5rem" }}>
+                <button type="submit" disabled={editLotLoading}>
+                  {editLotLoading ? "Saving..." : "Save Changes"}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setEditLot(null)}>
                   Cancel
                 </button>
               </div>

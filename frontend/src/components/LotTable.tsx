@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { Lot } from "../api/types";
+import ActionMenu, { type ActionMenuItem } from "./ActionMenu";
 
 export interface LotListProps {
   lots: Lot[];
@@ -11,6 +12,7 @@ export interface LotListProps {
   onDeplete: (lot: Lot) => void;
   onOpenDocs: (lot: Lot) => void;
   onArchive: (lot: Lot) => void;
+  onEditLot?: (lot: Lot) => void;
   onConsolidate?: (lot: Lot) => void;
   onLotClick?: (lot: Lot) => void;
   selectedLotId?: string | null;
@@ -26,25 +28,13 @@ export default function LotTable({
   onDeplete,
   onOpenDocs,
   onArchive,
+  onEditLot,
   onConsolidate,
   onLotClick,
   selectedLotId,
 }: LotListProps) {
   const [expandedBarcode, setExpandedBarcode] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!openMenuId) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenuId(null);
-      }
-    };
-    document.addEventListener("click", handler, true);
-    return () => document.removeEventListener("click", handler, true);
-  }, [openMenuId]);
 
   const handleCopy = async (lot: Lot) => {
     if (!lot.vendor_barcode) return;
@@ -53,6 +43,22 @@ export default function LotTable({
       setCopiedId(lot.id);
       setTimeout(() => setCopiedId(null), 1500);
     } catch { /* clipboard not available */ }
+  };
+
+  const buildActions = (lot: Lot): ActionMenuItem[] => {
+    const items: ActionMenuItem[] = [];
+    if (onEditLot) {
+      items.push({ label: "Edit", icon: "✎", onClick: () => onEditLot(lot) });
+    }
+    if ((lot.vial_counts?.total ?? 0) > 0) {
+      items.push({ label: "Deplete", icon: "⊘", variant: "danger", onClick: () => onDeplete(lot) });
+    }
+    items.push({ label: `Docs${lot.documents?.length ? ` (${lot.documents.length})` : ""}`, icon: "📄", onClick: () => onOpenDocs(lot) });
+    items.push({ label: lot.is_archived ? "Unarchive" : "Archive", icon: lot.is_archived ? "↩" : "▣", onClick: () => onArchive(lot) });
+    if (lot.is_split && onConsolidate) {
+      items.push({ label: "Consolidate", icon: "⊞", onClick: () => onConsolidate(lot) });
+    }
+    return items;
   };
 
   return (
@@ -68,12 +74,12 @@ export default function LotTable({
           {!sealedOnly && <th>Depleted</th>}
           <th>Total</th>
           <th>Location</th>
-          {canQC && <th>Actions</th>}
+          <th style={{ width: 120, textAlign: "center" }}></th>
         </tr>
       </thead>
       <tbody>
         {lots.map((lot) => (
-          <tr key={lot.id} className={`${onLotClick ? "clickable-row" : ""}${selectedLotId === lot.id ? " active" : ""}`} style={lot.is_archived || ((lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0) ? { opacity: 0.5 } : undefined} onClick={() => onLotClick?.(lot)}>
+          <tr key={lot.id} className={`${onLotClick ? "clickable-row" : ""}${selectedLotId === lot.id ? " active" : ""}${lot.is_archived ? " lot-row-archived" : ""}${!lot.is_archived && (lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0 ? " lot-row-depleted" : ""}`} onClick={() => onLotClick?.(lot)}>
             <td style={{ whiteSpace: "nowrap" }}>
               <span>{lot.lot_number}</span>
               {lotAgeBadgeMap.get(lot.id) === "current" && (
@@ -111,50 +117,21 @@ export default function LotTable({
                 </div>
               )}
             </td>
-            <td style={{ whiteSpace: "nowrap" }}>
-              <span
-                className={`badge ${
-                  lot.qc_status === "approved"
-                    ? "badge-green"
-                    : lot.qc_status === "failed"
-                    ? "badge-red"
-                    : "badge-yellow"
-                }`}
-              >
-                {lot.qc_status}
-              </span>
-              {qcDocRequired && lot.qc_status === "pending" && !lot.has_qc_document && (
-                <span className="badge badge-orange needs-doc-badge">Needs QC</span>
-              )}
-              {lot.is_archived && (
+            <td>
+              {qcDocRequired && lot.qc_status === "pending" && !lot.has_qc_document ? (
+                <span className="badge badge-orange" title="QC document required">Pending</span>
+              ) : (
                 <span
-                  className="badge"
-                  style={{
-                    marginLeft: 6,
-                    fontSize: "0.7em",
-                    background: "#9ca3af",
-                    color: "#fff",
-                  }}
-                  title={lot.archive_note || undefined}
+                  className={`badge ${
+                    lot.qc_status === "approved"
+                      ? "badge-green"
+                      : lot.qc_status === "failed"
+                      ? "badge-red"
+                      : "badge-yellow"
+                  }`}
                 >
-                  Archived
+                  {lot.qc_status}
                 </span>
-              )}
-              {!lot.is_archived && (lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0 && (
-                <span
-                  className="badge"
-                  style={{
-                    marginLeft: 6,
-                    fontSize: "0.7em",
-                    background: "#9ca3af",
-                    color: "#fff",
-                  }}
-                >
-                  Depleted
-                </span>
-              )}
-              {lot.has_temp_storage && (
-                <span className="temp-badge" style={{ marginLeft: 6, fontSize: "0.65em", padding: "0.1rem 0.35rem" }}>In Temp Storage</span>
               )}
             </td>
             <td>{new Date(lot.created_at).toLocaleDateString()}</td>
@@ -180,44 +157,16 @@ export default function LotTable({
                 <span style={{ color: "var(--text-muted)" }}>—</span>
               )}
             </td>
-            {canQC && (
-              <td className="lot-actions-cell" onClick={(e) => e.stopPropagation()}>
-                <div className="lot-actions-wrapper" ref={openMenuId === lot.id ? menuRef : undefined}>
-                  <button
-                    className="lot-actions-trigger"
-                    onClick={() => setOpenMenuId(openMenuId === lot.id ? null : lot.id)}
-                  >
-                    Actions
-                    <span className="lot-actions-caret">{openMenuId === lot.id ? "\u25B2" : "\u25BC"}</span>
+            <td className="lot-actions-cell" onClick={(e) => e.stopPropagation()}>
+              <div className="lot-actions-inline">
+                {canQC && lot.qc_status !== "approved" && (
+                  <button className="approve-chip" onClick={() => onApproveQC(lot.id)}>
+                    Approve
                   </button>
-                  {openMenuId === lot.id && (
-                    <div className="lot-actions-menu">
-                      {lot.qc_status !== "approved" && (
-                        <button className="btn-sm btn-green" onClick={() => { onApproveQC(lot.id); setOpenMenuId(null); }}>
-                          Approve
-                        </button>
-                      )}
-                      {(lot.vial_counts?.total ?? 0) > 0 && (
-                        <button className="btn-sm btn-red" onClick={() => { onDeplete(lot); setOpenMenuId(null); }}>
-                          Deplete
-                        </button>
-                      )}
-                      <button className="btn-sm" onClick={() => { onOpenDocs(lot); setOpenMenuId(null); }}>
-                        Docs{lot.documents?.length ? ` (${lot.documents.length})` : ""}
-                      </button>
-                      <button className="btn-sm" onClick={() => { onArchive(lot); setOpenMenuId(null); }}>
-                        {lot.is_archived ? "Unarchive" : "Archive"}
-                      </button>
-                      {lot.is_split && onConsolidate && (
-                        <button className="btn-sm" onClick={() => { onConsolidate(lot); setOpenMenuId(null); }}>
-                          Consolidate
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </td>
-            )}
+                )}
+                <ActionMenu items={buildActions(lot)} />
+              </div>
+            </td>
           </tr>
         ))}
       </tbody>

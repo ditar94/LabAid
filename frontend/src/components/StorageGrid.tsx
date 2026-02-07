@@ -216,13 +216,15 @@ export default function StorageGrid({
             const fluoroColor = vialInfo?.antibody_fluorochrome
               ? fluoroMap.get(vialInfo.antibody_fluorochrome.toLowerCase())
               : undefined;
+            // Fallback to IVD antibody color when no fluorochrome color
+            const effectiveColor = fluoroColor || (vialInfo?.color ?? undefined);
 
             // Build inline style for fluorochrome tint
             const cellStyle: React.CSSProperties = {};
-            if (hasVial && fluoroColor) {
-              cellStyle["--fluoro-color" as string] = fluoroColor;
-              cellStyle["--fluoro-bg" as string] = hexToRgba(fluoroColor, 0.12);
-              cellStyle["--fluoro-bg-strong" as string] = hexToRgba(fluoroColor, 0.25);
+            if (hasVial && effectiveColor) {
+              cellStyle["--fluoro-color" as string] = effectiveColor;
+              cellStyle["--fluoro-bg" as string] = hexToRgba(effectiveColor, 0.12);
+              cellStyle["--fluoro-bg-strong" as string] = hexToRgba(effectiveColor, 0.25);
             }
 
             // Determine popout positioning: if cell is in the right half of
@@ -242,9 +244,9 @@ export default function StorageGrid({
                   <>
                     <span
                       className="cell-abbrev"
-                      style={fluoroColor ? { color: fluoroColor } : undefined}
+                      style={effectiveColor ? { color: effectiveColor } : undefined}
                     >
-                      {vialInfo.antibody_target}
+                      {vialInfo.antibody_short_code || vialInfo.antibody_target}
                     </span>
                     <div
                       className={`cell-popout${popLeft ? " pop-left" : " pop-right"}${popUp ? " pop-up" : " pop-down"}`}
@@ -261,8 +263,8 @@ export default function StorageGrid({
                           ×
                         </button>
                       )}
-                      <div className="popout-header" style={fluoroColor ? { color: fluoroColor } : undefined}>
-                        {vialInfo.antibody_target}-{vialInfo.antibody_fluorochrome}
+                      <div className="popout-header" style={effectiveColor ? { color: effectiveColor } : undefined}>
+                        {vialInfo.antibody_name || [vialInfo.antibody_target, vialInfo.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"}
                       </div>
                       <div className="popout-row">
                         <span className="popout-label">Lot</span>

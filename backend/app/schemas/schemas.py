@@ -1,9 +1,9 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 
-from app.models.models import Designation, QCStatus, TicketStatus, UserRole, VialStatus
+from app.models.models import Designation, LotRequestStatus, QCStatus, TicketStatus, UserRole, VialStatus
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────
@@ -134,17 +134,33 @@ class ReagentComponentOut(ReagentComponentBase):
 
 
 class AntibodyCreate(BaseModel):
-    target: str
-    fluorochrome: str
+    target: str | None = None
+    fluorochrome: str | None = None
     clone: str | None = None
     vendor: str | None = None
     catalog_number: str | None = None
     designation: Designation = Designation.RUO
     name: str | None = None
+    short_code: str | None = None
+    color: str | None = None
     stability_days: int | None = None
     low_stock_threshold: int | None = None
     approved_low_threshold: int | None = None
     components: list[ReagentComponentBase] | None = None
+
+    @model_validator(mode="after")
+    def check_required_fields(self):
+        if self.designation == Designation.IVD:
+            if not self.name or not self.name.strip():
+                raise ValueError("Product name is required for IVD reagents")
+            if not self.short_code or not self.short_code.strip():
+                raise ValueError("Short code is required for IVD reagents")
+        else:
+            if not self.target or not self.target.strip():
+                raise ValueError("Target is required for RUO/ASR antibodies")
+            if not self.fluorochrome or not self.fluorochrome.strip():
+                raise ValueError("Fluorochrome is required for RUO/ASR antibodies")
+        return self
 
 
 class AntibodyUpdate(BaseModel):
@@ -155,6 +171,8 @@ class AntibodyUpdate(BaseModel):
     catalog_number: str | None = None
     designation: Designation | None = None
     name: str | None = None
+    short_code: str | None = None
+    color: str | None = None
     stability_days: int | None = None
     low_stock_threshold: int | None = None
     approved_low_threshold: int | None = None
@@ -168,13 +186,15 @@ class AntibodyArchiveRequest(BaseModel):
 class AntibodyOut(BaseModel):
     id: UUID
     lab_id: UUID
-    target: str
-    fluorochrome: str
+    target: str | None
+    fluorochrome: str | None
     clone: str | None
     vendor: str | None
     catalog_number: str | None
     designation: Designation
     name: str | None
+    short_code: str | None = None
+    color: str | None = None
     stability_days: int | None
     low_stock_threshold: int | None
     approved_low_threshold: int | None
@@ -257,6 +277,12 @@ class LotWithCounts(LotOut):
     is_split: bool = False  # True when vials are in multiple containers
 
 
+class LotUpdate(BaseModel):
+    lot_number: str | None = None
+    vendor_barcode: str | None = None
+    expiration_date: date | None = None
+
+
 class LotUpdateQC(BaseModel):
     qc_status: QCStatus
 
@@ -267,6 +293,7 @@ class LotUpdateQC(BaseModel):
 class LotSummary(BaseModel):
     id: UUID
     lot_number: str
+    vendor_barcode: str | None = None
     expiration_date: date | None
     qc_status: QCStatus
     vial_counts: VialCounts = VialCounts()
@@ -316,6 +343,16 @@ class VialOut(BaseModel):
 
 class VialOpenRequest(BaseModel):
     cell_id: UUID  # user must click the specific cell
+
+
+class BulkOpenRequest(BaseModel):
+    cell_ids: list[UUID]
+    force: bool = False
+    skip_older_lot_note: str | None = None
+
+
+class BulkDepleteRequest(BaseModel):
+    vial_ids: list[UUID]
 
 
 class VialCorrectionRequest(BaseModel):
@@ -368,6 +405,8 @@ class VialSummary(BaseModel):
     expiration_date: date | None = None
     antibody_target: str | None = None
     antibody_fluorochrome: str | None = None
+    antibody_name: str | None = None
+    antibody_short_code: str | None = None
     color: str | None = None
     qc_status: str | None = None
 
@@ -420,6 +459,7 @@ class ScanLookupResult(BaseModel):
     storage_grids: list[StorageGridOut] = []
     qc_warning: str | None = None
     older_lots: list[OlderLotSummary] = []
+    is_current_lot: bool = False
 
 
 class ScanEnrichRequest(BaseModel):
@@ -532,13 +572,15 @@ class GlobalSearchAntibody(BaseModel):
     id: UUID
     lab_id: UUID
     lab_name: str
-    target: str
-    fluorochrome: str
+    target: str | None
+    fluorochrome: str | None
     clone: str | None
     vendor: str | None
     catalog_number: str | None
     designation: Designation
     name: str | None
+    short_code: str | None = None
+    color: str | None = None
     components: list[ReagentComponentOut] = []
 
 
@@ -557,3 +599,53 @@ class GlobalSearchResult(BaseModel):
     labs: list[GlobalSearchLab] = []
     antibodies: list[GlobalSearchAntibody] = []
     lots: list[GlobalSearchLot] = []
+
+
+# ── Lot Requests ─────────────────────────────────────────────────────
+
+
+class LotRequestCreate(BaseModel):
+    barcode: str
+    lot_number: str | None = None
+    expiration_date: date | None = None
+    quantity: int
+    storage_unit_id: UUID | None = None
+    gs1_ai: dict | None = None
+    enrichment_data: dict | None = None
+    proposed_antibody: dict
+    notes: str | None = None
+
+
+class LotRequestReview(BaseModel):
+    lot_number: str | None = None
+    expiration_date: date | None = None
+    quantity: int | None = None
+    storage_unit_id: UUID | None = None
+    proposed_antibody: dict | None = None
+    rejection_note: str | None = None
+
+
+class LotRequestOut(BaseModel):
+    id: UUID
+    lab_id: UUID
+    user_id: UUID
+    user_full_name: str | None = None
+    barcode: str
+    lot_number: str | None
+    expiration_date: date | None
+    quantity: int
+    storage_unit_id: UUID | None
+    storage_unit_name: str | None = None
+    gs1_ai: dict | None = None
+    enrichment_data: dict | None = None
+    proposed_antibody: dict
+    notes: str | None
+    status: LotRequestStatus
+    reviewed_by: UUID | None
+    reviewer_name: str | None = None
+    reviewed_at: datetime | None
+    rejection_note: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

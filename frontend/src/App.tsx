@@ -7,7 +7,7 @@ import SetupPage from "./pages/SetupPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import DashboardPage from "./pages/DashboardPage";
 import InventoryPage from "./pages/InventoryPage";
-import ReceivePage from "./pages/ReceivePage";
+
 import ScanSearchPage from "./pages/ScanSearchPage";
 import StoragePage from "./pages/StoragePage";
 import AuditPage from "./pages/AuditPage";
@@ -51,7 +51,7 @@ function AppRoutes() {
       >
         <Route path="/" element={<DashboardPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
-        <Route path="/receive" element={<ReceivePage />} />
+        <Route path="/receive" element={<Navigate to="/scan-search" replace />} />
         <Route path="/scan" element={<Navigate to="/scan-search" replace />} />
         <Route path="/search" element={<Navigate to="/scan-search" replace />} />
         <Route path="/scan-search" element={<ScanSearchPage />} />

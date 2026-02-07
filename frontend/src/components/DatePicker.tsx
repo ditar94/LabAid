@@ -33,6 +33,7 @@ export default function DatePicker({ value, onChange, placeholderText }: Props) 
       showYearDropdown
       dropdownMode="select"
       autoComplete="off"
+      portalId="datepicker-portal"
     />
   );
 }

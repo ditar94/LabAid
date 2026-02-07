@@ -131,8 +131,8 @@ export default function SearchPage() {
     <div>
       <h1>Antibody Search</h1>
       <p className="page-desc">
-        Search by target, fluorochrome, clone, or catalog number to find
-        antibodies and locate them in storage.
+        Search by target, fluorochrome, clone, catalog number, or product name
+        to find antibodies and locate them in storage.
       </p>
 
       <div className="scan-input-container">
@@ -167,6 +167,7 @@ export default function SearchPage() {
         <table className="search-results-table">
           <thead>
             <tr>
+              <th>Product Name</th>
               <th>Target</th>
               <th>Fluorochrome</th>
               <th>Clone</th>
@@ -187,8 +188,9 @@ export default function SearchPage() {
                 }`}
                 onClick={() => handleSelect(r)}
               >
-                <td>{r.antibody.target}</td>
-                <td>{r.antibody.fluorochrome}</td>
+                <td>{r.antibody.name || "—"}</td>
+                <td>{r.antibody.target || "—"}</td>
+                <td>{r.antibody.fluorochrome || "—"}</td>
                 <td>{r.antibody.clone || "—"}</td>
                 <td>{r.antibody.catalog_number || "—"}</td>
                 <td>{r.total_vial_counts.sealed}</td>
@@ -205,8 +207,7 @@ export default function SearchPage() {
       {selectedResult && (
         <div className="locator-panel">
           <h2>
-            {selectedResult.antibody.target} -{" "}
-            {selectedResult.antibody.fluorochrome}
+            {selectedResult.antibody.name || [selectedResult.antibody.target, selectedResult.antibody.fluorochrome].filter(Boolean).join(" - ") || "Unnamed"}
           </h2>
 
           {selectedResult.lots.length > 0 && (

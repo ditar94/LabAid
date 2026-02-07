@@ -7,6 +7,8 @@ from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import User, UserRole, Vial, VialStatus
 from app.schemas.schemas import (
+    BulkDepleteRequest,
+    BulkOpenRequest,
     ReturnToStorageRequest,
     VialCorrectionRequest,
     VialIntakeRequest,
@@ -18,8 +20,10 @@ from app.schemas.schemas import (
 from app.services.vial_service import (
     correct_vial,
     deplete_vial,
+    deplete_vials_bulk,
     move_vials,
     open_vial,
+    open_vials_bulk,
     receive_vials,
     return_to_storage,
 )
@@ -62,7 +66,7 @@ def list_vials(
 def intake_vials(
     body: VialIntakeRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
 ):
     if body.quantity < 1 or body.quantity > 100:
         raise HTTPException(status_code=400, detail="Quantity must be between 1 and 100")
@@ -101,6 +105,30 @@ def deplete_vial_endpoint(
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
 ):
     return deplete_vial(db, vial_id=vial_id, user=current_user)
+
+
+@router.post("/bulk-open", response_model=list[VialOut])
+def bulk_open_vials(
+    body: BulkOpenRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
+):
+    return open_vials_bulk(
+        db,
+        cell_ids=body.cell_ids,
+        user=current_user,
+        force=body.force,
+        skip_older_lot_note=body.skip_older_lot_note,
+    )
+
+
+@router.post("/bulk-deplete", response_model=list[VialOut])
+def bulk_deplete_vials(
+    body: BulkDepleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
+):
+    return deplete_vials_bulk(db, vial_ids=body.vial_ids, user=current_user)
 
 
 @router.post("/{vial_id}/return-to-storage", response_model=VialOut)

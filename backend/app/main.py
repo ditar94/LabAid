@@ -9,7 +9,7 @@ from app.core.database import SessionLocal
 from app.core.security import decode_access_token
 from app.models.models import Lab, User, UserRole
 
-from app.routers import antibodies, audit, auth, lots, scan, search, storage, vials, labs, documents, fluorochromes, tickets
+from app.routers import antibodies, audit, auth, lots, lot_requests, scan, search, storage, vials, labs, documents, fluorochromes, tickets
 
 
 # Paths exempt from lab suspension check (auth operations)
@@ -92,6 +92,7 @@ app.include_router(documents.router)
 app.include_router(fluorochromes.router)
 app.include_router(tickets.router)
 app.include_router(search.router)
+app.include_router(lot_requests.router)
 
 
 @app.get("/api/health")

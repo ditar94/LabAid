@@ -214,11 +214,24 @@ def open_vial(
         vial.depleted_at = now
         vial.depleted_by = user.id
         vial.location_cell_id = None
-        note_parts = ["Sealed counts only — direct deplete"]
+        # Log the user's open action
+        open_note_parts: list[str] = []
         if qc_override:
-            note_parts.append(f"QC override: lot status was '{lot.qc_status.value}'")
+            open_note_parts.append(f"QC override: lot status was '{lot.qc_status.value}'")
         if skip_older_lot_note:
-            note_parts.append(f"Skipped older lot: {skip_older_lot_note}")
+            open_note_parts.append(f"Skipped older lot: {skip_older_lot_note}")
+        log_audit(
+            db,
+            lab_id=user.lab_id,
+            user_id=user.id,
+            action="vial.opened",
+            entity_type="vial",
+            entity_id=vial.id,
+            before_state=before,
+            after_state=snapshot_vial(vial, db=db),
+            note="; ".join(open_note_parts) if open_note_parts else None,
+        )
+        # Log the automatic depletion as a system action
         log_audit(
             db,
             lab_id=user.lab_id,
@@ -226,9 +239,8 @@ def open_vial(
             action="vial.depleted",
             entity_type="vial",
             entity_id=vial.id,
-            before_state=before,
             after_state=snapshot_vial(vial, db=db),
-            note="; ".join(note_parts),
+            note="Auto-depleted (sealed counts only)",
         )
     else:
         vial.status = VialStatus.OPENED
@@ -420,6 +432,197 @@ def deplete_all_lot(
     return vials
 
 
+def open_vials_bulk(
+    db: Session,
+    *,
+    cell_ids: list[UUID],
+    user: User,
+    force: bool = False,
+    skip_older_lot_note: str | None = None,
+) -> list[Vial]:
+    """Open multiple sealed vials by their cell IDs in a single transaction."""
+    if not cell_ids:
+        raise HTTPException(status_code=400, detail="No cells specified")
+
+    # Resolve cells to vials
+    cells = (
+        db.query(StorageCell)
+        .filter(StorageCell.id.in_(cell_ids))
+        .all()
+    )
+    if len(cells) != len(cell_ids):
+        raise HTTPException(status_code=400, detail="One or more cells not found")
+
+    # Find vials in those cells
+    vials = (
+        db.query(Vial)
+        .filter(
+            Vial.location_cell_id.in_(cell_ids),
+            Vial.lab_id == user.lab_id,
+        )
+        .all()
+    )
+    if len(vials) != len(cell_ids):
+        raise HTTPException(status_code=400, detail="One or more cells do not contain a vial")
+
+    # Validate all are sealed
+    for vial in vials:
+        if vial.status != VialStatus.SEALED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vial in cell is '{vial.status.value}', expected 'sealed'",
+            )
+
+    # QC check: verify lots are approved (or force)
+    lot_ids = {v.lot_id for v in vials}
+    lots = {lot.id: lot for lot in db.query(Lot).filter(Lot.id.in_(lot_ids)).all()}
+    if not force:
+        for lot in lots.values():
+            if lot.qc_status != QCStatus.APPROVED:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Lot '{lot.lot_number}' QC status is '{lot.qc_status.value}'. Must be approved before opening.",
+                )
+
+    # Check lab setting
+    lab = db.query(Lab).filter(Lab.id == user.lab_id).first()
+    sealed_only = lab and (lab.settings or {}).get("sealed_counts_only", False)
+
+    now = datetime.now(timezone.utc)
+
+    # Pre-load antibodies for expiration calc
+    ab_ids = {lot.antibody_id for lot in lots.values()}
+    antibodies = {ab.id: ab for ab in db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all()}
+
+    for vial in vials:
+        lot = lots[vial.lot_id]
+        before = snapshot_vial(vial, db=db)
+        qc_override = lot.qc_status != QCStatus.APPROVED and force
+
+        if sealed_only:
+            vial.status = VialStatus.DEPLETED
+            vial.opened_at = now
+            vial.opened_by = user.id
+            vial.depleted_at = now
+            vial.depleted_by = user.id
+            vial.location_cell_id = None
+            open_note_parts = ["Bulk open"]
+            if qc_override:
+                open_note_parts.append(f"QC override: lot status was '{lot.qc_status.value}'")
+            if skip_older_lot_note:
+                open_note_parts.append(f"Skipped older lot: {skip_older_lot_note}")
+            log_audit(
+                db,
+                lab_id=user.lab_id,
+                user_id=user.id,
+                action="vial.opened",
+                entity_type="vial",
+                entity_id=vial.id,
+                before_state=before,
+                after_state=snapshot_vial(vial, db=db),
+                note="; ".join(open_note_parts),
+            )
+            log_audit(
+                db,
+                lab_id=user.lab_id,
+                user_id=user.id,
+                action="vial.depleted",
+                entity_type="vial",
+                entity_id=vial.id,
+                after_state=snapshot_vial(vial, db=db),
+                note="Auto-depleted (sealed counts only)",
+            )
+        else:
+            vial.status = VialStatus.OPENED
+            vial.opened_at = now
+            vial.opened_by = user.id
+            vial.location_cell_id = None
+
+            antibody = antibodies.get(lot.antibody_id)
+            stability_exp = None
+            if antibody and antibody.stability_days:
+                stability_exp = (now + timedelta(days=antibody.stability_days)).date()
+            lot_exp = lot.expiration_date
+            if stability_exp and lot_exp:
+                vial.open_expiration = min(stability_exp, lot_exp)
+            elif stability_exp:
+                vial.open_expiration = stability_exp
+            elif lot_exp:
+                vial.open_expiration = lot_exp
+
+            note_parts: list[str] = ["Bulk open"]
+            if qc_override:
+                note_parts.append(f"QC override: lot status was '{lot.qc_status.value}'")
+            if skip_older_lot_note:
+                note_parts.append(f"Skipped older lot: {skip_older_lot_note}")
+            log_audit(
+                db,
+                lab_id=user.lab_id,
+                user_id=user.id,
+                action="vial.opened",
+                entity_type="vial",
+                entity_id=vial.id,
+                before_state=before,
+                after_state=snapshot_vial(vial, db=db),
+                note="; ".join(note_parts),
+            )
+
+    db.commit()
+    for v in vials:
+        db.refresh(v)
+    return vials
+
+
+def deplete_vials_bulk(
+    db: Session,
+    *,
+    vial_ids: list[UUID],
+    user: User,
+) -> list[Vial]:
+    """Deplete specific vials by their IDs in a single transaction."""
+    if not vial_ids:
+        raise HTTPException(status_code=400, detail="No vials specified")
+
+    vials = (
+        db.query(Vial)
+        .filter(Vial.id.in_(vial_ids), Vial.lab_id == user.lab_id)
+        .all()
+    )
+    if len(vials) != len(vial_ids):
+        raise HTTPException(status_code=404, detail="One or more vials not found")
+
+    for vial in vials:
+        if vial.status != VialStatus.OPENED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vial is '{vial.status.value}', expected 'opened'",
+            )
+
+    now = datetime.now(timezone.utc)
+    for vial in vials:
+        before = snapshot_vial(vial, db=db)
+        vial.status = VialStatus.DEPLETED
+        vial.depleted_at = now
+        vial.depleted_by = user.id
+        vial.location_cell_id = None
+        log_audit(
+            db,
+            lab_id=user.lab_id,
+            user_id=user.id,
+            action="vial.depleted",
+            entity_type="vial",
+            entity_id=vial.id,
+            before_state=before,
+            after_state=snapshot_vial(vial, db=db),
+            note="Bulk deplete selected",
+        )
+
+    db.commit()
+    for v in vials:
+        db.refresh(v)
+    return vials
+
+
 def return_to_storage(
     db: Session,
     *,
@@ -595,12 +798,14 @@ def move_vials(
         ensure_temporary_storage_capacity(db, target_unit, current_vial_count + vials_to_add)
         db.flush()
 
-    # Get available cells in target unit
+    # Get available cells in target unit (exclude archived-lot vials to match grid display)
     occupied_cell_ids = (
         db.query(Vial.location_cell_id)
+        .join(Lot, Vial.lot_id == Lot.id)
         .filter(
             Vial.location_cell_id.isnot(None),
             ~Vial.id.in_(vial_ids),  # Exclude vials being moved
+            Lot.is_archived.is_(False),
         )
         .subquery()
     )

@@ -44,7 +44,7 @@ def list_antibodies(
     if designation:
         q = q.filter(Antibody.designation == designation)
 
-    return q.order_by(Antibody.target, Antibody.fluorochrome).all()
+    return q.order_by(func.coalesce(Antibody.target, Antibody.name), Antibody.fluorochrome).all()
 
 
 @router.post("/", response_model=AntibodyOut)
@@ -58,21 +58,22 @@ def create_antibody(
     if current_user.role == UserRole.SUPER_ADMIN and lab_id:
         target_lab_id = lab_id
 
-    fluoro_name = body.fluorochrome.strip()
-    existing_fluoro = (
-        db.query(Fluorochrome)
-        .filter(Fluorochrome.lab_id == target_lab_id)
-        .filter(func.lower(Fluorochrome.name) == func.lower(fluoro_name))
-        .first()
-    )
-    if not existing_fluoro:
-        db.add(
-            Fluorochrome(
-                lab_id=target_lab_id,
-                name=fluoro_name,
-                color=_DEFAULT_FLUORO_COLOR,
-            )
+    fluoro_name = body.fluorochrome.strip() if body.fluorochrome else None
+    if fluoro_name:
+        existing_fluoro = (
+            db.query(Fluorochrome)
+            .filter(Fluorochrome.lab_id == target_lab_id)
+            .filter(func.lower(Fluorochrome.name) == func.lower(fluoro_name))
+            .first()
         )
+        if not existing_fluoro:
+            db.add(
+                Fluorochrome(
+                    lab_id=target_lab_id,
+                    name=fluoro_name,
+                    color=_DEFAULT_FLUORO_COLOR,
+                )
+            )
 
     ab_data = body.model_dump(exclude={"fluorochrome", "components"})
     ab = Antibody(lab_id=target_lab_id, **ab_data, fluorochrome=fluoro_name)
@@ -150,7 +151,7 @@ def search_antibodies(
 
     antibodies = (
         search_query
-        .order_by(Antibody.target, Antibody.fluorochrome)
+        .order_by(func.coalesce(Antibody.target, Antibody.name), Antibody.fluorochrome)
         .limit(50)
         .all()
     )
@@ -241,6 +242,7 @@ def search_antibodies(
             LotSummary(
                 id=lot.id,
                 lot_number=lot.lot_number,
+                vendor_barcode=lot.vendor_barcode,
                 expiration_date=lot.expiration_date,
                 qc_status=lot.qc_status,
                 vial_counts=counts_map.get(lot.id, VialCounts()),

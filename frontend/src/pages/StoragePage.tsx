@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, useCallback, type FormEvent } from "react";
+import { useEffect, useState, useRef, useCallback, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type {
@@ -7,13 +7,14 @@ import type {
   StorageCell,
   Lab,
   Fluorochrome,
-  VialMoveResult,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
+import MoveDestination from "../components/MoveDestination";
 import OpenVialDialog from "../components/OpenVialDialog";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useMoveVials } from "../hooks/useMoveVials";
 
 export default function StoragePage() {
   const { user } = useAuth();
@@ -49,12 +50,27 @@ export default function StoragePage() {
   // Move vials mode state
   const [moveMode, setMoveMode] = useState(false);
   const [selectedVialIds, setSelectedVialIds] = useState<Set<string>>(new Set());
-  const [targetUnitId, setTargetUnitId] = useState<string>("");
-  const [moveLoading, setMoveLoading] = useState(false);
-  const [moveTargetGrid, setMoveTargetGrid] = useState<StorageGridType | null>(null);
-  const [moveDestMode, setMoveDestMode] = useState<"auto" | "start" | "pick">("auto");
-  const [moveDestStartCellId, setMoveDestStartCellId] = useState<string | null>(null);
-  const [moveDestPickedCellIds, setMoveDestPickedCellIds] = useState<Set<string>>(new Set());
+  const [moveView, setMoveView] = useState<"source" | "destination">("source");
+
+  // We need a ref to selectedGrid so the hook callbacks can access the latest value
+  const selectedGridRef = useRef(selectedGrid);
+  selectedGridRef.current = selectedGrid;
+
+  const move = useMoveVials({
+    selectedVialCount: selectedVialIds.size,
+    onSuccess: (count) => {
+      setMessage(`Moved ${count} vial(s) successfully.`);
+      addToast(`Moved ${count} vial(s)`, "success");
+      setSelectedVialIds(new Set());
+      // Refresh the grid
+      const grid = selectedGridRef.current;
+      if (grid) loadGrid(grid.unit.id);
+    },
+    onError: (msg) => {
+      setError(msg);
+      addToast("Failed to move vials", "danger");
+    },
+  });
 
   const canCreate = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
   const canStock =
@@ -104,12 +120,15 @@ export default function StoragePage() {
     }
   }, [selectedLab]);
 
-  // Handle ?lotId=&unitId= consolidation deep-link
+  // Handle ?lotId=&unitId= consolidation deep-link, or ?unitId= direct navigation
   useEffect(() => {
     const lotId = searchParams.get("lotId");
     const unitId = searchParams.get("unitId");
     if (lotId && unitId) {
       setConsolidateLotId(lotId);
+      setSearchParams({}, { replace: true });
+      loadGrid(unitId);
+    } else if (unitId) {
       setSearchParams({}, { replace: true });
       loadGrid(unitId);
     }
@@ -123,7 +142,7 @@ export default function StoragePage() {
     setConsolidateLotId(null);
     setMoveMode(true);
     setSelectedVialIds(new Set());
-    setTargetUnitId("");
+    move.resetDestination();
     setMessage(null);
     setError(null);
     // Auto-select vials from the consolidation lot
@@ -174,8 +193,9 @@ export default function StoragePage() {
       );
       const cell = res.data;
       const vialInfo = cell.vial;
+      const stockLabel = vialInfo?.antibody_name || [vialInfo?.antibody_target, vialInfo?.antibody_fluorochrome].filter(Boolean).join("-") || "Unknown";
       setMessage(
-        `Stocked ${vialInfo?.antibody_target}-${vialInfo?.antibody_fluorochrome} (Lot ${vialInfo?.lot_number}) into cell ${cell.label}`
+        `Stocked ${stockLabel} (Lot ${vialInfo?.lot_number}) into cell ${cell.label}`
       );
       setBarcode("");
       // Refresh grid and next empty
@@ -285,7 +305,7 @@ export default function StoragePage() {
           lotMap.set(lotId, {
             lot_id: lotId,
             lot_number: cell.vial.lot_number || "Unknown",
-            label: `${cell.vial.antibody_target}-${cell.vial.antibody_fluorochrome} (${cell.vial.lot_number || "?"})`,
+            label: `${cell.vial.antibody_name || [cell.vial.antibody_target, cell.vial.antibody_fluorochrome].filter(Boolean).join("-") || "Unknown"} (${cell.vial.lot_number || "?"})`,
             vial_ids: [cell.vial.id],
           });
         }
@@ -297,11 +317,8 @@ export default function StoragePage() {
   const enterMoveMode = () => {
     setMoveMode(true);
     setSelectedVialIds(new Set());
-    setTargetUnitId("");
-    setMoveTargetGrid(null);
-    setMoveDestMode("auto");
-    setMoveDestStartCellId(null);
-    setMoveDestPickedCellIds(new Set());
+    move.resetDestination();
+    setMoveView("source");
     setMessage(null);
     setError(null);
   };
@@ -309,11 +326,7 @@ export default function StoragePage() {
   const exitMoveMode = () => {
     setMoveMode(false);
     setSelectedVialIds(new Set());
-    setTargetUnitId("");
-    setMoveTargetGrid(null);
-    setMoveDestMode("auto");
-    setMoveDestStartCellId(null);
-    setMoveDestPickedCellIds(new Set());
+    move.resetDestination();
     setMessage(null);
     setError(null);
   };
@@ -345,98 +358,11 @@ export default function StoragePage() {
     });
   };
 
-  const handleMoveTargetChange = async (unitId: string) => {
-    setTargetUnitId(unitId);
-    setMoveDestMode("auto");
-    setMoveDestStartCellId(null);
-    setMoveDestPickedCellIds(new Set());
-    setMoveTargetGrid(null);
-    if (!unitId) return;
-    try {
-      const res = await api.get<StorageGridType>(`/storage/units/${unitId}/grid`);
-      setMoveTargetGrid(res.data);
-    } catch { /* skip */ }
-  };
-
-  const handleMoveTargetCellClick = (cell: StorageCell) => {
-    if (cell.vial_id) return;
-    if (moveDestMode === "auto") {
-      setMoveDestMode("start");
-      setMoveDestStartCellId(cell.id);
-    } else if (moveDestMode === "start") {
-      if (moveDestStartCellId === cell.id) {
-        setMoveDestMode("auto");
-        setMoveDestStartCellId(null);
-      } else {
-        setMoveDestMode("pick");
-        setMoveDestPickedCellIds(new Set([moveDestStartCellId!, cell.id]));
-        setMoveDestStartCellId(null);
-      }
-    } else {
-      setMoveDestPickedCellIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(cell.id)) next.delete(cell.id);
-        else next.add(cell.id);
-        return next;
-      });
-    }
-  };
-
-  const movePreviewCellIds = useMemo(() => {
-    if (moveDestMode !== "start" || !moveTargetGrid || !moveDestStartCellId || selectedVialIds.size === 0) return new Set<string>();
-    const emptyCells = moveTargetGrid.cells
-      .filter((c) => !c.vial_id)
-      .sort((a, b) => a.row - b.row || a.col - b.col);
-    const startIdx = emptyCells.findIndex((c) => c.id === moveDestStartCellId);
-    if (startIdx < 0) return new Set<string>();
-    const preview = emptyCells.slice(startIdx, startIdx + selectedVialIds.size);
-    return new Set(preview.map((c) => c.id));
-  }, [moveTargetGrid, moveDestStartCellId, selectedVialIds, moveDestMode]);
-
-  const moveInsufficientCells = useMemo(() => {
-    if (moveDestMode === "start") {
-      if (!moveDestStartCellId || !moveTargetGrid) return false;
-      return movePreviewCellIds.size < selectedVialIds.size;
-    }
-    if (moveDestMode === "pick") {
-      return moveDestPickedCellIds.size !== selectedVialIds.size;
-    }
-    return false;
-  }, [movePreviewCellIds, selectedVialIds, moveDestStartCellId, moveTargetGrid, moveDestMode, moveDestPickedCellIds]);
-
   const handleMoveVials = async () => {
-    if (selectedVialIds.size === 0 || !targetUnitId) return;
-    setMoveLoading(true);
+    if (selectedVialIds.size === 0 || !move.targetUnitId) return;
     setMessage(null);
     setError(null);
-    try {
-      const movePayload: Record<string, unknown> = {
-        vial_ids: Array.from(selectedVialIds),
-        target_unit_id: targetUnitId,
-      };
-      if (moveDestMode === "start" && moveDestStartCellId) {
-        movePayload.start_cell_id = moveDestStartCellId;
-      } else if (moveDestMode === "pick" && moveDestPickedCellIds.size > 0) {
-        movePayload.target_cell_ids = Array.from(moveDestPickedCellIds);
-      }
-      const res = await api.post<VialMoveResult>("/vials/move", movePayload);
-      setMessage(`Moved ${res.data.moved_count} vial(s) successfully.`);
-      addToast(`Moved ${res.data.moved_count} vial(s)`, "success");
-      setSelectedVialIds(new Set());
-      setTargetUnitId("");
-      setMoveTargetGrid(null);
-      setMoveDestMode("auto");
-      setMoveDestStartCellId(null);
-      setMoveDestPickedCellIds(new Set());
-      // Refresh the grid
-      if (selectedGrid) await loadGrid(selectedGrid.unit.id);
-      setMoveMode(true); // Stay in move mode for more moves
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to move vials");
-      addToast("Failed to move vials", "danger");
-    } finally {
-      setMoveLoading(false);
-    }
+    await move.executeMove(Array.from(selectedVialIds));
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -555,38 +481,6 @@ export default function StoragePage() {
 
       {selectedGrid && (
         <div className="grid-container">
-          <div className="page-header">
-            <h2>
-              {selectedGrid.unit.name}
-              {selectedGrid.unit.is_temporary && <span className="temp-badge">Temporary</span>}
-            </h2>
-            <div className="header-buttons">
-              {canStock && !stockingMode && !moveMode && !selectedGrid.unit.is_temporary && (
-                <button onClick={enterStockingMode}>Stock Vials</button>
-              )}
-              {canStock && !stockingMode && !moveMode && (
-                <button onClick={enterMoveMode}>Move Vials</button>
-              )}
-              {stockingMode && (
-                <button
-                  className="btn-red"
-                  onClick={() => {
-                    setStockingMode(false);
-                    setNextEmptyCell(null);
-                    setMessage(null);
-                    setError(null);
-                  }}
-                >
-                  Exit Stocking
-                </button>
-              )}
-              {moveMode && (
-                <button className="btn-red" onClick={exitMoveMode}>
-                  Exit Move Mode
-                </button>
-              )}
-            </div>
-          </div>
           {selectedGrid.unit.is_temporary && !moveMode && (
             <p className="page-desc">
               Newly received vials appear here. Use <strong>Move Vials</strong> to transfer them to permanent storage.
@@ -647,156 +541,198 @@ export default function StoragePage() {
             </div>
           )}
 
-          {moveMode && (
-            <div className="move-panel">
-              <p className="page-desc">
-                Click vials to select/deselect. Selected: <strong>{selectedVialIds.size}</strong>
-              </p>
-              <div className="move-controls">
-                <select
-                  value=""
-                  onChange={(e) => e.target.value && handleSelectLot(e.target.value)}
-                >
-                  <option value="">Select entire lot...</option>
-                  {getLotsInGrid().map((lot) => (
-                    <option key={lot.lot_id} value={lot.lot_id}>
-                      {lot.label} ({lot.vial_ids.length} vials)
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={targetUnitId}
-                  onChange={(e) => handleMoveTargetChange(e.target.value)}
-                >
-                  <option value="">Move to...</option>
-                  {units
-                    .filter((u) => u.id !== selectedGrid?.unit.id)
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} {u.is_temporary ? "(Temp)" : ""}
-                      </option>
-                    ))}
-                </select>
-                <button
-                  onClick={handleMoveVials}
-                  disabled={selectedVialIds.size === 0 || !targetUnitId || moveLoading || moveInsufficientCells}
-                >
-                  {moveLoading ? "Moving..." : `Move ${selectedVialIds.size} Vial(s)`}
-                </button>
-                <button onClick={() => setSelectedVialIds(new Set())} disabled={selectedVialIds.size === 0}>
-                  Clear Selection
-                </button>
-              </div>
-              {message && <p className="success">{message}</p>}
-              {error && <p className="error">{error}</p>}
-              {moveTargetGrid && (
-                <div style={{ marginTop: "1rem" }}>
-                  <h4 style={{ margin: "0 0 0.25rem" }}>Destination: {moveTargetGrid.unit.name}</h4>
-                  <p className="page-desc" style={{ margin: "0 0 0.5rem", fontSize: "0.85em" }}>
-                    {moveDestMode === "auto" && "Click an empty cell to set a starting position, or leave for auto-placement."}
-                    {moveDestMode === "start" && "Vials will fill from the selected cell. Click another cell to pick individual positions."}
-                    {moveDestMode === "pick" && `Pick mode: ${moveDestPickedCellIds.size}/${selectedVialIds.size} cells selected.`}
-                    {moveDestMode !== "auto" && (
-                      <button
-                        className="btn-secondary btn-sm"
-                        style={{ marginLeft: 8 }}
-                        onClick={() => { setMoveDestMode("auto"); setMoveDestStartCellId(null); setMoveDestPickedCellIds(new Set()); }}
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </p>
-                  <StorageGrid
-                    rows={moveTargetGrid.unit.rows}
-                    cols={moveTargetGrid.unit.cols}
-                    cells={moveTargetGrid.cells}
-                    highlightVialIds={new Set<string>()}
-                    selectedCellId={moveDestMode === "start" ? moveDestStartCellId : undefined}
-                    selectedCellIds={moveDestMode === "pick" ? moveDestPickedCellIds : undefined}
-                    onCellClick={handleMoveTargetCellClick}
-                    clickMode="empty"
-                    singleClickSelect
-                    previewCellIds={moveDestMode === "start" ? movePreviewCellIds : undefined}
-                    fluorochromes={fluorochromes}
-                  />
-                  {moveInsufficientCells && (
-                    <p className="error" style={{ marginTop: 4 }}>
-                      {moveDestMode === "pick"
-                        ? `Select exactly ${selectedVialIds.size} cell(s) to match the number of vials.`
-                        : "Not enough empty cells from the selected position."}
-                    </p>
+          <div className={`move-panel${!moveMode ? " compact" : ""}`}>
+            <div className="move-header">
+              {moveMode ? (
+                <>
+                  <div className="move-header-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 9l2-2 2 2M7 7v7a4 4 0 004 4h1M19 15l-2 2-2-2M17 17V10a4 4 0 00-4-4h-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </div>
+                  <span className="move-header-title">Transfer Vials</span>
+                  <span className={`move-header-count${selectedVialIds.size === 0 ? " empty" : ""}`}>{selectedVialIds.size}</span>
+                  <div className="move-header-actions">
+                    <select
+                      value=""
+                      onChange={(e) => e.target.value && handleSelectLot(e.target.value)}
+                    >
+                      <option value="">Select lot...</option>
+                      {getLotsInGrid().map((lot) => (
+                        <option key={lot.lot_id} value={lot.lot_id}>
+                          {lot.label} ({lot.vial_ids.length})
+                        </option>
+                      ))}
+                    </select>
+                    <button className="move-header-btn" onClick={() => setSelectedVialIds(new Set())} disabled={selectedVialIds.size === 0}>
+                      Clear
+                    </button>
+                    <button className="move-header-btn" onClick={exitMoveMode}>
+                      Exit
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="move-header-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </div>
+                  <span className="move-header-title">
+                    {selectedGrid.unit.name}
+                    {selectedGrid.unit.is_temporary && <span className="temp-badge" style={{ marginLeft: "var(--space-sm)" }}>Auto</span>}
+                  </span>
+                  {selectedGrid.unit.temperature && (
+                    <span className="move-header-temp">{selectedGrid.unit.temperature}</span>
                   )}
-                </div>
+                  {(() => {
+                    const totalCells = selectedGrid.cells.length;
+                    const occupiedCount = selectedGrid.cells.filter(c => !!c.vial_id).length;
+                    const occupiedPercent = totalCells > 0 ? Math.round((occupiedCount / totalCells) * 100) : 0;
+                    const fillClass = occupiedPercent >= 90 ? "fill-danger" : occupiedPercent >= 70 ? "fill-warning" : "fill-ok";
+                    return (
+                      <div className="move-header-capacity">
+                        <div className="capacity-bar">
+                          <div className={`capacity-fill ${fillClass}`} style={{ width: `${occupiedPercent}%` }} />
+                        </div>
+                        <span className="capacity-text">{occupiedCount}/{totalCells}</span>
+                      </div>
+                    );
+                  })()}
+                  <div className="move-header-actions">
+                    {canStock && !stockingMode && !selectedGrid.unit.is_temporary && (
+                      <button className="move-header-btn" onClick={enterStockingMode}>Stock</button>
+                    )}
+                    {canStock && !stockingMode && (
+                      <button className="move-header-btn" onClick={enterMoveMode}>Move</button>
+                    )}
+                    {stockingMode && (
+                      <button className="move-header-btn" onClick={() => {
+                        setStockingMode(false);
+                        setNextEmptyCell(null);
+                        setMessage(null);
+                        setError(null);
+                      }}>Exit Stocking</button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
-          )}
 
-          {!stockingMode && !moveMode && message && <p className="success">{message}</p>}
-          {!stockingMode && !moveMode && error && error.startsWith("not_registered:") ? (
-            <p className="error">
-              Barcode not registered.{" "}
-              <Link to={`/scan?barcode=${encodeURIComponent(error.slice("not_registered:".length))}`}>
-                Go to Scan/Search to register
-              </Link>
-            </p>
-          ) : !stockingMode && !moveMode && error ? (
-            <p className="error">{error}</p>
-          ) : null}
+            <div className="move-body">
+              {!stockingMode && message && <p className="success">{message}</p>}
+              {!stockingMode && error && error.startsWith("not_registered:") ? (
+                <p className="error">
+                  Barcode not registered.{" "}
+                  <Link to={`/scan?barcode=${encodeURIComponent(error.slice("not_registered:".length))}`}>
+                    Go to Scan/Search to register
+                  </Link>
+                </p>
+              ) : !stockingMode && error ? (
+                <p className="error">{error}</p>
+              ) : null}
 
-          {(() => {
-            const totalCells = selectedGrid.cells.length;
-            const occupiedCount = selectedGrid.cells.filter(c => !!c.vial_id).length;
-            const occupiedPercent = totalCells > 0 ? Math.round((occupiedCount / totalCells) * 100) : 0;
-            const fillClass = occupiedPercent >= 90 ? "fill-danger" : occupiedPercent >= 70 ? "fill-warning" : "fill-ok";
-            return (
-              <div className="grid-info-header">
-                <span className="grid-info-name">{selectedGrid.unit.name}</span>
-                {selectedGrid.unit.temperature && (
-                  <span className="grid-info-temp">{selectedGrid.unit.temperature}</span>
-                )}
-                <div className="capacity-bar">
-                  <div className={`capacity-fill ${fillClass}`} style={{ width: `${occupiedPercent}%` }} />
+              {moveMode && (
+                <div className="move-view-toggle">
+                  <button className={moveView === "source" ? "active" : ""} onClick={() => setMoveView("source")}>Source</button>
+                  <button className={moveView === "destination" ? "active" : ""} onClick={() => setMoveView("destination")}>Destination</button>
                 </div>
-                <span className="capacity-text">{occupiedCount}/{totalCells}</span>
+              )}
+              <div className="move-layout">
+                <div className={`move-pane${moveMode && moveView === "destination" ? " move-hidden" : ""}`}>
+                  {moveMode && <div className="move-pane-label">Source</div>}
+                  {moveMode && (() => {
+                    const totalCells = selectedGrid.cells.length;
+                    const occupiedCount = selectedGrid.cells.filter(c => !!c.vial_id).length;
+                    const occupiedPercent = totalCells > 0 ? Math.round((occupiedCount / totalCells) * 100) : 0;
+                    const fillClass = occupiedPercent >= 90 ? "fill-danger" : occupiedPercent >= 70 ? "fill-warning" : "fill-ok";
+                    return (
+                      <div className="grid-info-header">
+                        <span className="grid-info-name">{selectedGrid.unit.name}</span>
+                        {selectedGrid.unit.temperature && (
+                          <span className="grid-info-temp">{selectedGrid.unit.temperature}</span>
+                        )}
+                        <div className="capacity-bar">
+                          <div className={`capacity-fill ${fillClass}`} style={{ width: `${occupiedPercent}%` }} />
+                        </div>
+                        <span className="capacity-text">{occupiedCount}/{totalCells}</span>
+                      </div>
+                    );
+                  })()}
+                  <StorageGrid
+                    rows={selectedGrid.unit.rows}
+                    cols={selectedGrid.unit.cols}
+                    cells={selectedGrid.cells}
+                    highlightVialIds={moveMode ? selectedVialIds : new Set()}
+                    highlightNextCellId={!moveMode && stockingMode ? nextEmptyCell?.id : undefined}
+                    onCellClick={
+                      moveMode
+                        ? handleMoveCellClick
+                        : !stockingMode && canStock
+                          ? handleGridCellClick
+                          : undefined
+                    }
+                    clickMode={moveMode ? "occupied" : !stockingMode && canStock ? "occupied" : "highlighted"}
+                    fluorochromes={fluorochromes}
+                    singleClickSelect={moveMode ? true : undefined}
+                    popoutActions={!moveMode && !stockingMode ? getPopoutActions : undefined}
+                  />
+                  <div className="grid-legend">
+                    <span className="legend-item"><span className="legend-box sealed" /> Sealed</span>
+                    <span className="legend-item"><span className="legend-box opened" /> Opened</span>
+                    <span className="legend-item"><span className="legend-box" /> Empty</span>
+                    {moveMode && (
+                      <span className="legend-item"><span className="legend-box highlighted-legend" /> Selected</span>
+                    )}
+                    {!moveMode && stockingMode && (
+                      <span className="legend-item">
+                        <span className="legend-box next-empty-legend" /> Next slot
+                      </span>
+                    )}
+                    {!moveMode && !stockingMode && canStock && (
+                      <span className="legend-item">
+                        Tap a vial to see actions
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {moveMode && (
+                  <>
+                    <div className={`move-arrow${move.targetUnitId ? " has-dest" : ""}`}>
+                      <div className="move-arrow-line" />
+                      <div className="move-arrow-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12H19M15 6L21 12L15 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                    </div>
+                    <div className={`move-pane${moveView === "source" ? " move-hidden" : ""}`}>
+                      <div className="move-pane-label">Destination</div>
+                      <MoveDestination
+                        move={move}
+                        selectedVialCount={selectedVialIds.size}
+                        fluorochromes={fluorochromes}
+                        storageUnits={units}
+                        excludeUnitIds={[]}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
-            );
-          })()}
-          <StorageGrid
-            rows={selectedGrid.unit.rows}
-            cols={selectedGrid.unit.cols}
-            cells={selectedGrid.cells}
-            highlightVialIds={moveMode ? selectedVialIds : new Set()}
-            highlightNextCellId={stockingMode ? nextEmptyCell?.id : undefined}
-            onCellClick={
-              moveMode
-                ? handleMoveCellClick
-                : !stockingMode && canStock
-                ? handleGridCellClick
-                : undefined
-            }
-            clickMode={moveMode ? "occupied" : !stockingMode && canStock ? "occupied" : "highlighted"}
-            fluorochromes={fluorochromes}
-            singleClickSelect={moveMode}
-            popoutActions={!moveMode && !stockingMode ? getPopoutActions : undefined}
-          />
-          <div className="grid-legend">
-            <span className="legend-item"><span className="legend-box sealed" /> Sealed</span>
-            <span className="legend-item"><span className="legend-box opened" /> Opened</span>
-            <span className="legend-item"><span className="legend-box" /> Empty</span>
-            {stockingMode && (
-              <span className="legend-item">
-                <span className="legend-box next-empty-legend" /> Next slot
-              </span>
-            )}
+            </div>
+
             {moveMode && (
-              <span className="legend-item">
-                <span className="legend-box highlighted-legend" /> Selected
-              </span>
-            )}
-            {!stockingMode && !moveMode && canStock && (
-              <span className="legend-item">
-                Tap a vial to see actions
-              </span>
+              <div className="move-footer">
+                {move.targetGrid && (
+                  <span className="move-footer-status">
+                    {move.destMode === "auto" && "Vials will fill next available cells"}
+                    {move.destMode === "start" && "Click a cell to set starting position"}
+                    {move.destMode === "pick" && `${move.destPickedCellIds.size} of ${selectedVialIds.size} cells picked`}
+                  </span>
+                )}
+                <button
+                  className="move-go-btn"
+                  onClick={handleMoveVials}
+                  disabled={selectedVialIds.size === 0 || !move.targetUnitId || move.loading || move.insufficientCells}
+                >
+                  {move.loading ? "Moving..." : `Move ${selectedVialIds.size} Vial${selectedVialIds.size !== 1 ? "s" : ""}`}
+                </button>
+              </div>
             )}
           </div>
 

@@ -116,7 +116,6 @@ export default function LabsPage() {
             <tr>
               <th>Name</th>
               <th>Status</th>
-              <th>Sealed Counts Only</th>
               <th>Support Access</th>
               <th>Created At</th>
               <th></th>
@@ -145,18 +144,6 @@ export default function LabsPage() {
                       <div className="active-switch-thumb" />
                     </div>
                   </div>
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={l.settings?.sealed_counts_only ?? false}
-                    onChange={async () => {
-                      await api.patch(`/labs/${l.id}/settings`, {
-                        sealed_counts_only: !(l.settings?.sealed_counts_only ?? false),
-                      });
-                      load();
-                    }}
-                  />
                 </td>
                 <td>
                   <span

@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import {
   LayoutDashboard,
   ScanLine,
   Package,
-  PackagePlus,
   Warehouse,
   ClipboardList,
   Users,
@@ -17,12 +17,17 @@ import {
   Menu,
   X,
   ShieldOff,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
+import { useTheme } from "../hooks/useTheme";
 
 export default function Layout() {
   const { user, logout, impersonatingLab, endImpersonation } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { theme, cycleTheme } = useTheme();
 
   const handleLogout = () => {
     logout();
@@ -45,6 +50,23 @@ export default function Layout() {
   const isSupervisor = isAdmin || user?.role === "supervisor";
   // Lab-specific pages should only show if user has a lab context
   const hasLabContext = !isSuperAdmin || isImpersonating;
+
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+
+  useEffect(() => {
+    if (!isSupervisor || !hasLabContext) {
+      setPendingRequestCount(0);
+      return;
+    }
+    const fetchCount = () => {
+      api.get<{ count: number }>("/lot-requests/pending-count")
+        .then((res) => setPendingRequestCount(res.data.count))
+        .catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 30_000);
+    return () => clearInterval(interval);
+  }, [isSupervisor, hasLabContext]);
 
   const initials = useMemo(() => {
     if (!user?.full_name) return "?";
@@ -106,6 +128,7 @@ export default function Layout() {
           <NavLink to="/" onClick={handleNavClick}>
             <LayoutDashboard className="nav-icon" />
             Dashboard
+            {pendingRequestCount > 0 && <span className="nav-badge">{pendingRequestCount}</span>}
           </NavLink>
           {hasLabContext && (
             <>
@@ -116,10 +139,6 @@ export default function Layout() {
               <NavLink to="/inventory" onClick={handleNavClick}>
                 <Package className="nav-icon" />
                 Inventory
-              </NavLink>
-              <NavLink to="/receive" onClick={handleNavClick}>
-                <PackagePlus className="nav-icon" />
-                Receive Inventory
               </NavLink>
               <NavLink to="/storage" onClick={handleNavClick}>
                 <Warehouse className="nav-icon" />
@@ -170,6 +189,12 @@ export default function Layout() {
             </>
           )}
         </div>
+        <button className="theme-toggle-btn" onClick={cycleTheme} title={`Theme: ${theme}`}>
+          {theme === "light" && <Sun size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
+          {theme === "dark" && <Moon size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
+          {theme === "system" && <Monitor size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
+          {theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"}
+        </button>
         <button className="logout-btn" onClick={handleLogout}>
           <LogOut size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
           Sign Out

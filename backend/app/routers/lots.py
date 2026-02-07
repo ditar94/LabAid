@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, subqueryload
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import Antibody, Lab, Lot, LotDocument, QCStatus, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
-from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotStorageLocation, LotUpdateQC, LotWithCounts, VialCounts, VialOut
+from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotStorageLocation, LotUpdate, LotUpdateQC, LotWithCounts, VialCounts, VialOut
 from app.services.audit import log_audit, snapshot_lot
 from app.services.vial_service import deplete_all_opened, deplete_all_lot
 
@@ -151,7 +151,7 @@ def create_lot(
     body: LotCreate,
     lab_id: UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
 ):
     target_lab_id = current_user.lab_id
     if current_user.role == UserRole.SUPER_ADMIN and lab_id:
@@ -176,6 +176,45 @@ def create_lot(
         action="lot.created",
         entity_type="lot",
         entity_id=lot.id,
+        after_state=snapshot_lot(lot),
+    )
+
+    db.commit()
+    db.refresh(lot)
+    return lot
+
+
+@router.patch("/{lot_id}", response_model=LotOut)
+def update_lot(
+    lot_id: UUID,
+    body: LotUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
+):
+    q = db.query(Lot).filter(Lot.id == lot_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(Lot.lab_id == current_user.lab_id)
+    lot = q.first()
+    if not lot:
+        raise HTTPException(status_code=404, detail="Lot not found")
+
+    before = snapshot_lot(lot)
+
+    if body.lot_number is not None:
+        lot.lot_number = body.lot_number
+    if body.vendor_barcode is not None:
+        lot.vendor_barcode = body.vendor_barcode or None
+    if body.expiration_date is not None:
+        lot.expiration_date = body.expiration_date
+
+    log_audit(
+        db,
+        lab_id=lot.lab_id,
+        user_id=current_user.id,
+        action="lot.update",
+        entity_type="lot",
+        entity_id=lot.id,
+        before_state=before,
         after_state=snapshot_lot(lot),
     )
 

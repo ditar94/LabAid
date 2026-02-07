@@ -4,6 +4,7 @@ import api from "../api/client";
 import type {
   Antibody, Lot, Lab, Fluorochrome, TempStorageSummary, TempStorageSummaryItem,
   StorageGrid as StorageGridData, StorageCell, StorageUnit, VialMoveResult,
+  LotRequest,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import { useAuth } from "../context/AuthContext";
@@ -15,11 +16,13 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
+  PackagePlus,
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import PullToRefresh from "../components/PullToRefresh";
+import LotRequestReviewModal from "../components/LotRequestReviewModal";
 
 const DEFAULT_EXPIRY_WARN_DAYS = 30;
 const CURRENT_LOT_EXPIRY_WARN_DAYS = 7;
@@ -30,7 +33,9 @@ export default function DashboardPage() {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
-  const [selectedCard, setSelectedCard] = useState<"pending" | "low" | "expiring" | "temp" | null>(null);
+  const [selectedCard, setSelectedCard] = useState<"requests" | "pending" | "low" | "expiring" | "temp" | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<LotRequest[]>([]);
+  const [reviewingRequest, setReviewingRequest] = useState<LotRequest | null>(null);
   const [pendingLots, setPendingLots] = useState<Lot[]>([]);
   const [expiringLots, setExpiringLots] = useState<Lot[]>([]);
   const [lowStock, setLowStock] = useState<Antibody[]>([]);
@@ -73,13 +78,19 @@ export default function DashboardPage() {
   const loadData = useCallback(async () => {
     if (!selectedLab) return;
     const params: Record<string, string> = { lab_id: selectedLab };
-    const [abRes, lotRes, lowStockRes, fluoroRes, tempRes] = await Promise.all([
+    const isSupervisorPlus = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
+    const fetches: Promise<any>[] = [
       api.get<Antibody[]>("/antibodies/", { params }),
       api.get<Lot[]>("/lots/", { params }),
       api.get<Antibody[]>("/antibodies/low-stock", { params }),
       api.get<Fluorochrome[]>("/fluorochromes/", { params }),
       api.get<TempStorageSummary>("/storage/temp-storage/summary", { params }),
-    ]);
+    ];
+    if (isSupervisorPlus) {
+      fetches.push(api.get<LotRequest[]>("/lot-requests/"));
+    }
+    const results = await Promise.all(fetches);
+    const [abRes, lotRes, lowStockRes, fluoroRes, tempRes] = results;
     const antibodies = abRes.data;
     const lots = lotRes.data;
 
@@ -87,8 +98,13 @@ export default function DashboardPage() {
     setAllLots(lots);
     setLowStock(lowStockRes.data);
     setFluorochromes(fluoroRes.data);
-    setPendingLots(lots.filter((l) => l.qc_status === "pending"));
+    setPendingLots(lots.filter((l: Lot) => l.qc_status === "pending"));
     setTempSummary(tempRes.data);
+
+    if (isSupervisorPlus && results[5]) {
+      const allRequests: LotRequest[] = results[5].data;
+      setPendingRequests(allRequests.filter((r) => r.status === "pending"));
+    }
 
     // Expiring lots
     const expiryWarnDays = labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS;
@@ -117,7 +133,7 @@ export default function DashboardPage() {
           new Date(b.expiration_date!).getTime()
       );
     setExpiringLots([...expired, ...expiring]);
-  }, [selectedLab, labSettings.expiry_warn_days]);
+  }, [selectedLab, labSettings.expiry_warn_days, user?.role]);
 
   useEffect(() => {
     loadData();
@@ -148,7 +164,8 @@ export default function DashboardPage() {
       return `${lot.antibody_target}-${lot.antibody_fluorochrome}`;
     }
     const ab = antibodyMap.get(lot.antibody_id);
-    return ab ? `${ab.target}-${ab.fluorochrome}` : "—";
+    if (!ab) return "—";
+    return ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join("-") || "—";
   };
   const lotVendor = (lot: Lot) => antibodyMap.get(lot.antibody_id)?.vendor || "—";
 
@@ -275,12 +292,16 @@ export default function DashboardPage() {
     return badges;
   }, [lowStock, abVialStats]);
 
+  const isSupervisorPlus = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
   const cards = [
-    { key: "pending", label: "Pending QC", count: pendingLots.length, className: "warn", icon: Clock },
-    { key: "temp", label: "Temp Storage", count: tempSummary?.total_vials ?? 0, className: "warn", icon: Thermometer },
-    { key: "low", label: "Low Stock", count: lowStock.length, className: "danger", icon: AlertTriangle },
-    { key: "expiring", label: "Expiring Lots", count: expiringLots.length, className: "warn", icon: CalendarClock },
-  ] as const;
+    ...(isSupervisorPlus && pendingRequests.length > 0
+      ? [{ key: "requests" as const, label: "Pending Antibodies", count: pendingRequests.length, className: "info", icon: PackagePlus }]
+      : []),
+    { key: "pending" as const, label: "Pending QC", count: pendingLots.length, className: "warn", icon: Clock },
+    { key: "temp" as const, label: "Temp Storage", count: tempSummary?.total_vials ?? 0, className: "warn", icon: Thermometer },
+    { key: "low" as const, label: "Low Stock", count: lowStock.length, className: "danger", icon: AlertTriangle },
+    { key: "expiring" as const, label: "Expiring Lots", count: expiringLots.length, className: "warn", icon: CalendarClock },
+  ];
 
   const navigateToInventory = (antibodyId: string) => {
     const params = new URLSearchParams();
@@ -523,6 +544,88 @@ export default function DashboardPage() {
         })}
       </div>
 
+      <div className={`dashboard-section-wrapper${selectedCard === "requests" ? " open" : ""}`}>
+        <div className="dashboard-section-inner">
+        <div className="dashboard-section" id="dashboard-section-requests">
+          <h2>Pending Antibodies</h2>
+          {pendingRequests.length === 0 ? (
+            <p className="page-desc">No pending requests.</p>
+          ) : isMobile ? (
+            <div className="dash-card-list">
+              {pendingRequests.map((req) => {
+                const ab = req.proposed_antibody;
+                const abLabel = ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join(" - ") || "Unnamed";
+                return (
+                  <div key={req.id} className="dash-card clickable" onClick={() => setReviewingRequest(req)} role="button" tabIndex={0}>
+                    <div className="dash-card-title">{abLabel}</div>
+                    <div className="dash-card-row"><span>Submitted by</span><span>{req.user_full_name || "Unknown"}</span></div>
+                    <div className="dash-card-row"><span>Barcode</span><span style={{ fontSize: "0.85em", wordBreak: "break-all" }}>{req.barcode}</span></div>
+                    <div className="dash-card-row"><span>Lot #</span><span>{req.lot_number || "—"}</span></div>
+                    <div className="dash-card-row"><span>Quantity</span><span>{req.quantity}</span></div>
+                    <div className="dash-card-row"><span>Submitted</span><span>{new Date(req.created_at).toLocaleDateString()}</span></div>
+                    <div className="dash-card-row">
+                      <span />
+                      <button className="btn-sm" onClick={(e) => { e.stopPropagation(); setReviewingRequest(req); }}>Review</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Pending Antibody</th>
+                  <th>Submitted By</th>
+                  <th>Lot #</th>
+                  <th>Qty</th>
+                  <th>Submitted</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingRequests.map((req) => {
+                  const ab = req.proposed_antibody;
+                  const abLabel = ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join(" - ") || "Unnamed";
+                  return (
+                    <tr key={req.id}>
+                      <td>
+                        {abLabel}
+                        {ab.designation && (
+                          <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.75em" }}>
+                            {String(ab.designation).toUpperCase()}
+                          </span>
+                        )}
+                      </td>
+                      <td>{req.user_full_name || "Unknown"}</td>
+                      <td>{req.lot_number || "—"}</td>
+                      <td>{req.quantity}</td>
+                      <td>{new Date(req.created_at).toLocaleDateString()}</td>
+                      <td>
+                        <button className="btn-sm" onClick={() => setReviewingRequest(req)}>Review</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+        </div>
+      </div>
+
+      {reviewingRequest && (
+        <LotRequestReviewModal
+          request={reviewingRequest}
+          onClose={() => setReviewingRequest(null)}
+          onSuccess={() => {
+            setReviewingRequest(null);
+            addToast("Lot request processed", "success");
+            loadData();
+          }}
+        />
+      )}
+
       <div className={`dashboard-section-wrapper${selectedCard === "pending" ? " open" : ""}`}>
         <div className="dashboard-section-inner">
         <div className="dashboard-section" id="dashboard-section-pending">
@@ -626,10 +729,21 @@ export default function DashboardPage() {
                   tabIndex={0}
                 >
                   <div className="dash-card-title">
-                    {item.antibody_target}-{item.antibody_fluorochrome}
+                    {item.antibody_name || [item.antibody_target, item.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"}
                   </div>
                   <div className="dash-card-row"><span>Lot #</span><span>{item.lot_number}</span></div>
                   <div className="dash-card-row"><span>Vials</span><span>{item.vial_count}</span></div>
+                  {item.vendor_barcode && (
+                    <div className="dash-card-row">
+                      <span />
+                      <button
+                        className="btn-sm btn-secondary"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/scan?barcode=${encodeURIComponent(item.vendor_barcode!)}`); }}
+                      >
+                        Search Lot
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -640,6 +754,7 @@ export default function DashboardPage() {
                   <th>Antibody</th>
                   <th>Lot #</th>
                   <th>Vials</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -651,9 +766,19 @@ export default function DashboardPage() {
                     role="button"
                     tabIndex={0}
                   >
-                    <td>{item.antibody_target}-{item.antibody_fluorochrome}</td>
+                    <td>{item.antibody_name || [item.antibody_target, item.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"}</td>
                     <td>{item.lot_number}</td>
                     <td>{item.vial_count}</td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {item.vendor_barcode && (
+                        <button
+                          className="btn-sm btn-secondary"
+                          onClick={() => navigate(`/scan?barcode=${encodeURIComponent(item.vendor_barcode!)}`)}
+                        >
+                          Search Lot
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -671,7 +796,7 @@ export default function DashboardPage() {
               ) : tempGrid ? (
                 <>
                   <h3 style={{ margin: "0 0 0.5rem" }}>
-                    {tempSelectedItem.antibody_target}-{tempSelectedItem.antibody_fluorochrome} — Lot {tempSelectedItem.lot_number}
+                    {tempSelectedItem.antibody_name || [tempSelectedItem.antibody_target, tempSelectedItem.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"} — Lot {tempSelectedItem.lot_number}
                   </h3>
                   <p className="page-desc" style={{ margin: "0 0 0.5rem" }}>
                     Click cells to select/deselect vials to move. {tempMoveSelectedIds.size} selected.
@@ -769,17 +894,17 @@ export default function DashboardPage() {
             <div className="dash-card-list">
               {lowStock.map((ab) => {
                 const stats = abVialStats.get(ab.id);
-                const color = fluoroMap.get(ab.fluorochrome.toLowerCase());
+                const color = ab.fluorochrome ? fluoroMap.get(ab.fluorochrome.toLowerCase()) : ab.color ?? undefined;
                 const badge = lowStockBadges.get(ab.id);
                 return (
                   <div key={ab.id} className="dash-card" onClick={() => navigateToInventory(ab.id)} role="button" tabIndex={0} onKeyDown={(e) => handleRowKey(e, ab.id)}>
                     <div className="dash-card-title">
                       {color && <div className="color-dot" style={{ backgroundColor: color }} />}
-                      {ab.name || `${ab.target}-${ab.fluorochrome}`}
+                      {ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join("-") || "Unnamed"}
                       <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>{ab.designation.toUpperCase()}</span>
                       {badge && <span className={`badge ${badge.color}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge.label}</span>}
                     </div>
-                    {ab.name && <div className="dash-card-row"><span>Antibody</span><span>{ab.target}-{ab.fluorochrome}</span></div>}
+                    {ab.name && ab.target && ab.fluorochrome && <div className="dash-card-row"><span>Antibody</span><span>{ab.target}-{ab.fluorochrome}</span></div>}
                     <div className="dash-card-row"><span>Vendor</span><span>{ab.vendor || "—"}</span></div>
                     <div className="dash-card-row"><span>Approved</span><span>{stats?.approved ?? 0}{ab.approved_low_threshold != null ? ` / ${ab.approved_low_threshold}` : ""}</span></div>
                     <div className="dash-card-row"><span>Pending</span><span>{stats?.pending ?? 0}</span></div>
@@ -805,15 +930,15 @@ export default function DashboardPage() {
               <tbody>
                 {lowStock.map((ab) => {
                   const stats = abVialStats.get(ab.id);
-                  const color = fluoroMap.get(ab.fluorochrome.toLowerCase());
+                  const color = ab.fluorochrome ? fluoroMap.get(ab.fluorochrome.toLowerCase()) : ab.color ?? undefined;
                   const badge = lowStockBadges.get(ab.id);
                   return (
                     <tr key={ab.id} className="clickable-row" onClick={() => navigateToInventory(ab.id)} onKeyDown={(e) => handleRowKey(e, ab.id)} role="button" tabIndex={0}>
                       <td>
                         {color && <div className="color-dot" style={{ backgroundColor: color }} />}
-                        {ab.name || `${ab.target}-${ab.fluorochrome}`}
+                        {ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join("-") || "Unnamed"}
                         <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.75em" }}>{ab.designation.toUpperCase()}</span>
-                        {ab.name && <span className="inventory-subtitle">{ab.target}-{ab.fluorochrome}</span>}
+                        {ab.name && ab.target && ab.fluorochrome && <span className="inventory-subtitle">{ab.target}-{ab.fluorochrome}</span>}
                       </td>
                       <td>{ab.vendor || "—"}</td>
                       <td>

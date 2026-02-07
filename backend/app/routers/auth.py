@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -40,7 +41,7 @@ _ROLE_RANK = {
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == body.email, User.is_active.is_(True)).first()
+    user = db.query(User).filter(func.lower(User.email) == body.email.lower(), User.is_active.is_(True)).first()
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -66,7 +67,7 @@ def initial_setup(body: SetupRequest, db: Session = Depends(get_db)):
 
     user = User(
         lab_id=None,
-        email=body.email,
+        email=body.email.lower(),
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
         role=UserRole.SUPER_ADMIN,
@@ -84,7 +85,7 @@ def create_user(
     lab_id: UUID | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)
+        require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
     ),
 ):
     # Scope check: can't create users at or above your own role level
@@ -101,7 +102,7 @@ def create_user(
     else:
         target_lab_id = current_user.lab_id
 
-    existing = db.query(User).filter(User.email == body.email).first()
+    existing = db.query(User).filter(func.lower(User.email) == body.email.lower()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -109,7 +110,7 @@ def create_user(
 
     user = User(
         lab_id=target_lab_id,
-        email=body.email,
+        email=body.email.lower(),
         hashed_password=hash_password(temp_pw),
         full_name=body.full_name,
         role=body.role,
@@ -163,7 +164,7 @@ def reset_password(
     user_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)
+        require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
     ),
 ):
     q = db.query(User).filter(User.id == user_id)

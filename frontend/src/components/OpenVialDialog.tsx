@@ -7,6 +7,7 @@ interface Props {
   onDeplete?: () => void;
   onViewLot: () => void;
   onCancel: () => void;
+  olderLotWarning?: string | null;
 }
 
 export default function OpenVialDialog({
@@ -16,6 +17,7 @@ export default function OpenVialDialog({
   onDeplete,
   onViewLot,
   onCancel,
+  olderLotWarning,
 }: Props) {
   const vial = cell.vial;
   if (!vial) return null;
@@ -36,6 +38,12 @@ export default function OpenVialDialog({
           Lot: {vial.lot_number} | Cell: {cell.label} | Status: {vial.status}
         </p>
 
+        {olderLotWarning && !isOpened && (
+          <div className="older-lot-warning" style={{ marginBottom: "var(--space-sm)" }}>
+            <p><strong>{olderLotWarning}</strong></p>
+          </div>
+        )}
+
         {needsQcWarning && (
           <div className="qc-confirm-warning">
             This lot hasn't been approved yet (QC: {vial.qc_status}).
@@ -53,16 +61,13 @@ export default function OpenVialDialog({
             </button>
           ) : (
             <button
-              className={needsQcWarning ? "btn-red" : "btn-green"}
+              className={needsQcWarning || olderLotWarning ? "btn-red" : "btn-green"}
               onClick={() => onConfirm(!!needsQcWarning)}
               disabled={loading}
             >
-              {loading ? "Opening..." : "Open Vial"}
+              {loading ? "Opening..." : olderLotWarning ? "Open Anyway" : "Open Vial"}
             </button>
           )}
-          <button onClick={onViewLot}>
-            View Lot
-          </button>
           <button className="btn-secondary" onClick={onCancel}>
             Cancel
           </button>

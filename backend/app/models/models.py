@@ -51,6 +51,12 @@ class TicketStatus(str, enum.Enum):
     CLOSED = "closed"
 
 
+class LotRequestStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class Designation(str, enum.Enum):
     IVD = "ivd"
     RUO = "ruo"
@@ -108,8 +114,8 @@ class Antibody(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
-    target = Column(String(100), nullable=False)  # e.g., CD3, CD4, CD45
-    fluorochrome = Column(String(100), nullable=False)  # e.g., FITC, PE, APC
+    target = Column(String(100), nullable=True)  # e.g., CD3, CD4, CD45
+    fluorochrome = Column(String(100), nullable=True)  # e.g., FITC, PE, APC
     clone = Column(String(100))
     vendor = Column(String(200))
     catalog_number = Column(String(100))
@@ -118,6 +124,8 @@ class Antibody(Base):
         nullable=False, default=Designation.RUO, server_default="ruo",
     )
     name = Column(String(300), nullable=True)  # IVD product name
+    short_code = Column(String(10), nullable=True)  # abbreviation for grid cells
+    color = Column(String(7), nullable=True)  # hex color for IVD grid tinting
     stability_days = Column(Integer, nullable=True)  # secondary expiration after opening
     low_stock_threshold = Column(Integer, nullable=True)
     approved_low_threshold = Column(Integer, nullable=True)
@@ -292,3 +300,33 @@ class TicketReply(Base):
 
     ticket = relationship("SupportTicket", back_populates="replies")
     author = relationship("User")
+
+
+class LotRequest(Base):
+    __tablename__ = "lot_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    barcode = Column(String(255), nullable=False)
+    lot_number = Column(String(100), nullable=True)
+    expiration_date = Column(Date, nullable=True)
+    quantity = Column(Integer, nullable=False)
+    storage_unit_id = Column(UUID(as_uuid=True), ForeignKey("storage_units.id"), nullable=True)
+    gs1_ai = Column(JSON, nullable=True)
+    enrichment_data = Column(JSON, nullable=True)
+    proposed_antibody = Column(JSON, nullable=False)
+    notes = Column(Text, nullable=True)
+    status = Column(
+        Enum(LotRequestStatus, values_callable=lambda e: [x.value for x in e]),
+        nullable=False,
+        default=LotRequestStatus.PENDING,
+    )
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    rejection_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    lab = relationship("Lab")
+    submitter = relationship("User", foreign_keys=[user_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])

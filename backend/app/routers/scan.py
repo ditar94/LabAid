@@ -164,6 +164,26 @@ def scan_lookup(
             )
         )
 
+    # Determine if this is the "current" (oldest active) lot
+    is_current = False
+    if not older_lot_summaries:
+        # Check if newer lots with sealed vials exist
+        newer_with_sealed = (
+            db.query(Lot.id)
+            .join(Vial, Vial.lot_id == Lot.id)
+            .filter(
+                Lot.antibody_id == lot.antibody_id,
+                Lot.lab_id == lot.lab_id,
+                Lot.id != lot.id,
+                Lot.is_archived == False,  # noqa: E712
+                Lot.created_at > lot.created_at,
+                Vial.status == VialStatus.SEALED,
+            )
+            .first()
+        )
+        if newer_with_sealed:
+            is_current = True
+
     return ScanLookupResult(
         lot=lot,
         antibody=antibody,
@@ -172,6 +192,7 @@ def scan_lookup(
         storage_grids=storage_grids,
         qc_warning=qc_warning,
         older_lots=older_lot_summaries,
+        is_current_lot=is_current,
     )
 
 

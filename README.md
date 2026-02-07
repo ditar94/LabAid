@@ -170,6 +170,11 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 ### Pre-Prod Launch Checklist
 
+- [x] bcrypt password hashing (passlib + bcrypt scheme)
+- [x] JWT expiration set to reasonable window (8 hours)
+- [ ] HTTPS enforced in production (Cloud Run / load balancer TLS termination)
+- [ ] CORS lockdown — restrict `allow_origins` to production domain (currently dev-only `localhost:5173`)
+- [ ] Rate limiting on login endpoint (API middleware or Cloud Armor)
 - [ ] Secrets management (Key Vault or equivalent); no secrets committed to repo
 - [ ] MFA + strong password policy for admins; account lockout/rate limiting
 - [ ] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
@@ -183,7 +188,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 - [x] Audit log entries must include the associated user
 - [x] Redirect `/antibodies` and `/lots` to `/inventory` and remove old views entirely
-- [ ] Add "Receive via barcode" flow on the Receive page to match the new scan buttons
+- [x] Add "Receive via barcode" flow on the Receive page to match the new scan buttons (ReceivePage redirects to ScanSearchPage which handles barcode-based receiving)
 -
 - [x] Add lab setting (e.g., `qc_doc_required`) to keep lots in "Pending QC" until a QC document is uploaded (approval alone is not enough)
 - [x] Add a QC document flag/type on lot documents (or doc category) and expose it in the upload UI
@@ -201,6 +206,11 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] Store all parsed GS1 AIs per lot (JSON column or normalized table)
 - [x] Normalize scanner input (strip CR/LF, handle GS separator for variable-length AIs)
 - [x] Storage page: unknown barcode should show error with "Go register" link to Scan/Search
+- [x] Export audit log to CSV
+- [x] Bulk vial operations (open/deplete multiple)
+- [x] Dark mode (prep work done in Phase 1 with CSS custom properties)
+- [x] Mobile-responsive layout for tablet use at the bench (covered in Phase 8)
+
 
 ---
 
@@ -779,8 +789,4 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
   - Skip storage assignment during receive (vials created without location tracking)
   - Existing storage data preserved but hidden
 
-### Backlog / Nice-to-Have
-- [ ] Export audit log to CSV
-- [ ] Bulk vial operations (open/deplete multiple)
-- [ ] Dark mode (prep work done in Phase 1 with CSS custom properties)
-- [ ] Mobile-responsive layout for tablet use at the bench (covered in Phase 8)
+

@@ -46,13 +46,15 @@ export interface Fluorochrome {
 export interface Antibody {
   id: string;
   lab_id: string;
-  target: string;
-  fluorochrome: string;
+  target: string | null;
+  fluorochrome: string | null;
   clone: string | null;
   vendor: string | null;
   catalog_number: string | null;
   designation: Designation;
   name: string | null;
+  short_code: string | null;
+  color: string | null;
   components: ReagentComponent[];
   stability_days: number | null;
   low_stock_threshold: number | null;
@@ -143,6 +145,8 @@ export interface VialSummary {
   expiration_date: string | null;
   antibody_target: string | null;
   antibody_fluorochrome: string | null;
+  antibody_name: string | null;
+  antibody_short_code: string | null;
   color: string | null;
   qc_status: QCStatus | null;
 }
@@ -188,6 +192,7 @@ export interface ScanLookupResult {
   storage_grids: StorageGrid[];
   qc_warning: string | null;
   older_lots?: OlderLotSummary[];
+  is_current_lot?: boolean;
 }
 
 export interface GUDIDDevice {
@@ -216,6 +221,7 @@ export type ScanIntent = "open" | "receive" | "deplete" | "store_open" | "view_s
 export interface LotSummary {
   id: string;
   lot_number: string;
+  vendor_barcode: string | null;
   expiration_date: string | null;
   qc_status: QCStatus;
   vial_counts: VialCounts;
@@ -233,8 +239,10 @@ export interface StorageLocation {
 export interface TempStorageSummaryItem {
   lot_id: string;
   lot_number: string;
-  antibody_target: string;
-  antibody_fluorochrome: string;
+  vendor_barcode: string | null;
+  antibody_target: string | null;
+  antibody_fluorochrome: string | null;
+  antibody_name: string | null;
   vial_count: number;
   vial_ids: string[];
 }
@@ -315,13 +323,15 @@ export interface GlobalSearchAntibody {
   id: string;
   lab_id: string;
   lab_name: string;
-  target: string;
-  fluorochrome: string;
+  target: string | null;
+  fluorochrome: string | null;
   clone: string | null;
   vendor: string | null;
   catalog_number: string | null;
   designation: Designation;
   name: string | null;
+  short_code: string | null;
+  color: string | null;
   components: ReagentComponent[];
 }
 
@@ -340,4 +350,29 @@ export interface GlobalSearchResult {
   labs: GlobalSearchLab[];
   antibodies: GlobalSearchAntibody[];
   lots: GlobalSearchLot[];
+}
+
+export type LotRequestStatus = "pending" | "approved" | "rejected";
+
+export interface LotRequest {
+  id: string;
+  lab_id: string;
+  user_id: string;
+  user_full_name: string | null;
+  barcode: string;
+  lot_number: string | null;
+  expiration_date: string | null;
+  quantity: number;
+  storage_unit_id: string | null;
+  storage_unit_name: string | null;
+  gs1_ai: Record<string, string> | null;
+  enrichment_data: Record<string, unknown> | null;
+  proposed_antibody: Record<string, unknown>;
+  notes: string | null;
+  status: LotRequestStatus;
+  reviewed_by: string | null;
+  reviewer_name: string | null;
+  reviewed_at: string | null;
+  rejection_note: string | null;
+  created_at: string;
 }

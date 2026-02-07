@@ -35,9 +35,13 @@ def _build_cell_out(db: Session, cell: StorageCell, fluorochromes: list[Fluoroch
         antibody = db.query(Antibody).filter(Antibody.id == lot.antibody_id).first() if lot else None
         color = None
         if antibody:
-            fluoro = next((f for f in fluorochromes if f.name.lower() == antibody.fluorochrome.lower()), None)
-            if fluoro:
-                color = fluoro.color
+            if antibody.fluorochrome:
+                fluoro = next((f for f in fluorochromes if f.name.lower() == antibody.fluorochrome.lower()), None)
+                if fluoro:
+                    color = fluoro.color
+            # Fallback to antibody.color for IVD products without fluorochrome
+            if not color and antibody.color:
+                color = antibody.color
         vial_summary = VialSummary(
             id=vial.id,
             lot_id=vial.lot_id,
@@ -47,6 +51,8 @@ def _build_cell_out(db: Session, cell: StorageCell, fluorochromes: list[Fluoroch
             expiration_date=lot.expiration_date if lot else None,
             antibody_target=antibody.target if antibody else None,
             antibody_fluorochrome=antibody.fluorochrome if antibody else None,
+            antibody_name=antibody.name if antibody else None,
+            antibody_short_code=antibody.short_code if antibody else None,
             color=color,
             qc_status=lot.qc_status.value if lot and lot.qc_status else None,
         )
@@ -388,8 +394,10 @@ def stock_vial(
 class TempStorageSummaryItem(BaseModel):
     lot_id: UUID
     lot_number: str
-    antibody_target: str
-    antibody_fluorochrome: str
+    vendor_barcode: str | None = None
+    antibody_target: str | None = None
+    antibody_fluorochrome: str | None = None
+    antibody_name: str | None = None
     vial_count: int
     vial_ids: list[UUID] = []
 
@@ -427,8 +435,10 @@ def get_temp_storage_summary(
         db.query(
             Lot.id.label("lot_id"),
             Lot.lot_number,
+            Lot.vendor_barcode,
             Antibody.target.label("antibody_target"),
             Antibody.fluorochrome.label("antibody_fluorochrome"),
+            Antibody.name.label("antibody_name"),
             func.count(Vial.id).label("vial_count"),
         )
         .join(StorageCell, Vial.location_cell_id == StorageCell.id)
@@ -439,8 +449,8 @@ def get_temp_storage_summary(
             Vial.status.in_([VialStatus.SEALED, VialStatus.OPENED]),
             Lot.is_archived.is_(False),
         )
-        .group_by(Lot.id, Lot.lot_number, Antibody.target, Antibody.fluorochrome)
-        .order_by(Antibody.target, Antibody.fluorochrome)
+        .group_by(Lot.id, Lot.lot_number, Lot.vendor_barcode, Antibody.target, Antibody.fluorochrome, Antibody.name)
+        .order_by(func.coalesce(Antibody.target, Antibody.name), Antibody.fluorochrome)
         .all()
     )
 
@@ -467,8 +477,10 @@ def get_temp_storage_summary(
         TempStorageSummaryItem(
             lot_id=r.lot_id,
             lot_number=r.lot_number,
+            vendor_barcode=r.vendor_barcode,
             antibody_target=r.antibody_target,
             antibody_fluorochrome=r.antibody_fluorochrome,
+            antibody_name=r.antibody_name,
             vial_count=r.vial_count,
             vial_ids=vial_ids_by_lot.get(r.lot_id, []),
         )
