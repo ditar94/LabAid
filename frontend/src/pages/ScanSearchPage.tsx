@@ -9,6 +9,7 @@ import type {
   StorageCell,
   Vial,
   Antibody,
+  Designation,
   StorageUnit,
   Fluorochrome,
   AntibodySearchResult,
@@ -91,6 +92,9 @@ export default function ScanSearchPage() {
     clone: "",
     vendor: "",
     catalog_number: "",
+    designation: "ruo" as Designation,
+    name: "",
+    components: [] as Array<{ target: string; fluorochrome: string; clone: string }>,
     stability_days: "",
     low_stock_threshold: "",
     approved_low_threshold: "",
@@ -109,6 +113,7 @@ export default function ScanSearchPage() {
   const [openLoading, setOpenLoading] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
+  const [designationFilter, setDesignationFilter] = useState<string>("");
 
   // ── Shared state ────────────────────────────────────────────────────
   const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
@@ -245,6 +250,9 @@ export default function ScanSearchPage() {
               clone: "",
               vendor: "",
               catalog_number: "",
+              designation: "ruo" as Designation,
+              name: "",
+              components: [] as Array<{ target: string; fluorochrome: string; clone: string }>,
               stability_days: "",
               low_stock_threshold: "",
               approved_low_threshold: "",
@@ -276,6 +284,14 @@ export default function ScanSearchPage() {
                   lot_number: enrich.lot_number || prev.lot_number,
                   expiration_date: enrich.expiration_date || prev.expiration_date,
                 }));
+
+                // Auto-suggest IVD designation if GUDID found
+                if (enrich.suggested_designation) {
+                  setNewAbForm((prev) => ({
+                    ...prev,
+                    designation: enrich.suggested_designation as Designation,
+                  }));
+                }
 
                 // If single GUDID match, auto-populate antibody fields
                 if (enrich.gudid_devices.length === 1) {
@@ -712,6 +728,11 @@ export default function ScanSearchPage() {
           clone: newAbForm.clone.trim() || null,
           vendor: newAbForm.vendor.trim() || null,
           catalog_number: newAbForm.catalog_number.trim() || null,
+          designation: newAbForm.designation,
+          name: newAbForm.name.trim() || null,
+          components: newAbForm.designation === "ivd" && newAbForm.components.length > 0
+            ? newAbForm.components.map((c, i) => ({ target: c.target, fluorochrome: c.fluorochrome, clone: c.clone || null, ordinal: i }))
+            : null,
           stability_days: newAbForm.stability_days.trim()
             ? parseInt(newAbForm.stability_days, 10)
             : null,
@@ -1088,6 +1109,46 @@ export default function ScanSearchPage() {
                     />
                   </div>
                   <div className="form-group">
+                    <label>Designation</label>
+                    <select
+                      value={newAbForm.designation}
+                      onChange={(e) => setNewAbForm({ ...newAbForm, designation: e.target.value as Designation })}
+                    >
+                      <option value="ruo">RUO</option>
+                      <option value="asr">ASR</option>
+                      <option value="ivd">IVD</option>
+                    </select>
+                  </div>
+                </div>
+                {newAbForm.designation === "ivd" && (
+                  <>
+                    <div className="form-group">
+                      <label>Product Name</label>
+                      <input
+                        placeholder="IVD product name (required)"
+                        value={newAbForm.name}
+                        onChange={(e) => setNewAbForm({ ...newAbForm, name: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Components</label>
+                      <div className="component-picker">
+                        {newAbForm.components.map((comp, idx) => (
+                          <div key={idx} className="component-picker-row">
+                            <input placeholder="Target" value={comp.target} onChange={(e) => { const c = [...newAbForm.components]; c[idx] = { ...c[idx], target: e.target.value }; setNewAbForm({ ...newAbForm, components: c }); }} required />
+                            <input placeholder="Fluorochrome" value={comp.fluorochrome} onChange={(e) => { const c = [...newAbForm.components]; c[idx] = { ...c[idx], fluorochrome: e.target.value }; setNewAbForm({ ...newAbForm, components: c }); }} required />
+                            <input placeholder="Clone" value={comp.clone} onChange={(e) => { const c = [...newAbForm.components]; c[idx] = { ...c[idx], clone: e.target.value }; setNewAbForm({ ...newAbForm, components: c }); }} />
+                            <button type="button" className="btn-icon" onClick={() => setNewAbForm({ ...newAbForm, components: newAbForm.components.filter((_, i) => i !== idx) })} title="Remove">&times;</button>
+                          </div>
+                        ))}
+                        <button type="button" className="btn-sm" onClick={() => setNewAbForm({ ...newAbForm, components: [...newAbForm.components, { target: "", fluorochrome: "", clone: "" }] })}>+ Add Component</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+                <div className="form-row">
+                  <div className="form-group">
                     <label>Stability (days)</label>
                     <input
                       type="number"
@@ -1190,8 +1251,19 @@ export default function ScanSearchPage() {
               {fluoroMap.get(result.antibody.fluorochrome.toLowerCase()) && (
                 <div className="color-dot" style={{ backgroundColor: fluoroMap.get(result.antibody.fluorochrome.toLowerCase()) }} />
               )}
-              {result.antibody.target} - {result.antibody.fluorochrome}
+              {result.antibody.name || `${result.antibody.target} - ${result.antibody.fluorochrome}`}
+              <span className={`badge badge-designation-${result.antibody.designation}`} style={{ fontSize: "0.5em", marginLeft: 8, verticalAlign: "middle" }}>
+                {result.antibody.designation.toUpperCase()}
+              </span>
             </h2>
+            {result.antibody.name && (
+              <p style={{ margin: "0 0 0.25rem", color: "var(--text-muted)", fontSize: "0.85em" }}>
+                {result.antibody.target} - {result.antibody.fluorochrome}
+              </p>
+            )}
+            {result.antibody.components && result.antibody.components.length > 0 && (
+              <p className="component-list" style={{ margin: "0 0 0.25rem" }}>Contains: {result.antibody.components.map(c => `${c.target}-${c.fluorochrome}`).join(", ")}</p>
+            )}
             <p>Lot: <strong>{result.lot.lot_number}</strong> | QC: <span className={`badge ${result.lot.qc_status === "approved" ? "badge-green" : result.lot.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>{result.lot.qc_status}</span></p>
             <p>
               Sealed: <strong>{result.vials.length}</strong>
@@ -1573,13 +1645,29 @@ export default function ScanSearchPage() {
       {/* ── Search Results ─────────────────────────────────────────── */}
       {mode === "search" && (
         <>
-          {searchResults.length > 0 && (
+          {searchResults.length > 0 && (() => {
+            const filteredResults = designationFilter
+              ? searchResults.filter((r) => r.antibody.designation === designationFilter)
+              : searchResults;
+            return (
             <>
+              <div style={{ marginBottom: 8 }}>
+                <select
+                  value={designationFilter}
+                  onChange={(e) => setDesignationFilter(e.target.value)}
+                >
+                  <option value="">All Designations</option>
+                  <option value="ruo">RUO</option>
+                  <option value="asr">ASR</option>
+                  <option value="ivd">IVD</option>
+                </select>
+              </div>
               <table className="search-results-table">
                 <thead>
                   <tr>
                     <th>Target</th>
                     <th>Fluorochrome</th>
+                    <th>Designation</th>
                     <th>Clone</th>
                     <th>Vendor</th>
                     <th>Catalog #</th>
@@ -1591,7 +1679,7 @@ export default function ScanSearchPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {searchResults.map((r) => {
+                  {filteredResults.map((r) => {
                     const isLotInactive = (l: typeof r.lots[0]) => l.is_archived || (l.vial_counts.sealed + l.vial_counts.opened === 0);
                     const activeLots = showInactive ? r.lots : r.lots.filter((l) => !isLotInactive(l));
                     const counts = showInactive
@@ -1606,6 +1694,7 @@ export default function ScanSearchPage() {
                       <tr key={r.antibody.id} className={`clickable-row ${selectedSearchResult?.antibody.id === r.antibody.id ? "active" : ""}`} onClick={() => handleSearchSelect(r)}>
                         <td>{r.antibody.target}</td>
                         <td>{r.antibody.fluorochrome}</td>
+                        <td><span className={`badge badge-designation-${r.antibody.designation}`}>{r.antibody.designation.toUpperCase()}</span></td>
                         <td>{r.antibody.clone || "—"}</td>
                         <td>{r.antibody.vendor || "—"}</td>
                         <td>{r.antibody.catalog_number || "—"}</td>
@@ -1624,7 +1713,8 @@ export default function ScanSearchPage() {
                 Show inactive (archived &amp; depleted)
               </label>
             </>
-          )}
+            );
+          })()}
 
           {selectedSearchResult && (() => {
             const allLots = selectedSearchResult.lots;
@@ -1666,7 +1756,20 @@ export default function ScanSearchPage() {
 
             return (
               <div className="locator-panel">
-                <h2>{selectedSearchResult.antibody.target} - {selectedSearchResult.antibody.fluorochrome}</h2>
+                <h2>
+                  {selectedSearchResult.antibody.name || `${selectedSearchResult.antibody.target} - ${selectedSearchResult.antibody.fluorochrome}`}
+                  <span className={`badge badge-designation-${selectedSearchResult.antibody.designation}`} style={{ fontSize: "0.5em", marginLeft: 8, verticalAlign: "middle" }}>
+                    {selectedSearchResult.antibody.designation.toUpperCase()}
+                  </span>
+                </h2>
+                {selectedSearchResult.antibody.name && (
+                  <p style={{ margin: "0 0 0.5rem", color: "var(--text-muted)", fontSize: "0.85em" }}>
+                    {selectedSearchResult.antibody.target} - {selectedSearchResult.antibody.fluorochrome}
+                  </p>
+                )}
+                {selectedSearchResult.antibody.components && selectedSearchResult.antibody.components.length > 0 && (
+                  <p className="component-list" style={{ margin: "0 0 0.5rem" }}>Contains: {selectedSearchResult.antibody.components.map(c => `${c.target}-${c.fluorochrome}`).join(", ")}</p>
+                )}
                 {visibleLots.length > 0 && (
                   <div className="lot-summaries">
                     {visibleLots.map((lot) => (

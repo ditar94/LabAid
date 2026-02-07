@@ -542,6 +542,7 @@ export default function DashboardPage() {
                     <div className="dash-card-title">
                       {color && <div className="color-dot" style={{ backgroundColor: color }} />}
                       {label}
+                      {(() => { const ab = antibodyMap.get(lot.antibody_id); return ab ? <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>{ab.designation.toUpperCase()}</span> : null; })()}
                       {pendingQCBadges.get(lot.id)?.map((badge, i) => (
                         <span key={i} className="badge badge-red" style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge}</span>
                       ))}
@@ -584,6 +585,7 @@ export default function DashboardPage() {
                       <td>
                         {color && <div className="color-dot" style={{ backgroundColor: color }} />}
                         {label}
+                        {(() => { const ab = antibodyMap.get(lot.antibody_id); return ab ? <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.75em" }}>{ab.designation.toUpperCase()}</span> : null; })()}
                         {pendingQCBadges.get(lot.id)?.map((badge, i) => (
                           <span key={i} className="badge badge-red" style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge}</span>
                         ))}
@@ -773,9 +775,11 @@ export default function DashboardPage() {
                   <div key={ab.id} className="dash-card" onClick={() => navigateToInventory(ab.id)} role="button" tabIndex={0} onKeyDown={(e) => handleRowKey(e, ab.id)}>
                     <div className="dash-card-title">
                       {color && <div className="color-dot" style={{ backgroundColor: color }} />}
-                      {ab.target}-{ab.fluorochrome}
+                      {ab.name || `${ab.target}-${ab.fluorochrome}`}
+                      <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>{ab.designation.toUpperCase()}</span>
                       {badge && <span className={`badge ${badge.color}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge.label}</span>}
                     </div>
+                    {ab.name && <div className="dash-card-row"><span>Antibody</span><span>{ab.target}-{ab.fluorochrome}</span></div>}
                     <div className="dash-card-row"><span>Vendor</span><span>{ab.vendor || "—"}</span></div>
                     <div className="dash-card-row"><span>Approved</span><span>{stats?.approved ?? 0}{ab.approved_low_threshold != null ? ` / ${ab.approved_low_threshold}` : ""}</span></div>
                     <div className="dash-card-row"><span>Pending</span><span>{stats?.pending ?? 0}</span></div>
@@ -807,7 +811,9 @@ export default function DashboardPage() {
                     <tr key={ab.id} className="clickable-row" onClick={() => navigateToInventory(ab.id)} onKeyDown={(e) => handleRowKey(e, ab.id)} role="button" tabIndex={0}>
                       <td>
                         {color && <div className="color-dot" style={{ backgroundColor: color }} />}
-                        {ab.target}-{ab.fluorochrome}
+                        {ab.name || `${ab.target}-${ab.fluorochrome}`}
+                        <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.75em" }}>{ab.designation.toUpperCase()}</span>
+                        {ab.name && <span className="inventory-subtitle">{ab.target}-{ab.fluorochrome}</span>}
                       </td>
                       <td>{ab.vendor || "—"}</td>
                       <td>
@@ -858,6 +864,7 @@ export default function DashboardPage() {
                     <div className="dash-card-title">
                       {color && <div className="color-dot" style={{ backgroundColor: color }} />}
                       {label}
+                      {ab && <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>{ab.designation.toUpperCase()}</span>}
                       <span className={`badge ${isExpired ? "badge-red" : "badge-yellow"}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>
                         {isExpired ? "Expired" : daysUntil(lot.expiration_date!)}
                       </span>
@@ -904,6 +911,7 @@ export default function DashboardPage() {
                       <td>
                         {color && <div className="color-dot" style={{ backgroundColor: color }} />}
                         {label}
+                        {ab && <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.75em" }}>{ab.designation.toUpperCase()}</span>}
                       </td>
                       <td>{lotVendor(lot)}</td>
                       <td>{lot.lot_number}</td>

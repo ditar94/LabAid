@@ -426,7 +426,8 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] View inventory and storage grids
 - [x] Store vials (1-by-1 stocking workflow)
 - [x] Open vials from the scan screen
-- [x] Cannot register lots, receive inventory, or approve QC
+- [ ] Can receive inventory (add TECH to receive endpoint's `require_role`)
+- [x] Cannot register lots or approve QC
 - [x] If scanned barcode is unregistered or lot not QC'd, show message: "Contact your supervisor"
 
 **Password Management & User Creation**
@@ -436,7 +437,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] Force password change on first login — if `must_change_password` is true, redirect user to a "Choose New Password" screen before they can access the app
 
 **Open question**
-- [x] Decide: should Techs be able to receive inventory, or only Supervisors? → **Only Supervisors+**
+- [x] Decide: should Techs be able to receive inventory, or only Supervisors? → **Yes, Techs can receive** (audit log captures who did what)
 
 ### Antibody Search & Locator
 - [x] Global search bar — search by Target, Fluorochrome, Clone, or Catalog #
@@ -712,6 +713,71 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - Fonts loaded via Google Fonts or self-hosted in `/public/fonts/` for performance
 - Consider CSS modules or scoped styles if `App.css` split becomes unwieldy
 - Each phase is independently deployable — no phase depends on a later phase being complete
+
+### Reagent Designations (IVD / RUO / ASR)
+> Add regulatory designation support to distinguish IVD, RUO, and ASR reagents. Labs often stock the same antibody/fluorochrome combo under different designations (e.g., CD3-FITC as both ASR and RUO). The system must show both clearly without cluttering search results or forcing a priority model.
+
+**Phase A — Designation Enum + Name (Complete)**
+
+*Data Model*
+- [x] Add `designation` enum (`IVD`, `RUO`, `ASR`) to the Antibody model (required field, default `RUO`)
+- [x] Add optional `name` field to Antibody for IVD product names (e.g., "BD Simultest CD4 FITC/CD8 PE")
+- [x] Alembic migration for new fields (`b1c2d3e4f5a6`)
+- [x] Update Pydantic schemas (AntibodyCreate, AntibodyUpdate, AntibodyOut, GlobalSearchAntibody)
+- [x] Audit snapshot includes designation and name
+
+*Inventory & Search Display*
+- [x] Inventory cards: designation badge (RUO/ASR/IVD) with color coding; IVD products show `name` as title with target-fluorochrome as subtitle
+- [x] Designation filter dropdown on Inventory page and Scan/Search results
+- [x] Search results table: designation column with badge
+- [x] Scan result header: designation badge next to antibody name; IVD name display with subtitle
+- [x] Global search: designation column with badge in antibodies table
+- [x] Dashboard: designation badge on low stock, pending QC, and expiring lot entries
+- [x] Inactive antibodies table: designation column with badge
+- [x] Antibody name search: backend search includes `name` field for IVD product name matching
+
+*Receive & Registration*
+- [x] Antibody creation form (Inventory page): designation dropdown + conditional IVD name input
+- [x] Antibody edit modal (Inventory page): designation dropdown + conditional IVD name input
+- [x] New antibody registration (Scan/Search page): designation dropdown + conditional IVD name input
+
+*Low Stock & Alerts*
+- [x] Low stock thresholds remain per-antibody (no cross-designation priority system)
+- [x] Each designation entry has its own independent threshold — labs configure per their own procedures
+- [x] No lab-wide designation priority — the system shows all designations with stock levels; labs follow their own SOPs for which to use first
+
+**Phase B — IVD Multi-Antibody Cocktails (Complete)**
+
+*Data Model*
+- [x] `ReagentComponent` join table: links one Antibody to multiple target/fluorochrome/clone entries with ordinal ordering
+- [x] Alembic migration for `reagent_components` table (`c2d3e4f5a6b7`) with FK cascade delete + index
+- [x] Pydantic schemas: `ReagentComponentBase`, `ReagentComponentOut`; `components` field on AntibodyCreate/Update/Out/GlobalSearchAntibody
+- [x] Audit snapshot includes components array
+
+*Component Picker (Forms)*
+- [x] Inventory page create form: inline component picker when designation is IVD (add/remove rows of target + fluorochrome + clone)
+- [x] Inventory page edit modal: same component picker, pre-populated from existing components
+- [x] Scan/Search register form: same component picker for new IVD antibodies
+
+*Search & Display*
+- [x] Antibody search: subquery searches component targets/fluorochromes (e.g. search "CD4" finds IVD cocktails containing CD4)
+- [x] Global search: same component subquery + eager-loads components in response
+- [x] Inventory cards: "Contains: CD3-FITC, CD4-PE, ..." line for IVD antibodies with components
+- [x] Scan result header: "Contains: ..." line below antibody name
+- [x] Scan/Search locator panel: "Contains: ..." line below antibody name
+- [x] Global search table: component sub-line under antibody target
+
+*GS1 Enrichment Auto-Detection*
+- [x] Backend: `suggested_designation` field on `ScanEnrichResult`; set to `"ivd"` when GUDID device found (FDA-registered = likely IVD)
+- [x] Frontend: auto-sets designation dropdown to IVD when enrichment suggests it (user can override)
+
+### Lab Settings Additions
+
+- [ ] **Storage toggle**: Add `storage_enabled` lab setting (default `true`). When disabled:
+  - Hide Storage nav tab
+  - Hide storage grid sections on Scan/Inventory pages
+  - Skip storage assignment during receive (vials created without location tracking)
+  - Existing storage data preserved but hidden
 
 ### Backlog / Nice-to-Have
 - [ ] Export audit log to CSV

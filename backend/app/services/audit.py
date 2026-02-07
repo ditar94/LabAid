@@ -98,10 +98,16 @@ def snapshot_antibody(ab) -> dict:
         "clone": ab.clone,
         "vendor": ab.vendor,
         "catalog_number": ab.catalog_number,
+        "designation": ab.designation.value if ab.designation else None,
+        "name": ab.name,
         "stability_days": ab.stability_days,
         "low_stock_threshold": ab.low_stock_threshold,
         "approved_low_threshold": ab.approved_low_threshold,
         "is_active": ab.is_active,
+        "components": [
+            {"target": c.target, "fluorochrome": c.fluorochrome, "clone": c.clone, "ordinal": c.ordinal}
+            for c in (ab.components or [])
+        ],
     }
 
 

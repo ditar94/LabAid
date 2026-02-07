@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.middleware.auth import require_role
-from app.models.models import Antibody, Lab, Lot, User, UserRole
+from app.models.models import Antibody, Lab, Lot, ReagentComponent, User, UserRole
 from app.schemas.schemas import (
     GlobalSearchAntibody,
     GlobalSearchLab,
     GlobalSearchLot,
     GlobalSearchResult,
+    ReagentComponentOut,
 )
 
 router = APIRouter(
@@ -50,16 +52,28 @@ def global_search(
             lab_cache[key] = lab.name if lab else "Unknown"
         return lab_cache[key]
 
+    # Subquery: antibody IDs with matching components
+    component_ab_ids = (
+        db.query(ReagentComponent.antibody_id)
+        .filter(or_(
+            ReagentComponent.target.ilike(term),
+            ReagentComponent.fluorochrome.ilike(term),
+        ))
+    )
+
     # Search antibodies
     ab_rows = (
         db.query(Antibody)
+        .options(joinedload(Antibody.components))
         .filter(
             Antibody.is_active.is_(True),
-            (
-                Antibody.target.ilike(term)
-                | Antibody.fluorochrome.ilike(term)
-                | Antibody.clone.ilike(term)
-                | Antibody.catalog_number.ilike(term)
+            or_(
+                Antibody.target.ilike(term),
+                Antibody.fluorochrome.ilike(term),
+                Antibody.clone.ilike(term),
+                Antibody.catalog_number.ilike(term),
+                Antibody.name.ilike(term),
+                Antibody.id.in_(component_ab_ids),
             ),
         )
         .limit(RESULTS_PER_CATEGORY)
@@ -75,6 +89,9 @@ def global_search(
             clone=ab.clone,
             vendor=ab.vendor,
             catalog_number=ab.catalog_number,
+            designation=ab.designation,
+            name=ab.name,
+            components=[ReagentComponentOut.model_validate(c) for c in ab.components],
         )
         for ab in ab_rows
     ]

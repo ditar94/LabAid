@@ -51,6 +51,12 @@ class TicketStatus(str, enum.Enum):
     CLOSED = "closed"
 
 
+class Designation(str, enum.Enum):
+    IVD = "ivd"
+    RUO = "ruo"
+    ASR = "asr"
+
+
 # ── Models ─────────────────────────────────────────────────────────────────
 
 
@@ -107,6 +113,11 @@ class Antibody(Base):
     clone = Column(String(100))
     vendor = Column(String(200))
     catalog_number = Column(String(100))
+    designation = Column(
+        Enum(Designation, values_callable=lambda e: [x.value for x in e]),
+        nullable=False, default=Designation.RUO, server_default="ruo",
+    )
+    name = Column(String(300), nullable=True)  # IVD product name
     stability_days = Column(Integer, nullable=True)  # secondary expiration after opening
     low_stock_threshold = Column(Integer, nullable=True)
     approved_low_threshold = Column(Integer, nullable=True)
@@ -115,6 +126,20 @@ class Antibody(Base):
 
     lab = relationship("Lab", back_populates="antibodies")
     lots = relationship("Lot", back_populates="antibody")
+    components = relationship("ReagentComponent", back_populates="antibody", cascade="all, delete-orphan", order_by="ReagentComponent.ordinal")
+
+
+class ReagentComponent(Base):
+    __tablename__ = "reagent_components"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    antibody_id = Column(UUID(as_uuid=True), ForeignKey("antibodies.id", ondelete="CASCADE"), nullable=False)
+    target = Column(String(100), nullable=False)
+    fluorochrome = Column(String(100), nullable=False)
+    clone = Column(String(100), nullable=True)
+    ordinal = Column(Integer, nullable=False, default=0)
+
+    antibody = relationship("Antibody", back_populates="components")
 
 
 class Lot(Base):

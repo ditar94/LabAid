@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.models import Antibody, Fluorochrome, Lot, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
+from app.models.models import Antibody, Designation, Fluorochrome, Lot, ReagentComponent, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
 from app.schemas.schemas import (
     AntibodyArchiveRequest,
     AntibodyCreate,
@@ -28,6 +28,7 @@ _DEFAULT_FLUORO_COLOR = "#9ca3af"
 def list_antibodies(
     lab_id: UUID | None = None,
     include_inactive: bool = False,
+    designation: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -39,6 +40,9 @@ def list_antibodies(
 
     if not include_inactive:
         q = q.filter(Antibody.is_active.is_(True))
+
+    if designation:
+        q = q.filter(Antibody.designation == designation)
 
     return q.order_by(Antibody.target, Antibody.fluorochrome).all()
 
@@ -70,10 +74,21 @@ def create_antibody(
             )
         )
 
-    ab_data = body.model_dump(exclude={"fluorochrome"})
+    ab_data = body.model_dump(exclude={"fluorochrome", "components"})
     ab = Antibody(lab_id=target_lab_id, **ab_data, fluorochrome=fluoro_name)
     db.add(ab)
     db.flush()
+
+    if body.components:
+        for comp in body.components:
+            db.add(ReagentComponent(
+                antibody_id=ab.id,
+                target=comp.target,
+                fluorochrome=comp.fluorochrome,
+                clone=comp.clone,
+                ordinal=comp.ordinal,
+            ))
+        db.flush()
 
     log_audit(
         db,
@@ -82,7 +97,7 @@ def create_antibody(
         action="antibody.created",
         entity_type="antibody",
         entity_id=ab.id,
-        after_state={"target": ab.target, "fluorochrome": ab.fluorochrome},
+        after_state=snapshot_antibody(ab),
     )
 
     db.commit()
@@ -94,6 +109,7 @@ def create_antibody(
 def search_antibodies(
     q: str = "",
     lab_id: UUID | None = None,
+    designation: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -106,19 +122,34 @@ def search_antibodies(
     if current_user.role == UserRole.SUPER_ADMIN and lab_id:
         target_lab_id = lab_id
 
+    # Subquery: antibody IDs that have a matching component
+    component_ab_ids = (
+        db.query(ReagentComponent.antibody_id)
+        .filter(or_(
+            ReagentComponent.target.ilike(term),
+            ReagentComponent.fluorochrome.ilike(term),
+        ))
+    )
+
     # 1. Find matching antibodies
+    search_query = db.query(Antibody).filter(
+        Antibody.lab_id == target_lab_id,
+        Antibody.is_active.is_(True),
+        or_(
+            Antibody.target.ilike(term),
+            Antibody.fluorochrome.ilike(term),
+            Antibody.clone.ilike(term),
+            Antibody.catalog_number.ilike(term),
+            Antibody.name.ilike(term),
+            Antibody.id.in_(component_ab_ids),
+        ),
+    )
+
+    if designation:
+        search_query = search_query.filter(Antibody.designation == designation)
+
     antibodies = (
-        db.query(Antibody)
-        .filter(
-            Antibody.lab_id == target_lab_id,
-            Antibody.is_active.is_(True),
-            or_(
-                Antibody.target.ilike(term),
-                Antibody.fluorochrome.ilike(term),
-                Antibody.clone.ilike(term),
-                Antibody.catalog_number.ilike(term),
-            ),
-        )
+        search_query
         .order_by(Antibody.target, Antibody.fluorochrome)
         .limit(50)
         .all()
@@ -269,6 +300,9 @@ def update_antibody(
 
     updates = body.model_dump(exclude_unset=True)
 
+    # Extract components separately — not a direct column
+    new_components = updates.pop("components", None)
+
     # Handle fluorochrome change — ensure it exists in the lab's list
     if "fluorochrome" in updates and updates["fluorochrome"]:
         fluoro_name = updates["fluorochrome"].strip()
@@ -291,6 +325,19 @@ def update_antibody(
 
     for field, value in updates.items():
         setattr(ab, field, value)
+
+    # Replace components if provided
+    if new_components is not None:
+        db.query(ReagentComponent).filter(ReagentComponent.antibody_id == ab.id).delete()
+        for comp in new_components:
+            db.add(ReagentComponent(
+                antibody_id=ab.id,
+                target=comp["target"],
+                fluorochrome=comp["fluorochrome"],
+                clone=comp.get("clone"),
+                ordinal=comp.get("ordinal", 0),
+            ))
+        db.flush()
 
     log_audit(
         db,

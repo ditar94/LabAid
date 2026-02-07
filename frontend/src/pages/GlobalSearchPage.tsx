@@ -141,6 +141,7 @@ export default function GlobalSearchPage() {
               <tr>
                 <th>Target</th>
                 <th>Fluorochrome</th>
+                <th>Designation</th>
                 <th>Clone</th>
                 <th>Catalog #</th>
                 <th>Lab</th>
@@ -150,8 +151,14 @@ export default function GlobalSearchPage() {
             <tbody>
               {results.antibodies.map((ab) => (
                 <tr key={ab.id}>
-                  <td>{ab.target}</td>
+                  <td>
+                    {ab.target}
+                    {ab.components && ab.components.length > 0 && (
+                      <span className="component-list">Contains: {ab.components.map(c => `${c.target}-${c.fluorochrome}`).join(", ")}</span>
+                    )}
+                  </td>
                   <td>{ab.fluorochrome}</td>
+                  <td><span className={`badge badge-designation-${ab.designation}`}>{ab.designation.toUpperCase()}</span></td>
                   <td>{ab.clone || "—"}</td>
                   <td style={{ fontFamily: "var(--font-mono)" }}>{ab.catalog_number || "—"}</td>
                   <td>

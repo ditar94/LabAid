@@ -1,6 +1,15 @@
 export type UserRole = "super_admin" | "lab_admin" | "supervisor" | "tech" | "read_only";
 export type QCStatus = "pending" | "approved" | "failed";
 export type VialStatus = "sealed" | "opened" | "depleted" | "archived";
+export type Designation = "ivd" | "ruo" | "asr";
+
+export interface ReagentComponent {
+  id: string;
+  target: string;
+  fluorochrome: string;
+  clone: string | null;
+  ordinal: number;
+}
 
 export interface User {
   id: string;
@@ -42,6 +51,9 @@ export interface Antibody {
   clone: string | null;
   vendor: string | null;
   catalog_number: string | null;
+  designation: Designation;
+  name: string | null;
+  components: ReagentComponent[];
   stability_days: number | null;
   low_stock_threshold: number | null;
   approved_low_threshold: number | null;
@@ -195,6 +207,7 @@ export interface ScanEnrichResult {
   vendor: string | null;
   all_ais: Record<string, string> | null;
   gudid_devices: GUDIDDevice[];
+  suggested_designation: string | null;
   warnings: string[];
 }
 
@@ -307,6 +320,9 @@ export interface GlobalSearchAntibody {
   clone: string | null;
   vendor: string | null;
   catalog_number: string | null;
+  designation: Designation;
+  name: string | null;
+  components: ReagentComponent[];
 }
 
 export interface GlobalSearchLot {

@@ -217,6 +217,9 @@ async def scan_enrich(
     else:
         warnings.append("No GTIN found in barcode; skipping FDA device lookup.")
 
+    # If a GUDID device was found, it's likely an FDA-registered IVD product
+    suggested_designation = "ivd" if gudid_devices else None
+
     return ScanEnrichResult(
         parsed=True,
         gtin=gtin,
@@ -227,5 +230,6 @@ async def scan_enrich(
         vendor=vendor,
         all_ais=fields["all_ais"],
         gudid_devices=gudid_devices,
+        suggested_designation=suggested_designation,
         warnings=warnings,
     )

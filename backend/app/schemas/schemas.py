@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
 
-from app.models.models import QCStatus, TicketStatus, UserRole, VialStatus
+from app.models.models import Designation, QCStatus, TicketStatus, UserRole, VialStatus
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────
@@ -113,6 +113,23 @@ class FluorochromeOut(BaseModel):
         from_attributes = True
 
 
+# ── Reagent Components ─────────────────────────────────────────────────────
+
+
+class ReagentComponentBase(BaseModel):
+    target: str
+    fluorochrome: str
+    clone: str | None = None
+    ordinal: int = 0
+
+
+class ReagentComponentOut(ReagentComponentBase):
+    id: UUID
+
+    class Config:
+        from_attributes = True
+
+
 # ── Antibody ───────────────────────────────────────────────────────────────
 
 
@@ -122,9 +139,12 @@ class AntibodyCreate(BaseModel):
     clone: str | None = None
     vendor: str | None = None
     catalog_number: str | None = None
+    designation: Designation = Designation.RUO
+    name: str | None = None
     stability_days: int | None = None
     low_stock_threshold: int | None = None
     approved_low_threshold: int | None = None
+    components: list[ReagentComponentBase] | None = None
 
 
 class AntibodyUpdate(BaseModel):
@@ -133,9 +153,12 @@ class AntibodyUpdate(BaseModel):
     clone: str | None = None
     vendor: str | None = None
     catalog_number: str | None = None
+    designation: Designation | None = None
+    name: str | None = None
     stability_days: int | None = None
     low_stock_threshold: int | None = None
     approved_low_threshold: int | None = None
+    components: list[ReagentComponentBase] | None = None
 
 
 class AntibodyArchiveRequest(BaseModel):
@@ -150,9 +173,12 @@ class AntibodyOut(BaseModel):
     clone: str | None
     vendor: str | None
     catalog_number: str | None
+    designation: Designation
+    name: str | None
     stability_days: int | None
     low_stock_threshold: int | None
     approved_low_threshold: int | None
+    components: list[ReagentComponentOut] = []
     is_active: bool
     created_at: datetime
 
@@ -417,6 +443,7 @@ class ScanEnrichResult(BaseModel):
     vendor: str | None = None
     all_ais: dict | None = None
     gudid_devices: list[GUDIDDevice] = []
+    suggested_designation: str | None = None
     warnings: list[str] = []
 
 
@@ -510,6 +537,9 @@ class GlobalSearchAntibody(BaseModel):
     clone: str | None
     vendor: str | None
     catalog_number: str | None
+    designation: Designation
+    name: str | None
+    components: list[ReagentComponentOut] = []
 
 
 class GlobalSearchLot(BaseModel):

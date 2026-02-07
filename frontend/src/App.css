@@ -1172,6 +1172,16 @@ td.mono {
   color: var(--orange-800);
 }
 
+.badge-designation-ruo { background: var(--neutral-100); color: var(--neutral-700); }
+.badge-designation-asr { background: var(--primary-50); color: var(--primary-700); }
+.badge-designation-ivd { background: var(--success-50); color: var(--success-700); }
+.inventory-subtitle { display: block; font-size: 0.75em; color: var(--text-muted); font-weight: 400; margin-top: 2px; }
+.component-picker { margin-top: var(--space-sm); }
+.component-picker-row { display: flex; gap: var(--space-xs); align-items: center; margin-bottom: var(--space-xs); }
+.component-picker-row input { flex: 1; }
+.component-picker-row .btn-icon { flex-shrink: 0; }
+.component-list { display: block; font-size: 0.8em; color: var(--text-muted); margin-top: 2px; }
+
 .needs-doc-badge {
   font-size: 0.625rem;
   margin-left: 4px;

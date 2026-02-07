@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
-import type { Antibody, Fluorochrome, Lab, Lot, StorageUnit, StorageGrid as StorageGridData, StorageCell, VialCounts } from "../api/types";
+import type { Antibody, Designation, Fluorochrome, Lab, Lot, StorageUnit, StorageGrid as StorageGridData, StorageCell, VialCounts } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import DatePicker from "../components/DatePicker";
@@ -183,6 +183,7 @@ export default function InventoryPage() {
   const [archiveAbNote, setArchiveAbNote] = useState("");
   const [archiveAbLoading, setArchiveAbLoading] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [designationFilter, setDesignationFilter] = useState<string>("");
   const [editAbId, setEditAbId] = useState<string | null>(null);
   const [editAbForm, setEditAbForm] = useState({
     target: "",
@@ -192,6 +193,9 @@ export default function InventoryPage() {
     clone: "",
     vendor: "",
     catalog_number: "",
+    designation: "ruo" as Designation,
+    name: "",
+    components: [] as Array<{ target: string; fluorochrome: string; clone: string }>,
     stability_days: "",
     low_stock_threshold: "",
     approved_low_threshold: "",
@@ -219,6 +223,9 @@ export default function InventoryPage() {
     clone: "",
     vendor: "",
     catalog_number: "",
+    designation: "ruo" as Designation,
+    name: "",
+    components: [] as Array<{ target: string; fluorochrome: string; clone: string }>,
     stability_days: "",
     low_stock_threshold: "",
     approved_low_threshold: "",
@@ -398,8 +405,11 @@ export default function InventoryPage() {
   }, [antibodies, activeLots]);
 
   const inventoryRows = useMemo(
-    () => allInventoryRows.filter((r) => r.antibody.is_active),
-    [allInventoryRows]
+    () => allInventoryRows.filter((r) =>
+      r.antibody.is_active &&
+      (!designationFilter || r.antibody.designation === designationFilter)
+    ),
+    [allInventoryRows, designationFilter]
   );
   const inactiveRows = useMemo(
     () => allInventoryRows.filter((r) => !r.antibody.is_active),
@@ -690,6 +700,11 @@ export default function InventoryPage() {
           clone: abForm.clone || null,
           vendor: abForm.vendor || null,
           catalog_number: abForm.catalog_number || null,
+          designation: abForm.designation,
+          name: abForm.name.trim() || null,
+          components: abForm.designation === "ivd" && abForm.components.length > 0
+            ? abForm.components.map((c, i) => ({ target: c.target, fluorochrome: c.fluorochrome, clone: c.clone || null, ordinal: i }))
+            : null,
           stability_days: abForm.stability_days
             ? parseInt(abForm.stability_days, 10)
             : null,
@@ -711,6 +726,9 @@ export default function InventoryPage() {
         clone: "",
         vendor: "",
         catalog_number: "",
+        designation: "ruo",
+        name: "",
+        components: [],
         stability_days: "",
         low_stock_threshold: "",
         approved_low_threshold: "",
@@ -879,6 +897,9 @@ export default function InventoryPage() {
       clone: ab.clone || "",
       vendor: ab.vendor || "",
       catalog_number: ab.catalog_number || "",
+      designation: ab.designation,
+      name: ab.name || "",
+      components: (ab.components || []).map(c => ({ target: c.target, fluorochrome: c.fluorochrome, clone: c.clone || "" })),
       stability_days: ab.stability_days != null ? String(ab.stability_days) : "",
       low_stock_threshold: ab.low_stock_threshold != null ? String(ab.low_stock_threshold) : "",
       approved_low_threshold: ab.approved_low_threshold != null ? String(ab.approved_low_threshold) : "",
@@ -924,6 +945,11 @@ export default function InventoryPage() {
         clone: editAbForm.clone || null,
         vendor: editAbForm.vendor || null,
         catalog_number: editAbForm.catalog_number || null,
+        designation: editAbForm.designation,
+        name: editAbForm.name.trim() || null,
+        components: editAbForm.designation === "ivd" && editAbForm.components.length > 0
+          ? editAbForm.components.map((c, i) => ({ target: c.target, fluorochrome: c.fluorochrome, clone: c.clone || null, ordinal: i }))
+          : editAbForm.designation === "ivd" ? [] : null,
         stability_days: editAbForm.stability_days
           ? parseInt(editAbForm.stability_days, 10)
           : null,
@@ -979,6 +1005,15 @@ export default function InventoryPage() {
               ))}
             </select>
           )}
+          <select
+            value={designationFilter}
+            onChange={(e) => setDesignationFilter(e.target.value)}
+          >
+            <option value="">All Designations</option>
+            <option value="ruo">RUO</option>
+            <option value="asr">ASR</option>
+            <option value="ivd">IVD</option>
+          </select>
           {canEdit && (
             <button onClick={() => setShowAbForm(!showAbForm)}>
               {showAbForm ? "Cancel" : "+ New Antibody"}
@@ -1050,6 +1085,38 @@ export default function InventoryPage() {
               setAbForm({ ...abForm, catalog_number: e.target.value })
             }
           />
+          <select
+            value={abForm.designation}
+            onChange={(e) =>
+              setAbForm({ ...abForm, designation: e.target.value as Designation })
+            }
+          >
+            <option value="ruo">RUO</option>
+            <option value="asr">ASR</option>
+            <option value="ivd">IVD</option>
+          </select>
+          {abForm.designation === "ivd" && (
+            <>
+              <input
+                placeholder="Product Name (required for IVD)"
+                value={abForm.name}
+                onChange={(e) => setAbForm({ ...abForm, name: e.target.value })}
+                required
+              />
+              <div className="component-picker">
+                <label style={{ fontSize: "0.85em", fontWeight: 500 }}>Components</label>
+                {abForm.components.map((comp, idx) => (
+                  <div key={idx} className="component-picker-row">
+                    <input placeholder="Target" value={comp.target} onChange={(e) => { const c = [...abForm.components]; c[idx] = { ...c[idx], target: e.target.value }; setAbForm({ ...abForm, components: c }); }} required />
+                    <input placeholder="Fluorochrome" value={comp.fluorochrome} onChange={(e) => { const c = [...abForm.components]; c[idx] = { ...c[idx], fluorochrome: e.target.value }; setAbForm({ ...abForm, components: c }); }} required />
+                    <input placeholder="Clone" value={comp.clone} onChange={(e) => { const c = [...abForm.components]; c[idx] = { ...c[idx], clone: e.target.value }; setAbForm({ ...abForm, components: c }); }} />
+                    <button type="button" className="btn-icon" onClick={() => setAbForm({ ...abForm, components: abForm.components.filter((_, i) => i !== idx) })} title="Remove">&times;</button>
+                  </div>
+                ))}
+                <button type="button" className="btn-sm" onClick={() => setAbForm({ ...abForm, components: [...abForm.components, { target: "", fluorochrome: "", clone: "" }] })}>+ Add Component</button>
+              </div>
+            </>
+          )}
           <input
             type="number"
             placeholder="Stability (days)"
@@ -1144,8 +1211,17 @@ export default function InventoryPage() {
                     )}
                   </div>
                   <span>
-                    {row.antibody.target}-{row.antibody.fluorochrome}
+                    {row.antibody.name || `${row.antibody.target}-${row.antibody.fluorochrome}`}
+                    {row.antibody.name && (
+                      <span className="inventory-subtitle">{row.antibody.target}-{row.antibody.fluorochrome}</span>
+                    )}
                   </span>
+                  <span className={`badge badge-designation-${row.antibody.designation}`} style={{ fontSize: "0.7em", marginLeft: 6 }}>
+                    {row.antibody.designation.toUpperCase()}
+                  </span>
+                  {row.antibody.components && row.antibody.components.length > 0 && (
+                    <span className="component-list">Contains: {row.antibody.components.map(c => `${c.target}-${c.fluorochrome}`).join(", ")}</span>
+                  )}
                 </div>
                 {canEdit && (
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -1475,6 +1551,7 @@ export default function InventoryPage() {
             <thead>
               <tr>
                 <th>Antibody</th>
+                <th>Designation</th>
                 <th>Vendor</th>
                 <th>Catalog #</th>
                 {canEdit && <th>Actions</th>}
@@ -1494,8 +1571,10 @@ export default function InventoryPage() {
                           style={{ backgroundColor: fluoro.color }}
                         />
                       )}
-                      {row.antibody.target}-{row.antibody.fluorochrome}
+                      {row.antibody.name || `${row.antibody.target}-${row.antibody.fluorochrome}`}
+                      {row.antibody.name && <span className="inventory-subtitle">{row.antibody.target}-{row.antibody.fluorochrome}</span>}
                     </td>
+                    <td><span className={`badge badge-designation-${row.antibody.designation}`}>{row.antibody.designation.toUpperCase()}</span></td>
                     <td>{row.antibody.vendor || "—"}</td>
                     <td>{row.antibody.catalog_number || "—"}</td>
                     {canEdit && (
@@ -1666,6 +1745,46 @@ export default function InventoryPage() {
                   }
                 />
               </div>
+              <div className="form-group">
+                <label>Designation</label>
+                <select
+                  value={editAbForm.designation}
+                  onChange={(e) =>
+                    setEditAbForm({ ...editAbForm, designation: e.target.value as Designation })
+                  }
+                >
+                  <option value="ruo">RUO</option>
+                  <option value="asr">ASR</option>
+                  <option value="ivd">IVD</option>
+                </select>
+              </div>
+              {editAbForm.designation === "ivd" && (
+                <>
+                  <div className="form-group">
+                    <label>Product Name</label>
+                    <input
+                      value={editAbForm.name}
+                      onChange={(e) => setEditAbForm({ ...editAbForm, name: e.target.value })}
+                      placeholder="IVD product name"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Components</label>
+                    <div className="component-picker">
+                      {editAbForm.components.map((comp, idx) => (
+                        <div key={idx} className="component-picker-row">
+                          <input placeholder="Target" value={comp.target} onChange={(e) => { const c = [...editAbForm.components]; c[idx] = { ...c[idx], target: e.target.value }; setEditAbForm({ ...editAbForm, components: c }); }} required />
+                          <input placeholder="Fluorochrome" value={comp.fluorochrome} onChange={(e) => { const c = [...editAbForm.components]; c[idx] = { ...c[idx], fluorochrome: e.target.value }; setEditAbForm({ ...editAbForm, components: c }); }} required />
+                          <input placeholder="Clone" value={comp.clone} onChange={(e) => { const c = [...editAbForm.components]; c[idx] = { ...c[idx], clone: e.target.value }; setEditAbForm({ ...editAbForm, components: c }); }} />
+                          <button type="button" className="btn-icon" onClick={() => setEditAbForm({ ...editAbForm, components: editAbForm.components.filter((_, i) => i !== idx) })} title="Remove">&times;</button>
+                        </div>
+                      ))}
+                      <button type="button" className="btn-sm" onClick={() => setEditAbForm({ ...editAbForm, components: [...editAbForm.components, { target: "", fluorochrome: "", clone: "" }] })}>+ Add Component</button>
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="form-group">
                 <label>Stability (days after opening)</label>
                 <input
