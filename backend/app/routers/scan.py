@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.models import Antibody, Lot, QCStatus, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
-from app.routers.storage import _build_cell_out
+from app.routers.storage import build_grid_cells
 from sqlalchemy import func as sa_func
 
 from app.schemas.schemas import (
@@ -88,20 +88,19 @@ def scan_lookup(
         )
         unit_ids = list(set(c.storage_unit_id for c in cells_with_vials))
 
-        # Build a grid for each storage unit
-        for unit_id in unit_ids:
-            unit = db.query(StorageUnit).filter(StorageUnit.id == unit_id).first()
-            if unit:
-                all_cells = (
-                    db.query(StorageCell)
-                    .filter(StorageCell.storage_unit_id == unit.id)
-                    .order_by(StorageCell.row, StorageCell.col)
-                    .all()
-                )
-                storage_grids.append(StorageGridOut(
-                    unit=unit,
-                    cells=[_build_cell_out(db, cell) for cell in all_cells],
-                ))
+        # Batch-load all storage units
+        units = db.query(StorageUnit).filter(StorageUnit.id.in_(unit_ids)).all()
+        for unit in units:
+            all_cells = (
+                db.query(StorageCell)
+                .filter(StorageCell.storage_unit_id == unit.id)
+                .order_by(StorageCell.row, StorageCell.col)
+                .all()
+            )
+            storage_grids.append(StorageGridOut(
+                unit=unit,
+                cells=build_grid_cells(db, all_cells),
+            ))
 
     # QC warning
     qc_warning = None
@@ -122,47 +121,56 @@ def scan_lookup(
         .order_by(Lot.created_at.asc())
         .all()
     )
-    for older_lot in older_lot_rows:
-        sealed_count = (
-            db.query(sa_func.count(Vial.id))
-            .filter(Vial.lot_id == older_lot.id, Vial.status == VialStatus.SEALED)
-            .scalar()
-        )
-        if not sealed_count:
-            continue
-        # Build storage summary
-        storage_parts: list[str] = []
-        stored_vials = (
-            db.query(Vial.location_cell_id)
-            .filter(
-                Vial.lot_id == older_lot.id,
-                Vial.status == VialStatus.SEALED,
-                Vial.location_cell_id.isnot(None),
-            )
+    if older_lot_rows:
+        older_lot_ids = [ol.id for ol in older_lot_rows]
+
+        # Batch: sealed counts per lot
+        sealed_counts = dict(
+            db.query(Vial.lot_id, sa_func.count(Vial.id))
+            .filter(Vial.lot_id.in_(older_lot_ids), Vial.status == VialStatus.SEALED)
+            .group_by(Vial.lot_id)
             .all()
         )
-        if stored_vials:
-            cell_ids = [v[0] for v in stored_vials]
-            unit_counts = (
-                db.query(StorageUnit.name, sa_func.count(StorageCell.id))
-                .join(StorageCell, StorageCell.storage_unit_id == StorageUnit.id)
-                .filter(StorageCell.id.in_(cell_ids))
-                .group_by(StorageUnit.name)
+
+        # Only process lots that have sealed vials
+        lots_with_sealed = [ol for ol in older_lot_rows if sealed_counts.get(ol.id, 0) > 0]
+
+        # Batch: storage summary for all relevant lots at once
+        storage_summaries: dict[UUID, str] = {}
+        if lots_with_sealed:
+            lots_with_sealed_ids = [ol.id for ol in lots_with_sealed]
+            unit_counts_rows = (
+                db.query(Vial.lot_id, StorageUnit.name, sa_func.count(Vial.id))
+                .join(StorageCell, Vial.location_cell_id == StorageCell.id)
+                .join(StorageUnit, StorageCell.storage_unit_id == StorageUnit.id)
+                .filter(
+                    Vial.lot_id.in_(lots_with_sealed_ids),
+                    Vial.status == VialStatus.SEALED,
+                    Vial.location_cell_id.isnot(None),
+                )
+                .group_by(Vial.lot_id, StorageUnit.name)
                 .all()
             )
-            storage_parts = [f"{count} in {name}" for name, count in unit_counts]
-        storage_summary = ", ".join(storage_parts) if storage_parts else "not stored"
+            for lot_id_val, unit_name, count in unit_counts_rows:
+                parts = storage_summaries.get(lot_id_val, [])
+                if isinstance(parts, str):
+                    parts = []
+                parts.append(f"{count} in {unit_name}")
+                storage_summaries[lot_id_val] = parts
 
-        older_lot_summaries.append(
-            OlderLotSummary(
-                id=older_lot.id,
-                lot_number=older_lot.lot_number,
-                vendor_barcode=older_lot.vendor_barcode,
-                created_at=older_lot.created_at,
-                sealed_count=sealed_count,
-                storage_summary=storage_summary,
+        for older_lot in lots_with_sealed:
+            parts = storage_summaries.get(older_lot.id, [])
+            summary = ", ".join(parts) if isinstance(parts, list) and parts else "not stored"
+            older_lot_summaries.append(
+                OlderLotSummary(
+                    id=older_lot.id,
+                    lot_number=older_lot.lot_number,
+                    vendor_barcode=older_lot.vendor_barcode,
+                    created_at=older_lot.created_at,
+                    sealed_count=sealed_counts[older_lot.id],
+                    storage_summary=summary,
+                )
             )
-        )
 
     # Determine if this is the "current" (oldest active) lot
     is_current = False

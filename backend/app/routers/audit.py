@@ -24,93 +24,138 @@ from app.schemas.schemas import AuditLogOut, AuditLogRangeOut
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 
-def _resolve_entity_label(db: Session, entity_type: str, entity_id: UUID) -> str | None:
-    """Best-effort resolution of a human-readable label for an audit log entity."""
-    try:
-        if entity_type == "antibody":
-            ab = db.get(Antibody, entity_id)
+def _batch_resolve(db: Session, logs: list) -> tuple[dict[UUID, str], dict[UUID, dict]]:
+    """Batch-resolve entity labels and lineage for a page of audit log rows.
+
+    Returns (labels_map, lineage_map) keyed by entity_id.
+    Replaces per-row _resolve_entity_label / _resolve_lineage with bulk queries.
+    """
+    from app.models.models import StorageCell
+
+    # Group entity IDs by type
+    ids_by_type: dict[str, set[UUID]] = {}
+    for log in logs:
+        ids_by_type.setdefault(log.entity_type, set()).add(log.entity_id)
+
+    labels: dict[UUID, str] = {}
+    lineage: dict[UUID, dict] = {}
+
+    # ── Bulk-load each entity type ──
+
+    ab_ids = ids_by_type.get("antibody", set())
+    ab_map: dict[UUID, Antibody] = {}
+    if ab_ids:
+        rows = db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all()
+        ab_map = {a.id: a for a in rows}
+        for a in rows:
+            labels[a.id] = f"{a.target} - {a.fluorochrome}"
+            lineage[a.id] = {"lot_id": None, "antibody_id": a.id}
+
+    lot_ids_direct = ids_by_type.get("lot", set())
+    lot_map: dict[UUID, Lot] = {}
+    if lot_ids_direct:
+        rows = db.query(Lot).filter(Lot.id.in_(lot_ids_direct)).all()
+        lot_map = {l.id: l for l in rows}
+        # Need antibodies for labels
+        lot_ab_ids = {l.antibody_id for l in rows if l.antibody_id} - set(ab_map.keys())
+        if lot_ab_ids:
+            extra = db.query(Antibody).filter(Antibody.id.in_(lot_ab_ids)).all()
+            ab_map.update({a.id: a for a in extra})
+        for l in rows:
+            ab = ab_map.get(l.antibody_id) if l.antibody_id else None
             if ab:
-                return f"{ab.target} - {ab.fluorochrome}"
-        elif entity_type == "lot":
-            lot = db.get(Lot, entity_id)
-            if lot:
-                ab = db.get(Antibody, lot.antibody_id) if lot.antibody_id else None
-                if ab:
-                    return f"{ab.target} {ab.fluorochrome} — Lot {lot.lot_number}"
-                return f"Lot {lot.lot_number}"
-        elif entity_type == "vial":
-            vial = db.get(Vial, entity_id)
-            if vial and vial.lot:
-                ab = db.get(Antibody, vial.lot.antibody_id) if vial.lot.antibody_id else None
-                if ab:
-                    label = f"{ab.target}-{ab.fluorochrome} (Lot {vial.lot.lot_number})"
+                labels[l.id] = f"{ab.target} {ab.fluorochrome} — Lot {l.lot_number}"
+            else:
+                labels[l.id] = f"Lot {l.lot_number}"
+            lineage[l.id] = {"lot_id": l.id, "antibody_id": l.antibody_id}
+
+    vial_ids = ids_by_type.get("vial", set())
+    if vial_ids:
+        vials = db.query(Vial).filter(Vial.id.in_(vial_ids)).all()
+        # Load lots for these vials
+        vial_lot_ids = {v.lot_id for v in vials} - set(lot_map.keys())
+        if vial_lot_ids:
+            extra = db.query(Lot).filter(Lot.id.in_(vial_lot_ids)).all()
+            lot_map.update({l.id: l for l in extra})
+        # Load antibodies for those lots
+        extra_ab_ids = {lot_map[v.lot_id].antibody_id for v in vials if v.lot_id in lot_map and lot_map[v.lot_id].antibody_id} - set(ab_map.keys())
+        if extra_ab_ids:
+            extra = db.query(Antibody).filter(Antibody.id.in_(extra_ab_ids)).all()
+            ab_map.update({a.id: a for a in extra})
+        # Load cells + units for vials with locations
+        cell_ids = [v.location_cell_id for v in vials if v.location_cell_id]
+        cell_map: dict[UUID, StorageCell] = {}
+        unit_map: dict[UUID, StorageUnit] = {}
+        if cell_ids:
+            cells = db.query(StorageCell).filter(StorageCell.id.in_(cell_ids)).all()
+            cell_map = {c.id: c for c in cells}
+            unit_ids = list({c.storage_unit_id for c in cells})
+            if unit_ids:
+                units = db.query(StorageUnit).filter(StorageUnit.id.in_(unit_ids)).all()
+                unit_map = {u.id: u for u in units}
+
+        for v in vials:
+            lot = lot_map.get(v.lot_id)
+            ab = ab_map.get(lot.antibody_id) if lot and lot.antibody_id else None
+            if ab:
+                label = f"{ab.target}-{ab.fluorochrome} (Lot {lot.lot_number})"
+            elif lot:
+                label = f"Vial ({lot.lot_number})"
+            else:
+                label = "Vial"
+            if v.location_cell_id and v.location_cell_id in cell_map:
+                cell = cell_map[v.location_cell_id]
+                unit = unit_map.get(cell.storage_unit_id)
+                cell_label = cell.label or f"R{cell.row + 1}C{cell.col + 1}"
+                if unit:
+                    label += f" @ {unit.name} [{cell_label}]"
                 else:
-                    label = f"Vial ({vial.lot.lot_number})"
-                if vial.location_cell_id:
-                    from app.models.models import StorageCell
-                    cell = db.get(StorageCell, vial.location_cell_id)
-                    if cell:
-                        unit = db.get(StorageUnit, cell.storage_unit_id)
-                        cell_label = cell.label or f"R{cell.row + 1}C{cell.col + 1}"
-                        if unit:
-                            label += f" @ {unit.name} [{cell_label}]"
-                        else:
-                            label += f" [{cell_label}]"
-                return label
-        elif entity_type == "fluorochrome":
-            f = db.get(Fluorochrome, entity_id)
-            if f:
-                return f.name
-        elif entity_type == "user":
-            u = db.get(User, entity_id)
-            if u:
-                return u.full_name
-        elif entity_type == "lab":
-            lab = db.get(Lab, entity_id)
-            if lab:
-                return lab.name
-        elif entity_type == "storage_unit":
-            su = db.get(StorageUnit, entity_id)
-            if su:
-                return su.name
-        elif entity_type == "document":
-            doc = db.get(LotDocument, entity_id)
-            if doc:
-                return doc.file_name
-    except Exception:
-        pass
-    return None
+                    label += f" [{cell_label}]"
+            labels[v.id] = label
+            lineage[v.id] = {"lot_id": v.lot_id, "antibody_id": lot.antibody_id if lot else None}
 
+    fluoro_ids = ids_by_type.get("fluorochrome", set())
+    if fluoro_ids:
+        rows = db.query(Fluorochrome).filter(Fluorochrome.id.in_(fluoro_ids)).all()
+        for f in rows:
+            labels[f.id] = f.name
+            lineage[f.id] = {"lot_id": None, "antibody_id": None}
 
-def _resolve_lineage(db: Session, entity_type: str, entity_id: UUID) -> dict:
-    """Return lot_id and antibody_id for any entity in the hierarchy."""
-    lot_id = None
-    antibody_id = None
-    try:
-        if entity_type == "antibody":
-            antibody_id = entity_id
-        elif entity_type == "lot":
-            lot_id = entity_id
-            lot = db.get(Lot, entity_id)
-            if lot:
-                antibody_id = lot.antibody_id
-        elif entity_type == "vial":
-            vial = db.get(Vial, entity_id)
-            if vial:
-                lot_id = vial.lot_id
-                lot = db.get(Lot, vial.lot_id)
-                if lot:
-                    antibody_id = lot.antibody_id
-        elif entity_type in ("lot_document", "document"):
-            doc = db.get(LotDocument, entity_id)
-            if doc:
-                lot_id = doc.lot_id
-                lot = db.get(Lot, doc.lot_id)
-                if lot:
-                    antibody_id = lot.antibody_id
-    except Exception:
-        pass
-    return {"lot_id": lot_id, "antibody_id": antibody_id}
+    user_entity_ids = ids_by_type.get("user", set())
+    if user_entity_ids:
+        rows = db.query(User).filter(User.id.in_(user_entity_ids)).all()
+        for u in rows:
+            labels[u.id] = u.full_name
+            lineage[u.id] = {"lot_id": None, "antibody_id": None}
+
+    lab_ids = ids_by_type.get("lab", set())
+    if lab_ids:
+        rows = db.query(Lab).filter(Lab.id.in_(lab_ids)).all()
+        for lb in rows:
+            labels[lb.id] = lb.name
+            lineage[lb.id] = {"lot_id": None, "antibody_id": None}
+
+    su_ids = ids_by_type.get("storage_unit", set())
+    if su_ids:
+        rows = db.query(StorageUnit).filter(StorageUnit.id.in_(su_ids)).all()
+        for su in rows:
+            labels[su.id] = su.name
+            lineage[su.id] = {"lot_id": None, "antibody_id": None}
+
+    doc_ids = ids_by_type.get("document", set()) | ids_by_type.get("lot_document", set())
+    if doc_ids:
+        docs = db.query(LotDocument).filter(LotDocument.id.in_(doc_ids)).all()
+        # Load lots for lineage
+        doc_lot_ids = {d.lot_id for d in docs} - set(lot_map.keys())
+        if doc_lot_ids:
+            extra = db.query(Lot).filter(Lot.id.in_(doc_lot_ids)).all()
+            lot_map.update({l.id: l for l in extra})
+        for d in docs:
+            labels[d.id] = d.file_name
+            lot = lot_map.get(d.lot_id)
+            lineage[d.id] = {"lot_id": d.lot_id, "antibody_id": lot.antibody_id if lot else None}
+
+    return labels, lineage
 
 
 @router.get("/", response_model=list[AuditLogOut])
@@ -189,14 +234,17 @@ def list_audit_logs(
         users = db.query(User.id, User.full_name).filter(User.id.in_(user_ids)).all()
         user_map = {u.id: u.full_name for u in users}
 
+    # Batch-resolve labels and lineage for all entities on this page
+    labels_map, lineage_map = _batch_resolve(db, logs)
+
     results = []
     for log in logs:
         out = AuditLogOut.model_validate(log)
         out.user_full_name = user_map.get(log.user_id)
-        out.entity_label = _resolve_entity_label(db, log.entity_type, log.entity_id)
-        lineage = _resolve_lineage(db, log.entity_type, log.entity_id)
-        out.lot_id = lineage["lot_id"]
-        out.antibody_id = lineage["antibody_id"]
+        out.entity_label = labels_map.get(log.entity_id)
+        lin = lineage_map.get(log.entity_id, {"lot_id": None, "antibody_id": None})
+        out.lot_id = lin["lot_id"]
+        out.antibody_id = lin["antibody_id"]
         results.append(out)
 
     return results

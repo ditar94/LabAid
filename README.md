@@ -147,21 +147,23 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 - [ ] Deployment automation or documented, repeatable deploy steps
 - [ ] Migration process defined and rehearsed (staging first, then prod)
-- [ ] Backups + PITR enabled in prod and restore verified
+- [ ] Backups + PITR enabled in prod and restore verified; automated pre-migration backup in CI/CD
 - [ ] Monitoring + alerts configured for API errors and auth/storage issues
 
 ### Production-Only Tasks
 
 - [ ] Support env-based storage backend (local disk for dev, GCS for prod)
 - [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
-- [ ] Enable GCS redundancy + soft delete/versioning + lifecycle policies
+- [ ] Enable GCS bucket object versioning (`gsutil versioning set on`) — deleted/overwritten files can be recovered
+- [ ] Set GCS bucket retention policy (e.g. 30 days) — prevents accidental deletion within retention window
+- [ ] Never include the storage bucket in destructive infrastructure scripts (Terraform destroy, etc.)
+- [ ] Add automatic database backup step to CI/CD pipeline — runs `gcloud sql backups create` before every migration
 - [ ] Document backup/restore process and run periodic restore tests
 - [ ] Define RPO/RTO targets (e.g., 15 min / 4 hrs) and align backup cadence to them
 - [ ] Enable Postgres PITR (WAL archiving) + daily snapshots + retention policy
 - [ ] Ensure automatic backups cover all labs in the multi-tenant database
 - [ ] Verify foreign keys and cascading rules cover antibody → fluorochrome → lot → document integrity
 - [ ] Store document checksums + add a periodic verification job for missing/corrupt blobs
-- [ ] Enable object storage versioning + soft delete + retention/immutability where required
 - [ ] Write and rehearse a restore playbook (DB restore + blob restore + validation queries)
 - [ ] Run scheduled restore tests and record results
 - [ ] Use backward-compatible migrations for relationship changes (add new columns first, backfill, then cut over)

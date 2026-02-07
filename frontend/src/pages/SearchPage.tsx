@@ -5,15 +5,16 @@ import type {
   AntibodySearchResult,
   StorageGrid as StorageGridType,
   StorageCell,
-  Fluorochrome,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import OpenVialDialog from "../components/OpenVialDialog";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 
 export default function SearchPage() {
   const { user } = useAuth();
+  const { fluorochromes } = useSharedData();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<AntibodySearchResult[]>([]);
@@ -25,7 +26,6 @@ export default function SearchPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [openTarget, setOpenTarget] = useState<StorageCell | null>(null);
   const [openLoading, setOpenLoading] = useState(false);
-  const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const canOpen =
@@ -36,7 +36,6 @@ export default function SearchPage() {
 
   useEffect(() => {
     inputRef.current?.focus();
-    api.get("/fluorochromes/").then((r) => setFluorochromes(r.data));
   }, []);
 
   const handleSearch = async (override?: string) => {

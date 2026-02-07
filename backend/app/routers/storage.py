@@ -20,51 +20,77 @@ from app.services.storage import ensure_temporary_storage_capacity
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 
 
-def _build_cell_out(db: Session, cell: StorageCell, fluorochromes: list[Fluorochrome] = []) -> StorageCellOut:
-    """Build a StorageCellOut with enriched vial details."""
-    # Join with Lot to filter out vials from archived lots
-    vial = (
+def build_grid_cells(db: Session, cells: list[StorageCell], fluorochromes: list[Fluorochrome] | None = None) -> list[StorageCellOut]:
+    """Batch-build StorageCellOut list. Preloads all vials/lots/antibodies in 3 queries instead of N per cell."""
+    if not cells:
+        return []
+
+    cell_ids = [c.id for c in cells]
+
+    # 1. Batch-load all vials in these cells (excluding archived lots) — single query
+    vials = (
         db.query(Vial)
         .join(Lot, Vial.lot_id == Lot.id)
-        .filter(Vial.location_cell_id == cell.id, Lot.is_archived.is_(False))
-        .first()
+        .filter(Vial.location_cell_id.in_(cell_ids), Lot.is_archived.is_(False))
+        .all()
     )
-    vial_summary = None
-    if vial:
-        lot = db.query(Lot).filter(Lot.id == vial.lot_id).first()
-        antibody = db.query(Antibody).filter(Antibody.id == lot.antibody_id).first() if lot else None
-        color = None
-        if antibody:
-            if antibody.fluorochrome:
-                fluoro = next((f for f in fluorochromes if f.name.lower() == antibody.fluorochrome.lower()), None)
-                if fluoro:
-                    color = fluoro.color
-            # Fallback to antibody.color for IVD products without fluorochrome
-            if not color and antibody.color:
-                color = antibody.color
-        vial_summary = VialSummary(
-            id=vial.id,
-            lot_id=vial.lot_id,
-            antibody_id=lot.antibody_id if lot else None,
-            status=vial.status,
-            lot_number=lot.lot_number if lot else None,
-            expiration_date=lot.expiration_date if lot else None,
-            antibody_target=antibody.target if antibody else None,
-            antibody_fluorochrome=antibody.fluorochrome if antibody else None,
-            antibody_name=antibody.name if antibody else None,
-            antibody_short_code=antibody.short_code if antibody else None,
-            color=color,
-            qc_status=lot.qc_status.value if lot and lot.qc_status else None,
-        )
-    return StorageCellOut(
-        id=cell.id,
-        storage_unit_id=cell.storage_unit_id,
-        row=cell.row,
-        col=cell.col,
-        label=cell.label,
-        vial_id=vial.id if vial else None,
-        vial=vial_summary,
-    )
+    vial_by_cell: dict[UUID, Vial] = {v.location_cell_id: v for v in vials}
+
+    # 2. Batch-load lots and antibodies for occupied cells
+    lot_ids = list({v.lot_id for v in vials})
+    lots_map: dict[UUID, Lot] = {}
+    ab_map: dict[UUID, Antibody] = {}
+    if lot_ids:
+        lots = db.query(Lot).filter(Lot.id.in_(lot_ids)).all()
+        lots_map = {l.id: l for l in lots}
+        ab_ids = list({l.antibody_id for l in lots if l.antibody_id})
+        if ab_ids:
+            antibodies = db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all()
+            ab_map = {a.id: a for a in antibodies}
+
+    # 3. Build fluorochrome lookup (case-insensitive name -> color)
+    fluoro_color: dict[str, str] = {}
+    if fluorochromes:
+        fluoro_color = {f.name.lower(): f.color for f in fluorochromes}
+
+    # 4. Assemble results
+    results: list[StorageCellOut] = []
+    for cell in cells:
+        vial = vial_by_cell.get(cell.id)
+        vial_summary = None
+        if vial:
+            lot = lots_map.get(vial.lot_id)
+            antibody = ab_map.get(lot.antibody_id) if lot and lot.antibody_id else None
+            color = None
+            if antibody:
+                if antibody.fluorochrome:
+                    color = fluoro_color.get(antibody.fluorochrome.lower())
+                if not color and antibody.color:
+                    color = antibody.color
+            vial_summary = VialSummary(
+                id=vial.id,
+                lot_id=vial.lot_id,
+                antibody_id=lot.antibody_id if lot else None,
+                status=vial.status,
+                lot_number=lot.lot_number if lot else None,
+                expiration_date=lot.expiration_date if lot else None,
+                antibody_target=antibody.target if antibody else None,
+                antibody_fluorochrome=antibody.fluorochrome if antibody else None,
+                antibody_name=antibody.name if antibody else None,
+                antibody_short_code=antibody.short_code if antibody else None,
+                color=color,
+                qc_status=lot.qc_status.value if lot and lot.qc_status else None,
+            )
+        results.append(StorageCellOut(
+            id=cell.id,
+            storage_unit_id=cell.storage_unit_id,
+            row=cell.row,
+            col=cell.col,
+            label=cell.label,
+            vial_id=vial.id if vial else None,
+            vial=vial_summary,
+        ))
+    return results
 
 
 @router.get("/units", response_model=list[StorageUnitOut])
@@ -176,7 +202,7 @@ def get_storage_grid(
 
     return StorageGridOut(
         unit=unit,
-        cells=[_build_cell_out(db, cell, fluorochromes) for cell in cells],
+        cells=build_grid_cells(db, cells, fluorochromes),
     )
 
 
@@ -220,7 +246,7 @@ def get_next_empty_cell(
     )
     if not cell:
         return None
-    return _build_cell_out(db, cell)
+    return build_grid_cells(db, [cell])[0]
 
 
 class AvailableSlotsOut(BaseModel):
@@ -385,7 +411,7 @@ def stock_vial(
 
     db.commit()
     db.refresh(vial)
-    return _build_cell_out(db, cell)
+    return build_grid_cells(db, [cell])[0]
 
 
 # ── Temporary storage summary ────────────────────────────────────────────

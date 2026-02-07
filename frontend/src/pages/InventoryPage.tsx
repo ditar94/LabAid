@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type { Antibody, Designation, Fluorochrome, Lab, Lot, StorageUnit, StorageGrid as StorageGridData, StorageCell, VialCounts } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import DatePicker from "../components/DatePicker";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -142,17 +143,14 @@ type InventoryRow = {
 
 export default function InventoryPage() {
   const { user, labSettings } = useAuth();
+  const { labs, fluorochromes, storageUnits, selectedLab, setSelectedLab, refreshFluorochromes, refreshStorageUnits } = useSharedData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedAntibodyId = searchParams.get("antibodyId");
   const requestedLabId = searchParams.get("labId");
   const sealedOnly = labSettings.sealed_counts_only ?? false;
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [selectedLab, setSelectedLab] = useState<string>("");
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
   const [lots, setLots] = useState<Lot[]>([]);
-  const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
-  const [storageUnits, setStorageUnits] = useState<StorageUnit[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAbForm, setShowAbForm] = useState(false);
   const [showLotForm, setShowLotForm] = useState(false);
@@ -269,22 +267,12 @@ export default function InventoryPage() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [archivePrompt, archiveWarning, qcBlockedLot, editLot, editAbId, confirmAction, archiveAbPrompt, modalLot]);
 
+  // If deep-linked with a labId, switch to that lab
   useEffect(() => {
-    if (user?.role === "super_admin") {
-      api.get("/labs/").then((r) => {
-        setLabs(r.data);
-        if (r.data.length > 0) {
-          const desired =
-            requestedLabId && r.data.some((lab) => lab.id === requestedLabId)
-              ? requestedLabId
-              : r.data[0].id;
-          setSelectedLab(desired);
-        }
-      });
-    } else if (user) {
-      setSelectedLab(user.lab_id);
+    if (requestedLabId && labs.some((lab) => lab.id === requestedLabId)) {
+      setSelectedLab(requestedLabId);
     }
-  }, [user, requestedLabId]);
+  }, [requestedLabId, labs]);
 
   const loadData = async () => {
     if (!selectedLab) return;
@@ -292,16 +280,12 @@ export default function InventoryPage() {
     const abParams: Record<string, string> = { ...params };
     if (showInactive) abParams.include_inactive = "true";
     const lotParams: Record<string, string> = { ...params, include_archived: "true" };
-    const [abRes, lotRes, fluoroRes, storageRes] = await Promise.all([
+    const [abRes, lotRes] = await Promise.all([
       api.get<Antibody[]>("/antibodies/", { params: abParams }),
       api.get<Lot[]>("/lots/", { params: lotParams }),
-      api.get<Fluorochrome[]>("/fluorochromes/", { params }),
-      api.get<StorageUnit[]>("/storage/units", { params }),
     ]);
     setAntibodies(abRes.data);
     setLots(lotRes.data);
-    setFluorochromes(fluoroRes.data);
-    setStorageUnits(storageRes.data);
   };
 
   useEffect(() => {
@@ -747,6 +731,7 @@ export default function InventoryPage() {
       setShowAbForm(false);
       setMessage("Antibody created.");
       await loadData();
+      refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create antibody");
     } finally {
@@ -769,6 +754,7 @@ export default function InventoryPage() {
         await api.post("/fluorochromes/", { name: fluoroName, color }, { params });
       }
       await loadData();
+      refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update color");
     }
@@ -1005,6 +991,7 @@ export default function InventoryPage() {
       setEditAbId(null);
       setMessage("Antibody updated.");
       await loadData();
+      refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update antibody");
     } finally {

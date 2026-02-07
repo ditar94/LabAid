@@ -20,6 +20,7 @@ import MoveDestination from "../components/MoveDestination";
 import OpenVialDialog from "../components/OpenVialDialog";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 import { useToast } from "../context/ToastContext";
 import { useMoveVials } from "../hooks/useMoveVials";
 import DatePicker from "../components/DatePicker";
@@ -28,9 +29,11 @@ type ResultMode = "idle" | "scan" | "search" | "register";
 const NEW_ANTIBODY_VALUE = "__new__";
 const NEW_FLUORO_VALUE = "__new_fluoro__";
 const DEFAULT_FLUORO_COLOR = "#9ca3af";
+const EMPTY_SET = new Set<string>();
 
 export default function ScanSearchPage() {
   const { user, labSettings } = useAuth();
+  const { fluorochromes, storageUnits: sharedStorageUnits, refreshFluorochromes } = useSharedData();
   const navigate = useNavigate();
   const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -119,8 +122,7 @@ export default function ScanSearchPage() {
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
   const [designationFilter, setDesignationFilter] = useState<string>("");
 
-  // ── Shared state ────────────────────────────────────────────────────
-  const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
+  // fluorochromes come from SharedDataContext
 
   // Refs for move hook callbacks to access latest functions
   const refreshScanRef = useRef<() => Promise<void>>(() => Promise.resolve());
@@ -243,7 +245,6 @@ export default function ScanSearchPage() {
       const res = await api.post("/scan/lookup", { barcode: q });
       setResult(res.data);
       setMode("scan");
-      api.get("/fluorochromes/").then((r) => setFluorochromes(r.data));
     } catch (scanErr: any) {
       // If 404, try antibody search
       if (scanErr.response?.status === 404) {
@@ -287,14 +288,9 @@ export default function ScanSearchPage() {
             setRegForm(regDefaults);
             setNewAbForm(abDefaults);
 
-            const [abRes, suRes, fluoroRes] = await Promise.all([
-              api.get("/antibodies/"),
-              api.get("/storage/units"),
-              api.get("/fluorochromes/"),
-            ]);
+            const abRes = await api.get("/antibodies/");
             setAntibodies(abRes.data);
-            setStorageUnits(suRes.data);
-            setFluorochromes(fluoroRes.data);
+            setStorageUnits(sharedStorageUnits);
 
             // Try GS1 enrichment in the background
             setEnrichLoading(true);
@@ -836,6 +832,7 @@ export default function ScanSearchPage() {
         storage_unit_id: regForm.storage_unit_id || null,
       });
       setMessage(`Lot "${regForm.lot_number}" registered with ${quantity} vial(s). Barcode: ${scannedBarcode}`);
+      refreshFluorochromes();
       setMode("idle");
       setInput("");
       inputRef.current?.focus();
@@ -1396,11 +1393,11 @@ export default function ScanSearchPage() {
           {/* Intent Menu */}
           <div className="intent-menu">
             <button className={`intent-btn ${intent === "open" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("open"); }} disabled={!canOpenScan} title={!canOpenScan ? "No sealed vials" : ""}>{sealedOnly ? "Use Vial" : "Open New"}</button>
-            <button className={`intent-btn ${intent === "receive" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("receive"); setReceiveQty(1); const defaultUnit = result.storage_grids?.[0]?.unit.id ?? ""; setReceiveStorageId(defaultUnit); api.get("/storage/units").then((r) => setStorageUnits(r.data)); if (defaultUnit) checkAvailableSlots(defaultUnit); }}>Receive More</button>
-            {!sealedOnly && <button className={`intent-btn ${intent === "store_open" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("store_open"); setStoreOpenUnitId(""); setStoreOpenGrid(null); api.get("/storage/units").then((r) => setStorageUnits(r.data)); }} disabled={!canStoreOpen} title={!canStoreOpen ? "No unstored opened vials" : ""}>Store Open Vial</button>}
+            <button className={`intent-btn ${intent === "receive" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("receive"); setReceiveQty(1); const defaultUnit = result.storage_grids?.[0]?.unit.id ?? ""; setReceiveStorageId(defaultUnit); setStorageUnits(sharedStorageUnits); if (defaultUnit) checkAvailableSlots(defaultUnit); }}>Receive More</button>
+            {!sealedOnly && <button className={`intent-btn ${intent === "store_open" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("store_open"); setStoreOpenUnitId(""); setStoreOpenGrid(null); setStorageUnits(sharedStorageUnits); }} disabled={!canStoreOpen} title={!canStoreOpen ? "No unstored opened vials" : ""}>Store Open Vial</button>}
             {!sealedOnly && <button className={`intent-btn ${intent === "deplete" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("deplete"); }} disabled={!canDeplete} title={!canDeplete ? "No opened vials" : ""}>Deplete</button>}
             {result.storage_grids?.length > 0 && <button className={`intent-btn ${intent === "view_storage" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("view_storage"); loadViewStorageGrid(); }}>View Storage</button>}
-            {canMove && <button className={`intent-btn ${intent === "move" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("move"); loadMoveGrids(); api.get("/storage/units").then((r) => setStorageUnits(r.data)); }} disabled={!canMove} title={!canMove ? "No stored vials" : ""}>Move Vials</button>}
+            {canMove && <button className={`intent-btn ${intent === "move" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("move"); loadMoveGrids(); setStorageUnits(sharedStorageUnits); }} disabled={!canMove} title={!canMove ? "No stored vials" : ""}>Move Vials</button>}
           </div>
 
           {/* Intent: Open New */}
@@ -1685,7 +1682,7 @@ export default function ScanSearchPage() {
                   {storeOpenGrid && (
                     <div className="grid-container">
                       <h3>{storeOpenGrid.unit.name}</h3>
-                      <StorageGrid rows={storeOpenGrid.unit.rows} cols={storeOpenGrid.unit.cols} cells={storeOpenGrid.cells} highlightVialIds={new Set()} onCellClick={handleCellClick} selectedCellId={selectedCell?.id} clickMode="empty" fluorochromes={fluorochromes} />
+                      <StorageGrid rows={storeOpenGrid.unit.rows} cols={storeOpenGrid.unit.cols} cells={storeOpenGrid.cells} highlightVialIds={EMPTY_SET} onCellClick={handleCellClick} selectedCellId={selectedCell?.id} clickMode="empty" fluorochromes={fluorochromes} />
                     </div>
                   )}
                   {selectedCell && (

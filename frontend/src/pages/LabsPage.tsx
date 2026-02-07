@@ -6,8 +6,10 @@ import { Building2, LogIn } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 
 export default function LabsPage() {
+  const { refreshLabs } = useSharedData();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -39,6 +41,7 @@ export default function LabsPage() {
       setShowForm(false);
       addToast(`Lab "${form.name}" created`, "success");
       load();
+      refreshLabs();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create lab");
     }
@@ -49,6 +52,7 @@ export default function LabsPage() {
     try {
       await api.patch(`/labs/${labId}/suspend`);
       await load();
+      refreshLabs();
       const lab = labs.find((l) => l.id === labId);
       addToast(
         lab?.is_active ? `"${lab.name}" suspended` : `"${lab?.name}" reactivated`,

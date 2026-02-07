@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import api from "../api/client";
 import type { Fluorochrome, Lab } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 import { Palette } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
@@ -10,8 +11,7 @@ const DEFAULT_FLUORO_COLOR = "#9ca3af";
 
 export default function FluorochromesPage() {
   const { user } = useAuth();
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [selectedLab, setSelectedLab] = useState<string>("");
+  const { labs, selectedLab, setSelectedLab, refreshFluorochromes } = useSharedData();
   const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -34,19 +34,6 @@ export default function FluorochromesPage() {
   };
 
   useEffect(() => {
-    if (user?.role === "super_admin") {
-      api.get("/labs/").then((r) => {
-        setLabs(r.data);
-        if (r.data.length > 0) {
-          setSelectedLab(r.data[0].id);
-        }
-      });
-    } else if (user) {
-      setSelectedLab(user.lab_id);
-    }
-  }, [user]);
-
-  useEffect(() => {
     if (selectedLab) {
       setLoading(true);
       load();
@@ -66,6 +53,7 @@ export default function FluorochromesPage() {
       setForm({ name: "", color: DEFAULT_FLUORO_COLOR });
       setShowForm(false);
       load();
+      refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create fluorochrome");
     }
@@ -75,12 +63,14 @@ export default function FluorochromesPage() {
     await api.delete(`/fluorochromes/${f.id}`);
     addToast(`"${f.name}" deleted`, "info");
     load();
+    refreshFluorochromes();
   };
 
   const handleColorChange = async (fluoro: Fluorochrome, color: string) => {
     try {
       await api.patch(`/fluorochromes/${fluoro.id}`, { color });
       load();
+      refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update color");
     }

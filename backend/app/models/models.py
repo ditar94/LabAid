@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     JSON,
     String,
@@ -253,6 +254,11 @@ class StorageCell(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
+    __table_args__ = (
+        Index("ix_audit_log_lab_created", "lab_id", "created_at"),
+        Index("ix_audit_log_entity", "entity_type", "entity_id"),
+        Index("ix_audit_log_action", "action"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)

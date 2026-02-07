@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -156,8 +157,6 @@ def receive_vials(
     )
 
     db.commit()
-    for v in vials:
-        db.refresh(v)
     return vials
 
 
@@ -280,7 +279,6 @@ def open_vial(
         )
 
     db.commit()
-    db.refresh(vial)
     return vial
 
 
@@ -320,7 +318,6 @@ def deplete_vial(
     )
 
     db.commit()
-    db.refresh(vial)
     return vial
 
 
@@ -371,8 +368,6 @@ def deplete_all_opened(
         )
 
     db.commit()
-    for v in vials:
-        db.refresh(v)
     return vials
 
 
@@ -427,8 +422,6 @@ def deplete_all_lot(
         )
 
     db.commit()
-    for v in vials:
-        db.refresh(v)
     return vials
 
 
@@ -568,8 +561,6 @@ def open_vials_bulk(
             )
 
     db.commit()
-    for v in vials:
-        db.refresh(v)
     return vials
 
 
@@ -618,8 +609,6 @@ def deplete_vials_bulk(
         )
 
     db.commit()
-    for v in vials:
-        db.refresh(v)
     return vials
 
 
@@ -681,7 +670,6 @@ def return_to_storage(
     )
 
     db.commit()
-    db.refresh(vial)
     return vial
 
 
@@ -736,7 +724,6 @@ def correct_vial(
     )
 
     db.commit()
-    db.refresh(vial)
     return vial
 
 
@@ -776,11 +763,18 @@ def move_vials(
     if len(vials) != len(vial_ids):
         raise HTTPException(status_code=404, detail="One or more vials not found")
 
+    # Batch-load lots for validation and audit
+    lot_ids = list({v.lot_id for v in vials})
+    lots_map: dict[UUID, Lot] = {
+        lot.id: lot
+        for lot in db.query(Lot).filter(Lot.id.in_(lot_ids)).all()
+    }
+
     # Verify all vials are not depleted and not from archived lots
     for vial in vials:
         if vial.status == VialStatus.DEPLETED:
             raise HTTPException(status_code=400, detail="Cannot move depleted vials")
-        lot = db.query(Lot).filter(Lot.id == vial.lot_id).first()
+        lot = lots_map.get(vial.lot_id)
         if lot and lot.is_archived:
             raise HTTPException(status_code=400, detail="Cannot move vials from archived lots")
 
@@ -792,9 +786,16 @@ def move_vials(
             .filter(StorageCell.storage_unit_id == target_unit_id)
             .count()
         )
-        # Count vials not already in this unit
-        vials_to_add = sum(1 for v in vials if v.location_cell_id is None or
-            db.query(StorageCell).filter(StorageCell.id == v.location_cell_id, StorageCell.storage_unit_id != target_unit_id).first())
+        # Count vials not already in this unit (batch query instead of per-vial)
+        source_cell_ids = [v.location_cell_id for v in vials if v.location_cell_id is not None]
+        already_in_target = set()
+        if source_cell_ids:
+            already_in_target = {
+                c.id for c in db.query(StorageCell)
+                .filter(StorageCell.id.in_(source_cell_ids), StorageCell.storage_unit_id == target_unit_id)
+                .all()
+            }
+        vials_to_add = sum(1 for v in vials if v.location_cell_id is None or v.location_cell_id not in already_in_target)
         ensure_temporary_storage_capacity(db, target_unit, current_vial_count + vials_to_add)
         db.flush()
 
@@ -862,15 +863,27 @@ def move_vials(
             detail=f"Not enough empty cells in target unit. Need {len(vials)}, have {len(empty_cells)}",
         )
 
+    # Batch-load source cells and units for label resolution
+    source_cell_id_list = [v.location_cell_id for v in vials if v.location_cell_id]
+    source_cells_map: dict[UUID, StorageCell] = {}
+    source_units_map: dict[UUID, StorageUnit] = {}
+    if source_cell_id_list:
+        source_cells = db.query(StorageCell).filter(StorageCell.id.in_(source_cell_id_list)).all()
+        source_cells_map = {c.id: c for c in source_cells}
+        source_unit_ids = list({c.storage_unit_id for c in source_cells})
+        if source_unit_ids:
+            source_units = db.query(StorageUnit).filter(StorageUnit.id.in_(source_unit_ids)).all()
+            source_units_map = {u.id: u for u in source_units}
+
     # Snapshot before state and track source locations per vial
     before_snapshots: list[dict] = []
     source_labels: list[str] = []
     for vial in vials:
         before_snapshots.append(snapshot_vial(vial, db=db))
         if vial.location_cell_id:
-            old_cell = db.query(StorageCell).filter(StorageCell.id == vial.location_cell_id).first()
+            old_cell = source_cells_map.get(vial.location_cell_id)
             if old_cell:
-                old_unit = db.query(StorageUnit).filter(StorageUnit.id == old_cell.storage_unit_id).first()
+                old_unit = source_units_map.get(old_cell.storage_unit_id)
                 source_labels.append(f"{old_unit.name if old_unit else 'Unknown'} [{old_cell.label}]")
             else:
                 source_labels.append("unassigned")
@@ -882,13 +895,12 @@ def move_vials(
         vial.location_cell_id = empty_cells[i].id
 
     # Consolidated audit: one entry per lot
-    from collections import defaultdict
     lots_vials: dict[UUID, list[int]] = defaultdict(list)
     for i, vial in enumerate(vials):
         lots_vials[vial.lot_id].append(i)
 
     for lot_id, indices in lots_vials.items():
-        lot = db.query(Lot).filter(Lot.id == lot_id).first()
+        lot = lots_map.get(lot_id)
         lot_label = lot.lot_number if lot else str(lot_id)[:8]
 
         # Collect unique source descriptions
@@ -918,6 +930,4 @@ def move_vials(
         )
 
     db.commit()
-    for v in vials:
-        db.refresh(v)
     return vials

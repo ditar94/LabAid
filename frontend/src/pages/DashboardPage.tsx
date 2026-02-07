@@ -8,6 +8,7 @@ import type {
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
   Clock,
@@ -26,12 +27,12 @@ import LotRequestReviewModal from "../components/LotRequestReviewModal";
 
 const DEFAULT_EXPIRY_WARN_DAYS = 30;
 const CURRENT_LOT_EXPIRY_WARN_DAYS = 7;
+const EMPTY_SET = new Set<string>();
 
 export default function DashboardPage() {
   const { user, labSettings, refreshUser } = useAuth();
+  const { labs, fluorochromes, storageUnits, selectedLab, setSelectedLab, refreshLabData } = useSharedData();
   const navigate = useNavigate();
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [selectedLab, setSelectedLab] = useState<string>("");
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
   const [selectedCard, setSelectedCard] = useState<"requests" | "pending" | "low" | "expiring" | "temp" | null>(null);
   const [pendingRequests, setPendingRequests] = useState<LotRequest[]>([]);
@@ -39,7 +40,6 @@ export default function DashboardPage() {
   const [pendingLots, setPendingLots] = useState<Lot[]>([]);
   const [expiringLots, setExpiringLots] = useState<Lot[]>([]);
   const [lowStock, setLowStock] = useState<Antibody[]>([]);
-  const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
   const [allLots, setAllLots] = useState<Lot[]>([]);
   const [tempSummary, setTempSummary] = useState<TempStorageSummary | null>(null);
 
@@ -54,26 +54,13 @@ export default function DashboardPage() {
   const [tempDestStartCellId, setTempDestStartCellId] = useState<string | null>(null);
   const [tempDestPickedCellIds, setTempDestPickedCellIds] = useState<Set<string>>(new Set());
   const [tempMoveLoading, setTempMoveLoading] = useState(false);
-  const [storageUnits, setStorageUnits] = useState<StorageUnit[]>([]);
+  const nonTempUnits = useMemo(() => storageUnits.filter((u) => !u.is_temporary), [storageUnits]);
   const [tempMessage, setTempMessage] = useState<string | null>(null);
   const [tempError, setTempError] = useState<string | null>(null);
 
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { addToast } = useToast();
   const [labSettingsRef, labSettingsVisible] = useIntersectionObserver();
-
-  useEffect(() => {
-    if (user?.role === "super_admin") {
-      api.get("/labs/").then((r) => {
-        setLabs(r.data);
-        if (r.data.length > 0) {
-          setSelectedLab(r.data[0].id);
-        }
-      });
-    } else if (user) {
-      setSelectedLab(user.lab_id);
-    }
-  }, [user]);
 
   const loadData = useCallback(async () => {
     if (!selectedLab) return;
@@ -83,26 +70,24 @@ export default function DashboardPage() {
       api.get<Antibody[]>("/antibodies/", { params }),
       api.get<Lot[]>("/lots/", { params }),
       api.get<Antibody[]>("/antibodies/low-stock", { params }),
-      api.get<Fluorochrome[]>("/fluorochromes/", { params }),
       api.get<TempStorageSummary>("/storage/temp-storage/summary", { params }),
     ];
     if (isSupervisorPlus) {
       fetches.push(api.get<LotRequest[]>("/lot-requests/"));
     }
     const results = await Promise.all(fetches);
-    const [abRes, lotRes, lowStockRes, fluoroRes, tempRes] = results;
+    const [abRes, lotRes, lowStockRes, tempRes] = results;
     const antibodies = abRes.data;
     const lots = lotRes.data;
 
     setAntibodies(antibodies);
     setAllLots(lots);
     setLowStock(lowStockRes.data);
-    setFluorochromes(fluoroRes.data);
     setPendingLots(lots.filter((l: Lot) => l.qc_status === "pending"));
     setTempSummary(tempRes.data);
 
-    if (isSupervisorPlus && results[5]) {
-      const allRequests: LotRequest[] = results[5].data;
+    if (isSupervisorPlus && results[4]) {
+      const allRequests: LotRequest[] = results[4].data;
       setPendingRequests(allRequests.filter((r) => r.status === "pending"));
     }
 
@@ -348,14 +333,8 @@ export default function DashboardPage() {
 
     setTempGridLoading(true);
     try {
-      const params: Record<string, string> = {};
-      if (selectedLab) params.lab_id = selectedLab;
-      const [gridRes, unitsRes] = await Promise.all([
-        api.get<StorageGridData>(`/storage/units/${tempSummary.unit_id}/grid`),
-        api.get<StorageUnit[]>("/storage/units", { params }),
-      ]);
+      const gridRes = await api.get<StorageGridData>(`/storage/units/${tempSummary.unit_id}/grid`);
       setTempGrid(gridRes.data);
-      setStorageUnits(unitsRes.data.filter((u) => !u.is_temporary));
     } catch (err: any) {
       setTempError(err.response?.data?.detail || "Failed to load temp storage grid");
     } finally {
@@ -821,7 +800,7 @@ export default function DashboardPage() {
                         style={{ marginLeft: 8 }}
                       >
                         <option value="">Select storage unit…</option>
-                        {storageUnits.map((u) => (
+                        {nonTempUnits.map((u) => (
                           <option key={u.id} value={u.id}>{u.name}</option>
                         ))}
                       </select>
@@ -859,7 +838,7 @@ export default function DashboardPage() {
                         rows={tempMoveTargetGrid.unit.rows}
                         cols={tempMoveTargetGrid.unit.cols}
                         cells={tempMoveTargetGrid.cells}
-                        highlightVialIds={new Set<string>()}
+                        highlightVialIds={EMPTY_SET}
                         selectedCellId={tempDestMode === "start" ? tempDestStartCellId : undefined}
                         selectedCellIds={tempDestMode === "pick" ? tempDestPickedCellIds : undefined}
                         onCellClick={handleTempTargetCellClick}

@@ -2,33 +2,30 @@ import { useEffect, useState, useRef, useCallback, type FormEvent } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type {
-  StorageUnit,
   StorageGrid as StorageGridType,
   StorageCell,
-  Lab,
-  Fluorochrome,
 } from "../api/types";
 import StorageGrid from "../components/StorageGrid";
 import MoveDestination from "../components/MoveDestination";
 import OpenVialDialog from "../components/OpenVialDialog";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 import { useToast } from "../context/ToastContext";
 import { useMoveVials } from "../hooks/useMoveVials";
 
+const EMPTY_ARRAY: string[] = [];
+
 export default function StoragePage() {
   const { user } = useAuth();
+  const { labs, fluorochromes, storageUnits: units, selectedLab, setSelectedLab, refreshStorageUnits } = useSharedData();
   const { addToast } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [consolidateLotId, setConsolidateLotId] = useState<string | null>(null);
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [selectedLab, setSelectedLab] = useState<string>("");
-  const [units, setUnits] = useState<StorageUnit[]>([]);
   const [selectedGrid, setSelectedGrid] = useState<StorageGridType | null>(
     null
   );
-  const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [stockingMode, setStockingMode] = useState(false);
   const [nextEmptyCell, setNextEmptyCell] = useState<StorageCell | null>(null);
@@ -79,45 +76,9 @@ export default function StoragePage() {
     user?.role === "supervisor" ||
     user?.role === "tech";
 
-  const loadUnits = () => {
-    const params: Record<string, string> = {};
-    if (user?.role === "super_admin" && selectedLab) {
-      params.lab_id = selectedLab;
-    }
-    api.get("/storage/units", { params }).then((r) => {
-      setUnits(r.data);
-      setSelectedGrid(null);
-    });
-  };
-
-  const loadFluorochromes = () => {
-    const params: Record<string, string> = {};
-    if (user?.role === "super_admin" && selectedLab) {
-      params.lab_id = selectedLab;
-    }
-    api.get("/fluorochromes/", { params }).then((r) => {
-      setFluorochromes(r.data);
-    });
-  };
-
+  // Clear selected grid when lab changes
   useEffect(() => {
-    if (user?.role === "super_admin") {
-      api.get("/labs/").then((r) => {
-        setLabs(r.data);
-        if (r.data.length > 0) {
-          setSelectedLab(r.data[0].id);
-        }
-      });
-    } else if (user) {
-      setSelectedLab(user.lab_id);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (selectedLab) {
-      loadUnits();
-      loadFluorochromes();
-    }
+    setSelectedGrid(null);
   }, [selectedLab]);
 
   // Handle ?lotId=&unitId= consolidation deep-link, or ?unitId= direct navigation
@@ -381,7 +342,7 @@ export default function StoragePage() {
     );
     setForm({ name: "", rows: 10, cols: 10, temperature: "" });
     setShowForm(false);
-    loadUnits();
+    refreshStorageUnits();
   };
 
   return (
@@ -708,7 +669,7 @@ export default function StoragePage() {
                         selectedVialCount={selectedVialIds.size}
                         fluorochromes={fluorochromes}
                         storageUnits={units}
-                        excludeUnitIds={[]}
+                        excludeUnitIds={EMPTY_ARRAY}
                       />
                     </div>
                   </>

@@ -2,14 +2,14 @@ import { useEffect, useState, type FormEvent } from "react";
 import api from "../api/client";
 import type { User, Lab } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 import { Users as UsersIcon } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [selectedLab, setSelectedLab] = useState<string>("");
+  const { labs, selectedLab, setSelectedLab } = useSharedData();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -37,19 +37,6 @@ export default function UsersPage() {
       .then((r) => setUsers(r.data))
       .finally(() => setLoading(false));
   };
-
-  useEffect(() => {
-    if (currentUser?.role === "super_admin") {
-      api.get("/labs/").then((r) => {
-        setLabs(r.data);
-        if (r.data.length > 0) {
-          setSelectedLab(r.data[0].id);
-        }
-      });
-    } else if (currentUser) {
-      setSelectedLab(currentUser.lab_id || "");
-    }
-  }, [currentUser]);
 
   useEffect(() => {
     if (selectedLab) {
