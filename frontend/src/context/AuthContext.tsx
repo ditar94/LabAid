@@ -8,13 +8,21 @@ import {
 import api from "../api/client";
 import type { User, LabSettings } from "../api/types";
 
+interface ImpersonatingLab {
+  id: string;
+  name: string;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   labSettings: LabSettings;
+  impersonatingLab: ImpersonatingLab | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  startImpersonation: (labId: string) => Promise<void>;
+  endImpersonation: () => Promise<void>;
   loading: boolean;
 }
 
@@ -26,6 +34,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.getItem("token")
   );
   const [labSettings, setLabSettings] = useState<LabSettings>({});
+  const [impersonatingLab, setImpersonatingLab] = useState<ImpersonatingLab | null>(() => {
+    const stored = localStorage.getItem("impersonatingLab");
+    return stored ? JSON.parse(stored) : null;
+  });
   const [loading, setLoading] = useState(true);
 
   const fetchUser = async (t?: string) => {
@@ -46,7 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fetchUser()
         .catch(() => {
           localStorage.removeItem("token");
+          localStorage.removeItem("impersonatingLab");
           setToken(null);
+          setImpersonatingLab(null);
         })
         .finally(() => setLoading(false));
     } else {
@@ -58,23 +72,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.post("/auth/login", { email, password });
     const t = res.data.access_token;
     localStorage.setItem("token", t);
+    localStorage.removeItem("impersonatingLab");
+    setImpersonatingLab(null);
     setToken(t);
     await fetchUser(t);
   };
 
   const logout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("impersonatingLab");
     setToken(null);
     setUser(null);
     setLabSettings({});
+    setImpersonatingLab(null);
   };
 
   const refreshUser = async () => {
     await fetchUser();
   };
 
+  const startImpersonation = async (labId: string) => {
+    const res = await api.post("/auth/impersonate", { lab_id: labId });
+    const { token: newToken, lab_name } = res.data;
+    localStorage.setItem("token", newToken);
+    const labInfo = { id: labId, name: lab_name };
+    localStorage.setItem("impersonatingLab", JSON.stringify(labInfo));
+    setImpersonatingLab(labInfo);
+    setToken(newToken);
+    await fetchUser(newToken);
+  };
+
+  const endImpersonation = async () => {
+    const res = await api.post("/auth/end-impersonate");
+    const { token: newToken } = res.data;
+    localStorage.setItem("token", newToken);
+    localStorage.removeItem("impersonatingLab");
+    setImpersonatingLab(null);
+    setToken(newToken);
+    await fetchUser(newToken);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, labSettings, login, logout, refreshUser, loading }}>
+    <AuthContext.Provider value={{
+      user, token, labSettings, impersonatingLab,
+      login, logout, refreshUser, startImpersonation, endImpersonation, loading,
+    }}>
       {children}
     </AuthContext.Provider>
   );

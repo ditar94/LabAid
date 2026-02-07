@@ -73,7 +73,7 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
   };
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={`Documents for Lot ${lot.lot_number}`}>
       <div className="modal-content">
         <h2>Documents for Lot {lot.lot_number}</h2>
         <div className="document-list">
@@ -239,9 +239,25 @@ export default function InventoryPage() {
   const canQC = canEdit;
   const isMobile = useMediaQuery("(max-width: 768px)");
 
+  // ESC closes topmost modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (archivePrompt) { setArchivePrompt(null); return; }
+      if (archiveWarning) { setArchiveWarning(null); return; }
+      if (qcBlockedLot) { setQcBlockedLot(null); return; }
+      if (editAbId) { setEditAbId(null); return; }
+      if (confirmAction) { setConfirmAction(null); return; }
+      if (archiveAbPrompt) { setArchiveAbPrompt(null); return; }
+      if (modalLot) { setModalLot(null); return; }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [archivePrompt, archiveWarning, qcBlockedLot, editAbId, confirmAction, archiveAbPrompt, modalLot]);
+
   useEffect(() => {
     if (user?.role === "super_admin") {
-      api.get("/labs").then((r) => {
+      api.get("/labs/").then((r) => {
         setLabs(r.data);
         if (r.data.length > 0) {
           const desired =
@@ -1069,7 +1085,7 @@ export default function InventoryPage() {
         </form>
       )}
 
-      <div className="inventory-grid" ref={gridRef}>
+      <div className="inventory-grid stagger-reveal" ref={gridRef}>
         {inventoryRows.map((row, index) => {
           const fluoro = fluorochromeByName.get(
             row.antibody.fluorochrome.toLowerCase()
@@ -1504,7 +1520,7 @@ export default function InventoryPage() {
       </div>
 
       {archiveAbPrompt && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Set antibody inactive">
           <div className="modal-content">
             <h2>Set Inactive: {archiveAbPrompt.target}-{archiveAbPrompt.fluorochrome}</h2>
             <p className="page-desc">
@@ -1540,7 +1556,7 @@ export default function InventoryPage() {
         </div>
       )}
       {confirmAction && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Confirm deplete">
           <div className="modal-content">
             <h2>Confirm Deplete</h2>
             <p className="page-desc">
@@ -1573,7 +1589,7 @@ export default function InventoryPage() {
         </div>
       )}
       {editAbId && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Edit antibody">
           <div className="modal-content">
             <h2>Edit Antibody</h2>
             <form onSubmit={handleEditAntibody} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -1732,7 +1748,7 @@ export default function InventoryPage() {
         />
       )}
       {qcBlockedLot && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="QC document required">
           <div className="modal-content">
             <h2>QC Document Required</h2>
             <p>
@@ -1758,10 +1774,10 @@ export default function InventoryPage() {
         </div>
       )}
       {archiveWarning && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Archive lot warning">
           <div className="modal-content">
             <h2>Archive Lot {archiveWarning.lotNumber}?</h2>
-            <p className="page-desc" style={{ color: "var(--warning)" }}>
+            <p className="page-desc" style={{ color: "var(--warning-500)" }}>
               This lot still has <strong>{archiveWarning.sealedCount}</strong> sealed vial{archiveWarning.sealedCount === 1 ? "" : "s"} available and is not expired.
             </p>
             <p className="page-desc">
@@ -1790,7 +1806,7 @@ export default function InventoryPage() {
         </div>
       )}
       {archivePrompt && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Archive lot">
           <div className="modal-content">
             <h2>Archive Lot {archivePrompt.lotNumber}</h2>
             <p className="page-desc">

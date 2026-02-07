@@ -19,6 +19,16 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class ImpersonateRequest(BaseModel):
+    lab_id: UUID
+
+
+class ImpersonateResponse(BaseModel):
+    token: str
+    lab_id: UUID
+    lab_name: str
+
+
 class UserOut(BaseModel):
     id: UUID
     lab_id: UUID | None
@@ -72,6 +82,7 @@ class LabSettingsUpdate(BaseModel):
     sealed_counts_only: bool | None = None
     expiry_warn_days: int | None = None
     qc_doc_required: bool | None = None
+    support_access_enabled: bool | None = None
 
 
 class SetupRequest(BaseModel):
@@ -427,6 +438,7 @@ class AuditLogOut(BaseModel):
     entity_label: str | None = None
     lot_id: UUID | None = None
     antibody_id: UUID | None = None
+    is_support_action: bool = False
     before_state: str | None
     after_state: str | None
     note: str | None
@@ -478,3 +490,40 @@ class TicketOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     replies: list[TicketReplyOut] = []
+
+
+# ── Global Search (Super Admin) ──────────────────────────────────────
+
+
+class GlobalSearchLab(BaseModel):
+    id: UUID
+    name: str
+    is_active: bool
+
+
+class GlobalSearchAntibody(BaseModel):
+    id: UUID
+    lab_id: UUID
+    lab_name: str
+    target: str
+    fluorochrome: str
+    clone: str | None
+    vendor: str | None
+    catalog_number: str | None
+
+
+class GlobalSearchLot(BaseModel):
+    id: UUID
+    lab_id: UUID
+    lab_name: str
+    lot_number: str
+    antibody_target: str | None
+    antibody_fluorochrome: str | None
+    qc_status: QCStatus
+    vendor_barcode: str | None
+
+
+class GlobalSearchResult(BaseModel):
+    labs: list[GlobalSearchLab] = []
+    antibodies: list[GlobalSearchAntibody] = []
+    lots: list[GlobalSearchLot] = []

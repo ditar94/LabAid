@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import api from "../api/client";
 import type { Antibody, AuditLogEntry, AuditLogRange, Lab, Lot } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { ClipboardList } from "lucide-react";
+import EmptyState from "../components/EmptyState";
 
 const ACTION_OPTIONS = [
   { group: "Vials", items: [
@@ -32,6 +34,11 @@ const ACTION_OPTIONS = [
     { value: "user.created", label: "User Created" },
     { value: "user.password_reset", label: "Password Reset" },
     { value: "storage_unit.created", label: "Storage Unit Created" },
+  ]},
+  { group: "Support", items: [
+    { value: "support.impersonate_start", label: "Impersonation Started" },
+    { value: "support.impersonate_end", label: "Impersonation Ended" },
+    { value: "lab.settings_updated", label: "Lab Settings Updated" },
   ]},
 ];
 
@@ -269,7 +276,7 @@ export default function AuditPage() {
   // Load labs for super admin
   useEffect(() => {
     if (user?.role === "super_admin") {
-      api.get("/labs").then((r) => {
+      api.get("/labs/").then((r) => {
         setLabs(r.data);
         if (r.data.length > 0) setSelectedLab(r.data[0].id);
       });
@@ -601,7 +608,16 @@ export default function AuditPage() {
               <td>{new Date(log.created_at).toLocaleString()}</td>
               <td>{log.user_full_name || log.user_id.slice(0, 8)}</td>
               <td>
-                <span className="action-tag">{log.action}</span>
+                <span className={`action-tag ${
+                  log.action.startsWith("vial.") || log.action.startsWith("vials.") ? "action-vial" :
+                  log.action.startsWith("lot.") ? "action-lot" :
+                  log.action.startsWith("antibody.") ? "action-antibody" :
+                  log.action.startsWith("user.") || log.action.startsWith("storage_unit.") || log.action.startsWith("support.") ? "action-admin" :
+                  ""
+                }`}>{log.action}</span>
+                {log.is_support_action && (
+                  <span className="badge badge-warning" style={{ marginLeft: 4, fontSize: "0.65rem" }}>Support</span>
+                )}
               </td>
               <td>
                 {log.entity_label ? (
@@ -667,8 +683,12 @@ export default function AuditPage() {
           ))}
           {logs.length === 0 && (
             <tr>
-              <td colSpan={5} className="empty">
-                No audit entries
+              <td colSpan={5}>
+                <EmptyState
+                  icon={ClipboardList}
+                  title="No audit entries"
+                  description="Audit events will appear here as actions are performed."
+                />
               </td>
             </tr>
           )}

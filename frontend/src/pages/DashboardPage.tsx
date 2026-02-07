@@ -17,6 +17,9 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
+import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import PullToRefresh from "../components/PullToRefresh";
 
 const DEFAULT_EXPIRY_WARN_DAYS = 30;
 const CURRENT_LOT_EXPIRY_WARN_DAYS = 7;
@@ -52,10 +55,11 @@ export default function DashboardPage() {
 
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { addToast } = useToast();
+  const [labSettingsRef, labSettingsVisible] = useIntersectionObserver();
 
   useEffect(() => {
     if (user?.role === "super_admin") {
-      api.get("/labs").then((r) => {
+      api.get("/labs/").then((r) => {
         setLabs(r.data);
         if (r.data.length > 0) {
           setSelectedLab(r.data[0].id);
@@ -66,55 +70,63 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!selectedLab) return;
     const params: Record<string, string> = { lab_id: selectedLab };
-    Promise.all([
+    const [abRes, lotRes, lowStockRes, fluoroRes, tempRes] = await Promise.all([
       api.get<Antibody[]>("/antibodies/", { params }),
       api.get<Lot[]>("/lots/", { params }),
       api.get<Antibody[]>("/antibodies/low-stock", { params }),
       api.get<Fluorochrome[]>("/fluorochromes/", { params }),
       api.get<TempStorageSummary>("/storage/temp-storage/summary", { params }),
-    ]).then(([abRes, lotRes, lowStockRes, fluoroRes, tempRes]) => {
-      const antibodies = abRes.data;
-      const lots = lotRes.data;
+    ]);
+    const antibodies = abRes.data;
+    const lots = lotRes.data;
 
-      setAntibodies(antibodies);
-      setAllLots(lots);
-      setLowStock(lowStockRes.data);
-      setFluorochromes(fluoroRes.data);
-      setPendingLots(lots.filter((l) => l.qc_status === "pending"));
-      setTempSummary(tempRes.data);
+    setAntibodies(antibodies);
+    setAllLots(lots);
+    setLowStock(lowStockRes.data);
+    setFluorochromes(fluoroRes.data);
+    setPendingLots(lots.filter((l) => l.qc_status === "pending"));
+    setTempSummary(tempRes.data);
 
-      // Expiring lots
-      const expiryWarnDays = labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS;
-      const now = new Date();
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() + expiryWarnDays);
-      const expiring = lots
-        .filter((l) => {
-          if (!l.expiration_date) return false;
-          const exp = new Date(l.expiration_date);
-          return exp <= cutoff && exp >= now;
-        })
-        .sort(
-          (a, b) =>
-            new Date(a.expiration_date!).getTime() -
-            new Date(b.expiration_date!).getTime()
-        );
-      const expired = lots
-        .filter((l) => {
-          if (!l.expiration_date) return false;
-          return new Date(l.expiration_date) < now;
-        })
-        .sort(
-          (a, b) =>
-            new Date(a.expiration_date!).getTime() -
-            new Date(b.expiration_date!).getTime()
-        );
-      setExpiringLots([...expired, ...expiring]);
-    });
-  }, [user, selectedLab, labSettings.expiry_warn_days]);
+    // Expiring lots
+    const expiryWarnDays = labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS;
+    const now = new Date();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + expiryWarnDays);
+    const expiring = lots
+      .filter((l) => {
+        if (!l.expiration_date) return false;
+        const exp = new Date(l.expiration_date);
+        return exp <= cutoff && exp >= now;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.expiration_date!).getTime() -
+          new Date(b.expiration_date!).getTime()
+      );
+    const expired = lots
+      .filter((l) => {
+        if (!l.expiration_date) return false;
+        return new Date(l.expiration_date) < now;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.expiration_date!).getTime() -
+          new Date(b.expiration_date!).getTime()
+      );
+    setExpiringLots([...expired, ...expiring]);
+  }, [selectedLab, labSettings.expiry_warn_days]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const ptr = usePullToRefresh({
+    onRefresh: loadData,
+    disabled: !isMobile,
+  });
 
   const daysUntil = (dateStr: string) => {
     const diff = Math.ceil(
@@ -448,7 +460,14 @@ export default function DashboardPage() {
   const allClear = cards.every((c) => c.count === 0);
 
   return (
-    <div>
+    <div ref={ptr.containerRef}>
+      <PullToRefresh
+        pulling={ptr.pulling}
+        refreshing={ptr.refreshing}
+        pullDistance={ptr.pullDistance}
+        progress={ptr.progress}
+        isPastThreshold={ptr.isPastThreshold}
+      />
       <div className="page-header">
         <h1>Dashboard</h1>
         {user?.role === "super_admin" && (
@@ -478,7 +497,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="stats-grid">
+      <div className="stats-grid stagger-reveal">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
@@ -491,6 +510,8 @@ export default function DashboardPage() {
               onClick={() =>
                 setSelectedCard(selectedCard === card.key ? null : card.key)
               }
+              aria-expanded={selectedCard === card.key}
+              aria-controls={`dashboard-section-${card.key}`}
             >
               <div className={`stat-icon-wrap`}>
                 {card.count === 0 ? <CheckCircle2 size={20} /> : <Icon size={20} />}
@@ -502,8 +523,9 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {selectedCard === "pending" && (
-        <div className="dashboard-section">
+      <div className={`dashboard-section-wrapper${selectedCard === "pending" ? " open" : ""}`}>
+        <div className="dashboard-section-inner">
+        <div className="dashboard-section" id="dashboard-section-pending">
           <h2>Pending QC Lots</h2>
           {pendingLots.length === 0 ? (
             <p className="page-desc">No pending QC lots.</p>
@@ -582,10 +604,12 @@ export default function DashboardPage() {
             </table>
           )}
         </div>
-      )}
+        </div>
+      </div>
 
-      {selectedCard === "temp" && (
-        <div className="dashboard-section">
+      <div className={`dashboard-section-wrapper${selectedCard === "temp" ? " open" : ""}`}>
+        <div className="dashboard-section-inner">
+        <div className="dashboard-section" id="dashboard-section-temp">
           <h2>Vials in Temporary Storage</h2>
           {!tempSummary || tempSummary.total_vials === 0 ? (
             <p className="page-desc">No vials in temporary storage.</p>
@@ -730,10 +754,12 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-      )}
+        </div>
+      </div>
 
-      {selectedCard === "low" && (
-        <div className="dashboard-section">
+      <div className={`dashboard-section-wrapper${selectedCard === "low" ? " open" : ""}`}>
+        <div className="dashboard-section-inner">
+        <div className="dashboard-section" id="dashboard-section-low">
           <h2>Low Stock Antibodies</h2>
           {lowStock.length === 0 ? (
             <p className="page-desc">No low stock antibodies.</p>
@@ -787,14 +813,14 @@ export default function DashboardPage() {
                       <td>
                         <span className="badge">{stats?.approved ?? 0}</span>
                         {ab.approved_low_threshold != null && (
-                          <span style={{ color: "#6b7280", fontSize: "0.8em", marginLeft: 4 }}>/ {ab.approved_low_threshold}</span>
+                          <span className="text-muted text-xs" style={{ marginLeft: 4 }}>/ {ab.approved_low_threshold}</span>
                         )}
                       </td>
                       <td><span className="badge">{stats?.pending ?? 0}</span></td>
                       <td>
                         <span className="badge">{stats?.total ?? 0}</span>
                         {ab.low_stock_threshold != null && (
-                          <span style={{ color: "#6b7280", fontSize: "0.8em", marginLeft: 4 }}>/ {ab.low_stock_threshold}</span>
+                          <span className="text-muted text-xs" style={{ marginLeft: 4 }}>/ {ab.low_stock_threshold}</span>
                         )}
                       </td>
                       <td>{ab.catalog_number || "—"}</td>
@@ -808,10 +834,12 @@ export default function DashboardPage() {
             </table>
           )}
         </div>
-      )}
+        </div>
+      </div>
 
-      {selectedCard === "expiring" && (
-        <div className="dashboard-section">
+      <div className={`dashboard-section-wrapper${selectedCard === "expiring" ? " open" : ""}`}>
+        <div className="dashboard-section-inner">
+        <div className="dashboard-section" id="dashboard-section-expiring">
           <h2>Expiring Lots</h2>
           {expiringLots.length === 0 ? (
             <p className="page-desc">No expiring lots.</p>
@@ -900,54 +928,90 @@ export default function DashboardPage() {
             </table>
           )}
         </div>
-      )}
+        </div>
+      </div>
 
       {(user?.role === "lab_admin" || user?.role === "super_admin") && user?.lab_id && (
-        <div className="dashboard-section">
+        <div ref={labSettingsRef} className={`dashboard-section reveal-on-scroll${labSettingsVisible ? " visible" : ""}`}>
           <h2>Lab Settings</h2>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label className="flex-center">
             <input
               type="checkbox"
               checked={labSettings.sealed_counts_only ?? false}
               onChange={async () => {
-                await api.patch(`/labs/${user.lab_id}/settings`, {
-                  sealed_counts_only: !(labSettings.sealed_counts_only ?? false),
-                });
-                await refreshUser();
+                try {
+                  await api.patch(`/labs/${user.lab_id}/settings`, {
+                    sealed_counts_only: !(labSettings.sealed_counts_only ?? false),
+                  });
+                  await refreshUser();
+                } catch {
+                  addToast("Failed to update setting", "danger");
+                }
               }}
             />
             Track sealed counts only (skip opened/depleted tracking)
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+          <label className="flex-center mt-md">
             <input
               type="checkbox"
               checked={labSettings.qc_doc_required ?? false}
               onChange={async () => {
-                await api.patch(`/labs/${user.lab_id}/settings`, {
-                  qc_doc_required: !(labSettings.qc_doc_required ?? false),
-                });
-                await refreshUser();
+                try {
+                  await api.patch(`/labs/${user.lab_id}/settings`, {
+                    qc_doc_required: !(labSettings.qc_doc_required ?? false),
+                  });
+                  await refreshUser();
+                } catch {
+                  addToast("Failed to update setting", "danger");
+                }
               }}
             />
             Require QC document upload before lot approval
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+          <label className="flex-center mt-md">
             Expiring lot warning (days):
             <input
               type="number"
               min={1}
               max={365}
-              style={{ width: 70 }}
+              className="stability-input"
               value={labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS}
               onChange={async (e) => {
                 const val = parseInt(e.target.value, 10);
                 if (!Number.isFinite(val) || val < 1) return;
-                await api.patch(`/labs/${user.lab_id}/settings`, {
-                  expiry_warn_days: val,
-                });
-                await refreshUser();
+                try {
+                  await api.patch(`/labs/${user.lab_id}/settings`, {
+                    expiry_warn_days: val,
+                  });
+                  await refreshUser();
+                } catch {
+                  addToast("Failed to update setting", "danger");
+                }
               }}
             />
+          </label>
+          <label className="flex-center mt-md">
+            <input
+              type="checkbox"
+              checked={labSettings.support_access_enabled ?? false}
+              onChange={async () => {
+                try {
+                  await api.patch(`/labs/${user.lab_id}/settings`, {
+                    support_access_enabled: !(labSettings.support_access_enabled ?? false),
+                  });
+                  await refreshUser();
+                  addToast(
+                    labSettings.support_access_enabled
+                      ? "Support access disabled"
+                      : "Support access enabled",
+                    "success"
+                  );
+                } catch {
+                  addToast("Failed to update support access setting", "danger");
+                }
+              }}
+            />
+            Allow LabAid support to access your lab data for troubleshooting
           </label>
         </div>
       )}

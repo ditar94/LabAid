@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import api from "../api/client";
 import type { Fluorochrome, Lab } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { Palette } from "lucide-react";
+import EmptyState from "../components/EmptyState";
+import { useToast } from "../context/ToastContext";
 
 const DEFAULT_FLUORO_COLOR = "#9ca3af";
 
@@ -10,24 +13,29 @@ export default function FluorochromesPage() {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
     color: DEFAULT_FLUORO_COLOR,
   });
   const [error, setError] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   const load = () => {
     const params: Record<string, string> = {};
     if (user?.role === "super_admin" && selectedLab) {
       params.lab_id = selectedLab;
     }
-    api.get("/fluorochromes/", { params }).then((r) => setFluorochromes(r.data));
+    api
+      .get("/fluorochromes/", { params })
+      .then((r) => setFluorochromes(r.data))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     if (user?.role === "super_admin") {
-      api.get("/labs").then((r) => {
+      api.get("/labs/").then((r) => {
         setLabs(r.data);
         if (r.data.length > 0) {
           setSelectedLab(r.data[0].id);
@@ -40,6 +48,7 @@ export default function FluorochromesPage() {
 
   useEffect(() => {
     if (selectedLab) {
+      setLoading(true);
       load();
     }
   }, [selectedLab]);
@@ -53,6 +62,7 @@ export default function FluorochromesPage() {
     }
     try {
       await api.post("/fluorochromes/", form, { params });
+      addToast(`Fluorochrome "${form.name}" created`, "success");
       setForm({ name: "", color: DEFAULT_FLUORO_COLOR });
       setShowForm(false);
       load();
@@ -61,8 +71,9 @@ export default function FluorochromesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    await api.delete(`/fluorochromes/${id}`);
+  const handleDelete = async (f: Fluorochrome) => {
+    await api.delete(`/fluorochromes/${f.id}`);
+    addToast(`"${f.name}" deleted`, "info");
     load();
   };
 
@@ -118,38 +129,52 @@ export default function FluorochromesPage() {
         </form>
       )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Color</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fluorochromes.map((f) => (
-            <tr key={f.id}>
-              <td>{f.name}</td>
-              <td>
-                <input
-                  type="color"
-                  value={f.color}
-                  onChange={(e) => handleColorChange(f, e.target.value)}
-                  title={f.color}
-                />
-              </td>
-              <td className="action-btns">
-                <button
-                  className="btn-sm btn-red"
-                  onClick={() => handleDelete(f.id)}
-                >
-                  Delete
-                </button>
-              </td>
+      {loading ? (
+        <div className="stagger-reveal">
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
+        </div>
+      ) : fluorochromes.length === 0 ? (
+        <EmptyState
+          icon={Palette}
+          title="No fluorochromes defined"
+          description="Add fluorochromes to color-code your storage grid cells."
+        />
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Color</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {fluorochromes.map((f) => (
+              <tr key={f.id}>
+                <td>{f.name}</td>
+                <td>
+                  <input
+                    type="color"
+                    value={f.color}
+                    onChange={(e) => handleColorChange(f, e.target.value)}
+                    title={f.color}
+                  />
+                </td>
+                <td className="action-btns">
+                  <button
+                    className="btn-sm btn-red"
+                    onClick={() => handleDelete(f)}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

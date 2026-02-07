@@ -56,13 +56,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ addToast }}>
       {children}
       {toasts.length > 0 && (
-        <div className="toast-container">
+        <div className="toast-container" aria-live="polite" role="status">
           {toasts.map((toast) => {
             const Icon = ICONS[toast.variant];
             return (
               <div
                 key={toast.id}
                 className={`toast toast-${toast.variant}${toast.exiting ? " toast-exiting" : ""}`}
+                role="alert"
               >
                 <Icon className="toast-icon" />
                 <span className="toast-message">{toast.message}</span>

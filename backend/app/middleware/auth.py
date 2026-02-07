@@ -33,6 +33,15 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+    # Flag impersonation for audit trail attribution
+    if payload.get("impersonating"):
+        user._is_impersonating = True
+        # Override lab_id from the JWT so all lab-scoped queries use the impersonated lab
+        impersonated_lab_id = payload.get("lab_id")
+        if impersonated_lab_id:
+            # Expunge first so SQLAlchemy won't auto-flush this change to DB
+            db.expunge(user)
+            user.lab_id = UUID(impersonated_lab_id)
     return user
 
 

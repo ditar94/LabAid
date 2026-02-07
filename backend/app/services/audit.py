@@ -6,6 +6,11 @@ from sqlalchemy.orm import Session
 from app.models.models import AuditLog
 
 
+def is_support(user) -> bool:
+    """Check if the current action is being performed by an impersonating super admin."""
+    return getattr(user, "_is_impersonating", False)
+
+
 def log_audit(
     db: Session,
     *,
@@ -17,6 +22,7 @@ def log_audit(
     before_state: dict | None = None,
     after_state: dict | None = None,
     note: str | None = None,
+    is_support_action: bool = False,
 ) -> AuditLog:
     entry = AuditLog(
         lab_id=lab_id,
@@ -27,6 +33,7 @@ def log_audit(
         before_state=json.dumps(before_state, default=str) if before_state else None,
         after_state=json.dumps(after_state, default=str) if after_state else None,
         note=note,
+        is_support_action=is_support_action,
     )
     db.add(entry)
     return entry

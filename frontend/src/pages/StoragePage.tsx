@@ -86,7 +86,7 @@ export default function StoragePage() {
 
   useEffect(() => {
     if (user?.role === "super_admin") {
-      api.get("/labs").then((r) => {
+      api.get("/labs/").then((r) => {
         setLabs(r.data);
         if (r.data.length > 0) {
           setSelectedLab(r.data[0].id);
@@ -524,7 +524,7 @@ export default function StoragePage() {
         </form>
       )}
 
-      <div className="storage-list">
+      <div className="storage-list stagger-reveal">
         {units.map((unit) => (
           <div
             key={unit.id}
@@ -743,6 +743,24 @@ export default function StoragePage() {
             <p className="error">{error}</p>
           ) : null}
 
+          {(() => {
+            const totalCells = selectedGrid.cells.length;
+            const occupiedCount = selectedGrid.cells.filter(c => !!c.vial_id).length;
+            const occupiedPercent = totalCells > 0 ? Math.round((occupiedCount / totalCells) * 100) : 0;
+            const fillClass = occupiedPercent >= 90 ? "fill-danger" : occupiedPercent >= 70 ? "fill-warning" : "fill-ok";
+            return (
+              <div className="grid-info-header">
+                <span className="grid-info-name">{selectedGrid.unit.name}</span>
+                {selectedGrid.unit.temperature && (
+                  <span className="grid-info-temp">{selectedGrid.unit.temperature}</span>
+                )}
+                <div className="capacity-bar">
+                  <div className={`capacity-fill ${fillClass}`} style={{ width: `${occupiedPercent}%` }} />
+                </div>
+                <span className="capacity-text">{occupiedCount}/{totalCells}</span>
+              </div>
+            );
+          })()}
           <StorageGrid
             rows={selectedGrid.unit.rows}
             cols={selectedGrid.unit.cols}

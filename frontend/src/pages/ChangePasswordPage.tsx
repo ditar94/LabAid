@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { ShieldCheck } from "lucide-react";
 
 export default function ChangePasswordPage() {
   const { refreshUser } = useAuth();
@@ -10,15 +11,18 @@ export default function ChangePasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
+  const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+  const passwordLongEnough = newPassword.length >= 6;
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (newPassword.length < 6) {
+    if (!passwordLongEnough) {
       setError("Password must be at least 6 characters");
       return;
     }
-    if (newPassword !== confirmPassword) {
+    if (!passwordsMatch) {
       setError("Passwords do not match");
       return;
     }
@@ -34,32 +38,82 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="login-container">
+      <div className="login-orb login-orb-1" aria-hidden="true" />
+      <div className="login-orb login-orb-2" aria-hidden="true" />
+      <div className="login-orb login-orb-3" aria-hidden="true" />
+
       <div className="login-card">
-        <h1>Change Password</h1>
-        <p className="subtitle">
-          You must choose a new password before continuing.
-        </p>
+        <div className="login-brand">
+          <div className="login-icon login-icon-welcome">
+            <ShieldCheck size={26} />
+          </div>
+          <div>
+            <h1>Welcome to LabAid</h1>
+            <p className="subtitle">Set your personal password to get started</p>
+          </div>
+        </div>
+
+        <div className="onboarding-steps">
+          <div className="onboarding-step completed">
+            <div className="step-dot" />
+            <span>Account created</span>
+          </div>
+          <div className="onboarding-step active">
+            <div className="step-dot" />
+            <span>Set password</span>
+          </div>
+          <div className="onboarding-step">
+            <div className="step-dot" />
+            <span>Start using LabAid</span>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit}>
-          <input
-            type="password"
-            placeholder="New Password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            required
-            minLength={6}
-            autoFocus
-          />
-          <input
-            type="password"
-            placeholder="Confirm Password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-            minLength={6}
-          />
-          {error && <p className="error">{error}</p>}
-          <button type="submit">Set New Password</button>
+          <div className="form-group">
+            <label htmlFor="new-password">New Password</label>
+            <input
+              id="new-password"
+              type="password"
+              placeholder="At least 6 characters"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              minLength={6}
+              autoFocus
+            />
+            {newPassword.length > 0 && (
+              <span className={`field-hint ${passwordLongEnough ? "hint-success" : "hint-warn"}`}>
+                {passwordLongEnough ? "Looks good" : `${6 - newPassword.length} more character${6 - newPassword.length === 1 ? "" : "s"} needed`}
+              </span>
+            )}
+          </div>
+          <div className="form-group">
+            <label htmlFor="confirm-password">Confirm Password</label>
+            <input
+              id="confirm-password"
+              type="password"
+              placeholder="Re-enter your password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={6}
+            />
+            {confirmPassword.length > 0 && (
+              <span className={`field-hint ${passwordsMatch ? "hint-success" : "hint-warn"}`}>
+                {passwordsMatch ? "Passwords match" : "Passwords don't match"}
+              </span>
+            )}
+          </div>
+          {error && <p className="error login-error">{error}</p>}
+          <button
+            type="submit"
+            className="login-submit"
+            disabled={!passwordLongEnough || !passwordsMatch}
+          >
+            Set Password & Continue
+          </button>
         </form>
+        <p className="login-footer">You can change your password later in settings</p>
       </div>
     </div>
   );

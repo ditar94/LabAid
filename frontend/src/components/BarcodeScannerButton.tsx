@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BarcodeDetector } from "barcode-detector/pure";
+import { Camera, X } from "lucide-react";
 
 type Props = {
   onDetected: (value: string) => void;
@@ -114,25 +115,39 @@ export default function BarcodeScannerButton({
         onClick={() => setOpen(true)}
         disabled={disabled}
       >
-        {label}
+        <Camera size={16} />
+        <span className="scan-camera-label">{label}</span>
       </button>
       {open && (
-        <div className="modal-overlay">
-          <div className="modal-content scan-modal">
-            <h2>Scan Barcode</h2>
-            <p className="page-desc">
-              Point your camera at a barcode or QR code.
-            </p>
-            <div className="scan-video-frame">
-              <video ref={videoRef} className="scan-video" playsInline />
-            </div>
-            {error && <p className="error">{error}</p>}
-            <div className="scan-actions">
-              <button className="btn-secondary" onClick={close}>
-                Cancel
-              </button>
-            </div>
+        <div className="scanner-overlay" role="dialog" aria-modal="true" aria-label="Barcode scanner">
+          <video ref={videoRef} className="scanner-video" playsInline />
+
+          {/* Viewfinder frame */}
+          <div className="scanner-viewfinder" aria-hidden="true">
+            <div className="viewfinder-corner vf-tl" />
+            <div className="viewfinder-corner vf-tr" />
+            <div className="viewfinder-corner vf-bl" />
+            <div className="viewfinder-corner vf-br" />
+            <div className="scanner-line" />
           </div>
+
+          {/* Status text */}
+          <div className="scanner-status">
+            {error ? (
+              <p className="scanner-error">{error}</p>
+            ) : (
+              <p className="scanner-hint">Point camera at a barcode</p>
+            )}
+          </div>
+
+          {/* Close button */}
+          <button
+            className="scanner-close"
+            onClick={close}
+            aria-label="Close scanner"
+          >
+            <X size={24} />
+          </button>
         </div>
       )}
     </>

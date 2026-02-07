@@ -81,6 +81,16 @@ export default function StorageGrid({
     return () => document.removeEventListener("click", handleClickOutside);
   }, [expandedCellId]);
 
+  // ESC key closes expanded cell
+  useEffect(() => {
+    if (!expandedCellId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpandedCellId(null);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [expandedCellId]);
+
   const cellMap = new Map<string, StorageCell>();
   for (const cell of cells) {
     cellMap.set(`${cell.row}-${cell.col}`, cell);
@@ -141,7 +151,7 @@ export default function StorageGrid({
       className={`storage-grid${expandedCellId ? " has-expanded" : ""}`}
       style={{
         display: "grid",
-        gridTemplateColumns: `24px repeat(${cols}, 42px)`,
+        gridTemplateColumns: `24px repeat(${cols}, var(--grid-cell-size, 42px))`,
         gap: "2px",
       }}
       onClick={handleGridClick}

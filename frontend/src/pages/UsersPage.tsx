@@ -2,12 +2,16 @@ import { useEffect, useState, type FormEvent } from "react";
 import api from "../api/client";
 import type { User, Lab } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { Users as UsersIcon } from "lucide-react";
+import EmptyState from "../components/EmptyState";
+import { useToast } from "../context/ToastContext";
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     email: "",
@@ -20,6 +24,7 @@ export default function UsersPage() {
     tempPassword: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   const load = () => {
     if (!selectedLab) return;
@@ -27,12 +32,15 @@ export default function UsersPage() {
     if (currentUser?.role === "super_admin") {
       params.lab_id = selectedLab;
     }
-    api.get("/auth/users", { params }).then((r) => setUsers(r.data));
+    api
+      .get("/auth/users", { params })
+      .then((r) => setUsers(r.data))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     if (currentUser?.role === "super_admin") {
-      api.get("/labs").then((r) => {
+      api.get("/labs/").then((r) => {
         setLabs(r.data);
         if (r.data.length > 0) {
           setSelectedLab(r.data[0].id);
@@ -45,6 +53,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     if (selectedLab) {
+      setLoading(true);
       load();
     }
   }, [selectedLab]);
@@ -60,6 +69,7 @@ export default function UsersPage() {
       }
       const res = await api.post("/auth/users", form, { params });
       setTempPassword(res.data.temp_password);
+      addToast(`User "${form.full_name}" created`, "success");
       setForm({ email: "", full_name: "", role: "tech" });
       setShowForm(false);
       load();
@@ -74,6 +84,8 @@ export default function UsersPage() {
     try {
       const res = await api.post(`/auth/users/${userId}/reset-password`);
       setResetResult({ userId, tempPassword: res.data.temp_password });
+      const u = users.find((u) => u.id === userId);
+      addToast(`Password reset for ${u?.full_name || "user"}`, "info");
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to reset password");
     }
@@ -177,37 +189,52 @@ export default function UsersPage() {
         </form>
       )}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Active</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
-              <td>{u.full_name}</td>
-              <td>{u.email}</td>
-              <td>{u.role.replaceAll("_", " ")}</td>
-              <td>{u.is_active ? "Yes" : "No"}</td>
-              <td className="action-btns">
-                {u.id !== currentUser?.id && (
-                  <button
-                    className="btn-sm"
-                    onClick={() => handleResetPassword(u.id)}
-                  >
-                    Reset Password
-                  </button>
-                )}
-              </td>
+      {loading ? (
+        <div className="stagger-reveal">
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
+          <div className="skeleton skeleton-row" />
+        </div>
+      ) : users.length === 0 ? (
+        <EmptyState
+          icon={UsersIcon}
+          title="No users found"
+          description="Create a user to give them access to this lab."
+        />
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Active</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <tr key={u.id}>
+                <td>{u.full_name}</td>
+                <td>{u.email}</td>
+                <td>{u.role.replaceAll("_", " ")}</td>
+                <td>{u.is_active ? "Yes" : "No"}</td>
+                <td className="action-btns">
+                  {u.id !== currentUser?.id && (
+                    <button
+                      className="btn-sm"
+                      onClick={() => handleResetPassword(u.id)}
+                    >
+                      Reset Password
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

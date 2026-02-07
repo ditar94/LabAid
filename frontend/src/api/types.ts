@@ -16,6 +16,7 @@ export interface LabSettings {
   sealed_counts_only?: boolean;
   expiry_warn_days?: number;
   qc_doc_required?: boolean;
+  support_access_enabled?: boolean;
 }
 
 export interface Lab {
@@ -279,6 +280,7 @@ export interface AuditLogEntry {
   entity_label: string | null;
   lot_id: string | null;
   antibody_id: string | null;
+  is_support_action: boolean;
   before_state: string | null;
   after_state: string | null;
   note: string | null;
@@ -288,4 +290,38 @@ export interface AuditLogEntry {
 export interface AuditLogRange {
   min_created_at: string | null;
   max_created_at: string | null;
+}
+
+export interface GlobalSearchLab {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+export interface GlobalSearchAntibody {
+  id: string;
+  lab_id: string;
+  lab_name: string;
+  target: string;
+  fluorochrome: string;
+  clone: string | null;
+  vendor: string | null;
+  catalog_number: string | null;
+}
+
+export interface GlobalSearchLot {
+  id: string;
+  lab_id: string;
+  lab_name: string;
+  lot_number: string;
+  antibody_target: string | null;
+  antibody_fluorochrome: string | null;
+  qc_status: QCStatus;
+  vendor_barcode: string | null;
+}
+
+export interface GlobalSearchResult {
+  labs: GlobalSearchLab[];
+  antibodies: GlobalSearchAntibody[];
+  lots: GlobalSearchLot[];
 }

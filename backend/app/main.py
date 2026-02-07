@@ -9,7 +9,7 @@ from app.core.database import SessionLocal
 from app.core.security import decode_access_token
 from app.models.models import Lab, User, UserRole
 
-from app.routers import antibodies, audit, auth, lots, scan, storage, vials, labs, documents, fluorochromes, tickets
+from app.routers import antibodies, audit, auth, lots, scan, search, storage, vials, labs, documents, fluorochromes, tickets
 
 
 # Paths exempt from lab suspension check (auth operations)
@@ -18,6 +18,8 @@ _SUSPENSION_EXEMPT = {
     "/api/auth/change-password",
     "/api/auth/me",
     "/api/auth/setup",
+    "/api/auth/impersonate",
+    "/api/auth/end-impersonate",
     "/api/health",
 }
 
@@ -89,6 +91,7 @@ app.include_router(audit.router)
 app.include_router(documents.router)
 app.include_router(fluorochromes.router)
 app.include_router(tickets.router)
+app.include_router(search.router)
 
 
 @app.get("/api/health")

@@ -184,7 +184,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] Audit log entries must include the associated user
 - [x] Redirect `/antibodies` and `/lots` to `/inventory` and remove old views entirely
 - [ ] Add "Receive via barcode" flow on the Receive page to match the new scan buttons
-- [ ] Add quick filters/search on Inventory cards (e.g., low stock, QC pending)
+-
 - [x] Add lab setting (e.g., `qc_doc_required`) to keep lots in "Pending QC" until a QC document is uploaded (approval alone is not enough)
 - [x] Add a QC document flag/type on lot documents (or doc category) and expose it in the upload UI
 - [x] Update QC approval flow to enforce the QC doc requirement when enabled (block approval or keep lot pending with a clear reason)
@@ -396,10 +396,11 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] Super Admin can suspend/reactivate labs (access revoked or restored without deleting data)
 - [x] Support ticket system for Lab Admins and Supervisors
 - [x] Clarify account ownership/hosting model (site-managed on GCP) and data durability guarantees
-- [ ] Super Admin Impersonation: Logic to generate temporary "Support JWTs" for troubleshooting.
-- [ ] Audit Trail Attribution: Ensure the audit_log records when a Super Admin performs an action for a lab.
-- [ ] Support Access Toggle: Lab-level setting to grant/revoke temporary database access for troubleshooting.
-- [ ] Global Search for Support: Search for any lab_id, antibody_id, or lot_id across the entire database (Super Admin only).
+- [x] Super Admin Impersonation: Logic to generate temporary "Support JWTs" for troubleshooting.
+- [x] Audit Trail Attribution: Ensure the audit_log records when a Super Admin performs an action for a lab.
+- [x] Support Access Toggle: Lab-level setting to grant/revoke temporary database access for troubleshooting.
+- [x] Global Search for Support: Search for any lab_id, antibody_id, or lot_id across the entire database (Super Admin only).
+- [x] Fix superadmin tabs so that irrelevant views are removed.
 
 ### Role Hierarchy Rework
 > Rethink roles to match real hospital/lab structure. Current roles (super_admin, lab_admin, tech, read_only) need to be refined.
@@ -640,7 +641,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 **Phase 4 — Animations & Micro-interactions**
 
 - [x] **Page transitions**: Subtle fade + slide on route change (use React transition or CSS)
-- [ ] **Staggered list/card reveals**: When data loads, cards/rows animate in with staggered delay (50-80ms per item)
+- [x] **Staggered list/card reveals**: When data loads, cards/rows animate in with staggered delay (50-80ms per item)
 - [x] **Skeleton loading screens**: Replace blank loading states with content-shaped skeleton placeholders
   - Dashboard stat cards: pulsing rectangles matching card layout
   - Tables: pulsing rows matching column widths
@@ -652,8 +653,8 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
   - "Error: could not connect" (danger)
   - Auto-dismiss after 4s, manual dismiss, stack multiple
 - [x] **Button feedback**: Subtle press effect (scale 0.97 on active), ripple or flash on click
-- [ ] **Scroll-triggered reveals**: Content sections fade in as they enter the viewport (subtle, not dramatic)
-- [ ] **Storage grid cell interactions**: Smoother hover popout with spring-like easing; cell selection with satisfying snap
+- [x] **Scroll-triggered reveals**: Content sections fade in as they enter the viewport (subtle, not dramatic)
+- [x] **Storage grid cell interactions**: Smoother hover popout with spring-like easing; cell selection with satisfying snap
 
 **Phase 5 — Dashboard Redesign**
 
@@ -662,7 +663,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
   - Use icon + number + label pattern for at-a-glance reading
   - Priority cards (Pending QC, Low Stock, Expiring): use left color accent and count badge
 - [x] **Empty/zero state**: When no alerts, show a positive "All clear" state with illustration or icon, not just missing cards
-- [ ] **Card click interaction**: Smooth expand/collapse with content reveal animation (not instant DOM swap)
+- [x] **Card click interaction**: Smooth expand/collapse with content reveal animation (CSS grid row animation + fadeInUp)
 - [x] **Lab selector** (super admin): Styled dropdown or segmented control, not plain `<select>`
 
 **Phase 6 — Storage Grid Polish**
@@ -670,9 +671,9 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] **Grid container**: Subtle inset shadow or recessed background to make the grid feel embedded
 - [x] **Cell refinement**: Slightly rounded corners (4px), smoother color transitions, refined popout shadow
 - [x] **Legend redesign**: Compact inline legend with actual cell examples (mini cells showing each state), not just text descriptions
-- [ ] **Grid header**: Storage unit name + metadata (temp, capacity used) in a styled header bar above the grid
-- [ ] **Selection state**: More prominent selected styling (not just green fill — add checkmark icon overlay or distinct border pattern)
-- [ ] **Mobile grid**: Pinch-to-zoom or horizontal scroll with snap points for large grids
+- [x] **Grid header**: Storage unit name + metadata (temp, capacity used) in a styled header bar above the grid
+- [x] **Selection state**: Checkmark icon overlay (CSS pseudo-element SVG) + snap animation on selected grid cells
+- [x] **Mobile grid**: Horizontal scroll for large grids on mobile
 
 **Phase 7 — Login & Onboarding**
 
@@ -682,26 +683,26 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
   - Input focus states with smooth animation
   - "Remember me" checkbox styled custom
   - Error state: shake animation + red highlight
-- [ ] **First-login password change**: Styled as a welcome/onboarding moment, not a bare form
-- [ ] **Setup page** (`/setup`): Step-by-step wizard feel with progress indicator
+- [x] **First-login password change**: Styled as welcome onboarding with ShieldCheck icon, step indicator, real-time field hints
+- [x] **Setup page** (`/setup`): Two-step wizard with progress indicator, step context, success animation
 
 **Phase 8 — Mobile & Responsive Polish**
 
-- [ ] **Tablet breakpoint** (1024px): Two-column layouts where appropriate, sidebar can be collapsible rail
-- [ ] **Mobile navigation**: Bottom tab bar option for primary nav (Dashboard, Scan, Inventory, Storage) — faster than hamburger menu
-- [ ] **Touch targets**: Minimum 44px hit areas on all interactive elements
-- [ ] **Mobile cards**: Full-bleed on small screens (no side margins), larger touch targets
-- [ ] **Scan page mobile**: Camera viewfinder should feel native/app-like, not a browser widget
-- [ ] **Pull-to-refresh gesture** on data pages (optional enhancement)
+- [x] **Tablet breakpoint** (1024px): Two-column layouts where appropriate, sidebar narrower
+- [x] **Mobile navigation**: Bottom tab bar for primary nav (Dashboard, Scan, Inventory, Storage, Audit) + hamburger sidebar
+- [x] **Touch targets**: Minimum 44px hit areas on all interactive elements
+- [x] **Mobile cards**: Dashboard mobile card layout, responsive inventory/lot cards
+- [x] **Scan page mobile**: Fullscreen native-feel viewfinder with corner marks, scanning line animation, frosted glass close button, safe-area insets
+- [x] **Pull-to-refresh gesture** on Dashboard (mobile): usePullToRefresh hook with rubber-band pull indicator, spinning RefreshCw icon
 
 **Phase 9 — Accessibility & Polish**
 
 - [x] **Focus indicators**: Visible, styled focus rings (not browser default) on all interactive elements
-- [ ] **Keyboard navigation**: Tab order verified, Enter/Space activate buttons, ESC closes modals
-- [ ] **ARIA labels**: Modals (`aria-modal`, `aria-labelledby`), live regions for toasts, expandable sections (`aria-expanded`)
-- [ ] **Color contrast**: Verify all text/background combos meet WCAG AA (4.5:1 for body text, 3:1 for large text)
+- [x] **Keyboard navigation**: Tab order verified, Enter/Space activate buttons, ESC closes grid popouts
+- [x] **ARIA labels**: Modals (`aria-modal`, `role="dialog"`), live regions for toasts (`aria-live`), expandable sections (`aria-expanded`)
+- [x] **Color contrast**: Audited and fixed 9 text/background combos for WCAG AA (sidebar labels, cell labels, popout status, badge-blue, placeholders, login footer)
 - [x] **Reduced motion**: `prefers-reduced-motion` media query disables animations for users who need it
-- [ ] **Print stylesheet**: Clean print layout for audit log, inventory reports, storage grid maps
+- [x] **Print stylesheet**: @media print rules — hide nav/buttons, format tables/grids/badges for paper, page-break controls
 
 **Implementation notes:**
 - All changes are CSS/component-level — no backend changes needed
@@ -715,6 +716,5 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 ### Backlog / Nice-to-Have
 - [ ] Export audit log to CSV
 - [ ] Bulk vial operations (open/deplete multiple)
-- [ ] Print storage grid labels
 - [ ] Dark mode (prep work done in Phase 1 with CSS custom properties)
 - [ ] Mobile-responsive layout for tablet use at the bench (covered in Phase 8)

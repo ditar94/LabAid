@@ -26,7 +26,7 @@ export default function OpenVialDialog({
     !isOpened && vial.qc_status && vial.qc_status !== "approved";
 
   return (
-    <div className="open-vial-dialog-overlay" onClick={onCancel}>
+    <div className="open-vial-dialog-overlay" onClick={onCancel} role="dialog" aria-modal="true" aria-label="Vial action">
       <div
         className="open-vial-dialog"
         onClick={(e) => e.stopPropagation()}

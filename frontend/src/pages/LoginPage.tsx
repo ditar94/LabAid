@@ -30,6 +30,10 @@ export default function LoginPage() {
 
   return (
     <div className="login-container">
+      <div className="login-orb login-orb-1" aria-hidden="true" />
+      <div className="login-orb login-orb-2" aria-hidden="true" />
+      <div className="login-orb login-orb-3" aria-hidden="true" />
+
       <div className={`login-card${shaking ? " shake" : ""}`}>
         <div className="login-brand">
           <div className="login-icon">
@@ -69,6 +73,7 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
+        <p className="login-footer">Laboratory inventory management</p>
       </div>
     </div>
   );

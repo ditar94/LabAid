@@ -11,10 +11,12 @@ from app.core.security import (
     verify_password,
 )
 from app.middleware.auth import get_current_user, require_role
-from app.models.models import User, UserRole
+from app.models.models import Lab, User, UserRole
 from app.services.audit import log_audit, snapshot_user
 from app.schemas.schemas import (
     ChangePasswordRequest,
+    ImpersonateRequest,
+    ImpersonateResponse,
     LoginRequest,
     ResetPasswordResponse,
     SetupRequest,
@@ -221,3 +223,72 @@ def change_password(
     db.commit()
 
     return {"detail": "Password changed successfully"}
+
+
+@router.post("/impersonate", response_model=ImpersonateResponse)
+def impersonate_lab(
+    body: ImpersonateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    """Generate a support JWT scoped to a specific lab for troubleshooting."""
+    lab = db.query(Lab).filter(Lab.id == body.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    settings = lab.settings or {}
+    if not settings.get("support_access_enabled"):
+        raise HTTPException(
+            status_code=403,
+            detail="Support access is not enabled for this lab",
+        )
+
+    # Generate a JWT with the lab_id and impersonating flag
+    token = create_access_token({
+        "sub": str(current_user.id),
+        "lab_id": str(lab.id),
+        "role": UserRole.SUPER_ADMIN.value,
+        "impersonating": True,
+    })
+
+    log_audit(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="support.impersonate_start",
+        entity_type="lab",
+        entity_id=lab.id,
+        is_support_action=True,
+    )
+    db.commit()
+
+    return ImpersonateResponse(token=token, lab_id=lab.id, lab_name=lab.name)
+
+
+@router.post("/end-impersonate")
+def end_impersonate(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    """End impersonation and return a clean super admin JWT."""
+    # Log the end of impersonation if currently impersonating
+    if getattr(current_user, "_is_impersonating", False) and current_user.lab_id:
+        log_audit(
+            db,
+            lab_id=current_user.lab_id,
+            user_id=current_user.id,
+            action="support.impersonate_end",
+            entity_type="lab",
+            entity_id=current_user.lab_id,
+            is_support_action=True,
+        )
+        db.commit()
+
+    # Generate a clean super admin token (no lab_id, no impersonating)
+    token = create_access_token({
+        "sub": str(current_user.id),
+        "lab_id": None,
+        "role": UserRole.SUPER_ADMIN.value,
+    })
+
+    return {"token": token}

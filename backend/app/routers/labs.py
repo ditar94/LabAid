@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.database import get_db
 from app.models import models
@@ -100,6 +101,7 @@ def update_lab_settings(
     updates = body.model_dump(exclude_none=True)
     settings.update(updates)
     lab.settings = settings
+    flag_modified(lab, "settings")
 
     log_audit(
         db,

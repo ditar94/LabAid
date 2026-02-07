@@ -229,6 +229,7 @@ class AuditLog(Base):
     before_state = Column(Text, nullable=True)  # JSON snapshot
     after_state = Column(Text, nullable=True)  # JSON snapshot
     note = Column(Text, nullable=True)  # for corrections
+    is_support_action = Column(Boolean, default=False, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
