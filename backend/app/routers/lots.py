@@ -10,6 +10,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.models.models import Antibody, Lab, Lot, LotDocument, QCStatus, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
 from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotStorageLocation, LotUpdate, LotUpdateQC, LotWithCounts, VialCounts, VialOut
 from app.services.audit import log_audit, snapshot_lot
+from app.services.object_storage import object_storage
 from app.services.vial_service import deplete_all_opened, deplete_all_lot
 
 router = APIRouter(prefix="/api/lots", tags=["lots"])
@@ -334,6 +335,20 @@ def archive_lot(
         after_state=snapshot_lot(lot),
         note=body.note if body else None,
     )
+
+    # Transition document storage class
+    if object_storage.enabled:
+        new_class = "cold" if lot.is_archived else "hot"
+        for doc in lot.documents:
+            if not doc.file_path.startswith("uploads"):
+                try:
+                    object_storage.update_tags(doc.file_path, {
+                        "storage-class": new_class,
+                        "lab-active": "true",
+                    })
+                except Exception:
+                    pass
+            doc.storage_class = new_class
 
     db.commit()
     db.refresh(lot)

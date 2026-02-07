@@ -10,6 +10,7 @@ from app.models import models
 from app.schemas import schemas
 from app.middleware.auth import get_current_user, require_role
 from app.services.audit import log_audit, snapshot_lab
+from app.services.object_storage import object_storage
 from app.services.storage import create_temporary_storage
 
 router = APIRouter(
@@ -142,6 +143,22 @@ def suspend_lab(
         before_state=before,
         after_state=snapshot_lab(lab),
     )
+
+    # Transition all lab documents to archive (suspend) or restore (reactivate)
+    if object_storage.enabled:
+        lab_active = "true" if lab.is_active else "false"
+        new_class = "hot" if lab.is_active else "archive"
+        docs = db.query(models.LotDocument).filter(models.LotDocument.lab_id == lab.id).all()
+        for doc in docs:
+            if not doc.file_path.startswith("uploads"):
+                try:
+                    object_storage.update_tags(doc.file_path, {
+                        "storage-class": new_class,
+                        "lab-active": lab_active,
+                    })
+                except Exception:
+                    pass
+            doc.storage_class = new_class
 
     db.commit()
     db.refresh(lab)

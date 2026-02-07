@@ -1,16 +1,23 @@
+import io
+import logging
 import os
 import shutil
+import uuid as uuid_mod
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from starlette.responses import FileResponse
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
-from app.models.models import Antibody, Lot, LotDocument, User, UserRole
+from app.models.models import Lot, LotDocument, User, UserRole
 from app.schemas.schemas import LotDocumentOut
 from app.services.audit import log_audit
+from app.services.object_storage import object_storage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -33,19 +40,32 @@ def upload_lot_document(
     if not lot:
         raise HTTPException(status_code=404, detail="Lot not found")
 
-    # Ensure upload directory exists
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    doc_id = uuid_mod.uuid4()
 
-    file_path = os.path.join(UPLOAD_DIR, f"{lot.id}_{file.filename}")
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    if object_storage.enabled:
+        key = f"{lot.lab_id}/{lot.id}/{doc_id}_{file.filename}"
+        file_data = io.BytesIO(file.file.read())
+        object_storage.upload(
+            key,
+            file_data,
+            content_type=file.content_type or "application/octet-stream",
+            tags={"storage-class": "hot", "lab-active": "true"},
+        )
+        stored_path = key
+    else:
+        logger.warning("S3 not configured — writing to local filesystem (not suitable for production)")
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        stored_path = os.path.join(UPLOAD_DIR, f"{lot.id}_{file.filename}")
+        with open(stored_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
     desc = description.strip() if description else None
     doc = LotDocument(
+        id=doc_id,
         lot_id=lot.id,
         lab_id=lot.lab_id,
         user_id=current_user.id,
-        file_path=file_path,
+        file_path=stored_path,
         file_name=file.filename,
         description=desc,
         is_qc_document=is_qc_document,
@@ -53,7 +73,6 @@ def upload_lot_document(
     db.add(doc)
     db.flush()
 
-    # Build audit note with file name and description
     note = f"Uploaded: {file.filename}"
     if desc:
         note += f" — {desc}"
@@ -92,7 +111,7 @@ def get_lot_documents(
     return docs
 
 
-@router.get("/{document_id}", response_class=FileResponse)
+@router.get("/{document_id}")
 def get_document(
     document_id: UUID,
     db: Session = Depends(get_db),
@@ -104,5 +123,18 @@ def get_document(
     doc = q.first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    
-    return FileResponse(path=doc.file_path, filename=doc.file_name)
+
+    # S3 path (doesn't start with "uploads/")
+    if object_storage.enabled and not doc.file_path.startswith("uploads"):
+        body, content_type = object_storage.download(doc.file_path)
+        return StreamingResponse(
+            body,
+            media_type=content_type,
+            headers={"Content-Disposition": f'inline; filename="{doc.file_name}"'},
+        )
+
+    # Local filesystem fallback (legacy files or S3 disabled)
+    if os.path.exists(doc.file_path):
+        return FileResponse(path=doc.file_path, filename=doc.file_name)
+
+    raise HTTPException(status_code=404, detail="File not found")

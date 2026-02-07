@@ -7,6 +7,26 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
 
+    # CORS
+    CORS_ORIGINS: str = "http://localhost:5173"
+
+    # Database pool
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+
+    # Object Storage (S3-compatible)
+    S3_ENDPOINT_URL: str | None = None
+    S3_ACCESS_KEY: str | None = None
+    S3_SECRET_KEY: str | None = None
+    S3_BUCKET: str = "labaid-documents"
+    S3_REGION: str = "us-east-1"
+    S3_USE_PATH_STYLE: bool = True
+
+    # Server
+    PORT: int = 8000
+
     class Config:
         env_file = ".env"
 

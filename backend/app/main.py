@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import decode_access_token
 from app.models.models import Lab, User, UserRole
@@ -74,7 +75,7 @@ app = FastAPI(title="LabAid - Flow Cytometry Inventory", version="1.0.0")
 app.add_middleware(LabSuspensionMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
