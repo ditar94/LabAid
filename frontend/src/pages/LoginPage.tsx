@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { FlaskConical } from "lucide-react";
 
 export default function LoginPage() {
@@ -73,7 +73,9 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
-        <p className="login-footer">Laboratory inventory management</p>
+        <p className="login-footer">
+          Laboratory inventory management &middot; <Link to="/terms">Terms of Use</Link>
+        </p>
       </div>
     </div>
   );

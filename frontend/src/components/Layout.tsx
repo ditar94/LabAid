@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Outlet, NavLink, Link, useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -252,6 +252,7 @@ export default function Layout() {
         <div className="sidebar-copyright">
           <div>&copy; {new Date().getFullYear()} LabAid</div>
           <div>v1.0 Beta</div>
+          <Link to="/terms">Terms of Use</Link>
         </div>
       </nav>
       <main className="main-content">

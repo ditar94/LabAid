@@ -589,6 +589,102 @@ body {
   letter-spacing: 0.02em;
 }
 
+.login-footer a {
+  color: var(--neutral-400);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.login-footer a:hover {
+  color: var(--primary-300);
+  text-decoration: underline;
+}
+
+/* ── Terms of Use ────────────────────────────────────────────────────── */
+
+.login-card--terms {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  padding: var(--space-xl) var(--space-2xl);
+}
+
+.login-card--terms h1 {
+  margin-bottom: var(--space-xs);
+}
+
+.terms-effective {
+  color: var(--neutral-400);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.terms-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--neutral-400);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-lg);
+  transition: color 0.15s ease;
+}
+
+.terms-back-link:hover {
+  color: var(--primary-300);
+}
+
+.terms-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: var(--space-sm);
+  -webkit-overflow-scrolling: touch;
+}
+
+.terms-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.terms-content::-webkit-scrollbar-thumb {
+  background: var(--neutral-700);
+  border-radius: var(--radius-full);
+}
+
+.terms-content h2 {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--neutral-100);
+  margin: var(--space-lg) 0 var(--space-sm);
+}
+
+.terms-content h2:first-child {
+  margin-top: 0;
+}
+
+.terms-content p {
+  color: var(--neutral-300);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  margin-bottom: var(--space-sm);
+}
+
+.terms-content ul {
+  color: var(--neutral-300);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  margin: var(--space-sm) 0;
+  padding-left: var(--space-xl);
+}
+
+.terms-content li {
+  margin-bottom: var(--space-xs);
+}
+
+.terms-content strong {
+  color: var(--neutral-100);
+}
+
 /* ── Onboarding Steps ──────────────────────────────────────────────── */
 
 .login-icon-welcome {
@@ -1050,6 +1146,17 @@ body {
   color: var(--neutral-700);
   text-align: center;
   line-height: 1.6;
+}
+
+.sidebar-copyright a {
+  color: var(--neutral-600);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.sidebar-copyright a:hover {
+  color: var(--neutral-400);
+  text-decoration: underline;
 }
 
 .main-content {
@@ -5451,6 +5558,14 @@ textarea:focus-visible {
   .grid-header,
   .grid-row-label {
     font-size: clamp(0.5rem, 2vw, 0.7rem);
+  }
+
+  /* ── Terms of Use mobile ─────────────────────────────────────────── */
+  .login-card--terms {
+    max-width: 100%;
+    max-height: 85vh;
+    padding: var(--space-lg);
+    margin: var(--space-sm);
   }
 }
 

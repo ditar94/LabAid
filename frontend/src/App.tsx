@@ -20,6 +20,7 @@ const LabsPage = lazy(() => import("./pages/LabsPage"));
 const FluorochromesPage = lazy(() => import("./pages/FluorochromesPage"));
 const TicketsPage = lazy(() => import("./pages/TicketsPage"));
 const GlobalSearchPage = lazy(() => import("./pages/GlobalSearchPage"));
+const TermsPage = lazy(() => import("./pages/TermsPage"));
 
 function PageLoader() {
   return <div className="loading">Loading...</div>;
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/setup" element={<SetupPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route
           path="/change-password"
           element={
