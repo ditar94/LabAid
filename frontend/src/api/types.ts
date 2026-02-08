@@ -26,6 +26,7 @@ export interface LabSettings {
   expiry_warn_days?: number;
   qc_doc_required?: boolean;
   support_access_enabled?: boolean;
+  storage_enabled?: boolean;
 }
 
 export interface Lab {

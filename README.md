@@ -136,53 +136,61 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 ## Development Checklist
 
-### Top Priority (Env + Staging Readiness)
+### Code Efficiency (Completed)
 
+- [x] Fix N+1 queries in storage grid endpoints (batch `build_grid_cells`)
+- [x] Fix N+1 queries in scan lookup endpoint (batch grid building + older lot queries)
+- [x] Fix N+1 queries in audit log endpoint (batch `_batch_resolve`)
+- [x] Fix N+1 queries in `move_vials` (batch lot/cell/unit loading)
+- [x] Remove redundant `db.refresh()` loops in vial_service.py (10 locations)
+- [x] Add database indexes on audit_log (lab_id+created_at, entity_type+entity_id, action)
+- [x] React.lazy code splitting for all page components
+- [x] SharedDataContext — eliminate redundant API fetches across page navigations
+- [x] Stabilize inline `new Set()` / `[]` props on expensive components (StorageGrid, MoveDestination)
+
+### Must-Do Before Real Users (Blocking)
+
+- [ ] HTTPS enforced in production (Cloud Run / load balancer TLS termination)
+- [ ] CORS lockdown — restrict `allow_origins` to production domain (currently dev-only `localhost:5173`)
 - [ ] Add `VITE_API_BASE_URL` and use it in `frontend/src/api/client.ts`
-- [ ] Create a storage interface with env-based switch (local disk vs GCS)
+- [ ] Secrets management (Key Vault or equivalent); no secrets committed to repo
+- [ ] Database backups enabled — at minimum daily snapshots with tested restore process
+- [x] bcrypt password hashing (passlib + bcrypt scheme)
+- [x] JWT expiration set to reasonable window (8 hours)
+
+### Should-Do Before Launch
+
+- [ ] Rate limiting on login endpoint (API middleware or Cloud Armor)
+- [ ] Create a storage interface with env-based switch (local disk for dev, GCS for prod)
+- [ ] Monitoring + alerts configured for API errors and auth/storage issues
+- [ ] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
+- [ ] Uptime monitoring + health checks (API, DB, storage)
+- [ ] Staging environment mirrors prod (including storage backend) and runs restore drills
 - [ ] Add staging `.env` + deployment notes to mirror prod config
-- [ ] Add minimal integration tests (auth + document upload/download) and run against staging
-
-### Go-Live Gate (Ready for Prod)
-
 - [ ] Deployment automation or documented, repeatable deploy steps
 - [ ] Migration process defined and rehearsed (staging first, then prod)
-- [ ] Backups + PITR enabled in prod and restore verified; automated pre-migration backup in CI/CD
-- [ ] Monitoring + alerts configured for API errors and auth/storage issues
+- [ ] Add minimal integration tests (auth + document upload/download) and run against staging
 
-### Production-Only Tasks
+### Post-Launch / Hardening
 
-- [ ] Support env-based storage backend (local disk for dev, GCS for prod)
-- [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
+- [ ] MFA + strong password policy for admins; account lockout/rate limiting
 - [ ] Enable GCS bucket object versioning (`gsutil versioning set on`) — deleted/overwritten files can be recovered
 - [ ] Set GCS bucket retention policy (e.g. 30 days) — prevents accidental deletion within retention window
 - [ ] Never include the storage bucket in destructive infrastructure scripts (Terraform destroy, etc.)
 - [ ] Add automatic database backup step to CI/CD pipeline — runs `gcloud sql backups create` before every migration
+- [ ] Enable Postgres PITR (WAL archiving) + daily snapshots + retention policy
+- [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
+- [ ] Store document checksums + add a periodic verification job for missing/corrupt blobs
 - [ ] Document backup/restore process and run periodic restore tests
 - [ ] Define RPO/RTO targets (e.g., 15 min / 4 hrs) and align backup cadence to them
-- [ ] Enable Postgres PITR (WAL archiving) + daily snapshots + retention policy
 - [ ] Ensure automatic backups cover all labs in the multi-tenant database
 - [ ] Verify foreign keys and cascading rules cover antibody → fluorochrome → lot → document integrity
-- [ ] Store document checksums + add a periodic verification job for missing/corrupt blobs
 - [ ] Write and rehearse a restore playbook (DB restore + blob restore + validation queries)
 - [ ] Run scheduled restore tests and record results
 - [ ] Use backward-compatible migrations for relationship changes (add new columns first, backfill, then cut over)
 - [ ] Add automated integrity checks that validate the full graph after migrations/restores
 - [ ] Tag releases and keep a mapping of schema version to app version for restores/rollbacks
-
-### Pre-Prod Launch Checklist
-
-- [x] bcrypt password hashing (passlib + bcrypt scheme)
-- [x] JWT expiration set to reasonable window (8 hours)
-- [ ] HTTPS enforced in production (Cloud Run / load balancer TLS termination)
-- [ ] CORS lockdown — restrict `allow_origins` to production domain (currently dev-only `localhost:5173`)
-- [ ] Rate limiting on login endpoint (API middleware or Cloud Armor)
-- [ ] Secrets management (Key Vault or equivalent); no secrets committed to repo
-- [ ] MFA + strong password policy for admins; account lockout/rate limiting
-- [ ] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
-- [ ] Uptime monitoring + health checks (API, DB, storage)
 - [ ] Request size limits + rate limiting for uploads and public endpoints
-- [ ] Staging environment mirrors prod (including storage backend) and runs restore drills
 - [ ] Incident response plan + basic status/communication plan
 - [ ] Legal baseline: Terms of Service, Privacy Policy, data retention policy
 
@@ -785,10 +793,71 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 ### Lab Settings Additions
 
-- [ ] **Storage toggle**: Add `storage_enabled` lab setting (default `true`). When disabled:
-  - Hide Storage nav tab
-  - Hide storage grid sections on Scan/Inventory pages
-  - Skip storage assignment during receive (vials created without location tracking)
-  - Existing storage data preserved but hidden
+- [x] **Storage toggle**: `storage_enabled` lab setting (default `true`). When disabled: hides Storage tab, grid sections, storage assignment during receive. Data preserved but hidden.
 
+### Code Reusability & UI Consistency Refactor
+
+Shared feature modules — each its own file, callable with page-specific configuration. Ensures consistent UI across all pages while keeping context-appropriate customization. Improves code readability, editability, and maintainability.
+
+*Foundation Utilities*
+- [x] `src/utils/format.ts` — `formatDate()` replaces 15+ inline `toLocaleDateString()` calls
+- [x] `src/utils/lotActions.ts` — `buildLotActions()` replaces 2 identical functions in LotTable/LotCardList
+
+*Small Shared Components*
+- [x] `src/components/QcBadge.tsx` — QC status badge with doc-required variant (replaces 8 inline renders)
+- [x] `src/components/LotAgeBadge.tsx` — Current/New lot badge (replaces 3 inline renders)
+- [x] `src/components/CapacityBar.tsx` — Capacity bar with fill-class logic (replaces 6 computations)
+- [x] `src/components/GridLegend.tsx` — Sealed/Opened/Empty legend (replaces 5 inline renders)
+
+*Shared Hooks*
+- [x] `src/hooks/useLotBarcodeCopy.ts` — Barcode expand/copy state (replaces 2 identical blocks in LotTable/LotCardList)
+- [x] `src/hooks/useViewPreference.ts` + `src/components/ViewToggle.tsx` — Card/list view toggle, persisted per user in localStorage
+- [x] `src/hooks/useVialActions.ts` — Open/deplete state + API calls (replaces 4 identical ~40-line implementations)
+
+*Update LotTable/LotCardList*
+- [x] Use shared utilities: buildLotActions, useLotBarcodeCopy, QcBadge, LotAgeBadge, formatDate
+- [x] Add `extraActions` prop for page-specific buttons (e.g., "Scan Lot")
+- [x] Add `customBadges` prop for Dashboard sections (pendingQCBadges, expiringLotBadges)
+- [x] Add `prefixColumn`, `extraColumns`, `hideActions`, `hideDepleted`, `hideQc`, `hideReceived` props for cross-context flexibility
+
+*StorageGridPanel Module*
+- [x] `src/components/StorageGridPanel.tsx` — Grid + header (name, temp, capacity bar, actions) + legend panel
+- [ ] Update StoragePage to use StorageGridPanel
+- [x] Update ScanSearchPage scan mode to use StorageGridPanel
+- [x] Update InventoryPage drilldown to use StorageGridPanel
+- [x] Update SearchPage to use StorageGridPanel
+
+*MovePanel Module*
+- [x] `src/components/MovePanel.tsx` — Full move layout: header + view toggle + source/dest + MoveDestination + footer
+- [x] Update StoragePage to use MovePanel
+- [x] Update ScanSearchPage to use MovePanel
+
+*AntibodyCard Module*
+- [x] `src/components/AntibodyCard.tsx` — Card layout: color circle, name, designation badge, counts, badges, expand/collapse
+- [x] Extract from InventoryPage (expandable cards with all options)
+- [x] Update SearchPage to use AntibodyCard grid (replaces plain table)
+- [x] Update ScanSearchPage search mode to use AntibodyCard grid (replaces custom table)
+- [x] Card/list view toggle on InventoryPage, SearchPage, ScanSearchPage search
+
+*Registration Form Modules*
+- [x] `src/components/AntibodyForm.tsx` — Antibody create/edit form (replaces ~130-line InventoryPage form + ~250-line ScanSearchPage form)
+- [x] `src/components/LotRegistrationForm.tsx` — Lot creation form with barcode scan, storage assignment, overflow handling
+- [x] Update InventoryPage to use AntibodyForm (create + edit modes) and LotRegistrationForm
+- [x] Update ScanSearchPage to use AntibodyForm (with GUDID enrichment) and LotRegistrationForm (with tech request mode)
+
+*LotStorageDrilldown Module*
+- [x] `src/components/LotStorageDrilldown.tsx` — Click lot → storage grids with highlighted vials, open/deplete, stock controls
+- [x] Extract from InventoryPage (stock controls + "Manage" link + open/deplete)
+- [x] Add to SearchPage (click lot → drilldown with open/deplete, no stock controls)
+- [x] Add to ScanSearchPage search mode (click lot → drilldown, same as SearchPage)
+
+*Dashboard Refactors*
+- [x] Replace Pending QC custom table with LotTable/LotCardList (prefixColumn + pendingQCBadges)
+- [x] Replace Expiring Lots custom table with LotTable/LotCardList (prefixColumn + extraColumns for Status/Backup)
+- [x] Refactor Temp Storage move to use `useMoveVials` hook + `MoveDestination` (removes ~80 lines of manual move logic)
+- [x] Use shared QcBadge, formatDate across all Dashboard sections
+
+*Minor Updates*
+- [x] StorageGrid.tsx: import qcLabel from shared QcBadge (removed local duplicate)
+- [x] ScanPage.tsx, GlobalSearchPage.tsx, TicketsPage.tsx: use QcBadge, formatDate
 

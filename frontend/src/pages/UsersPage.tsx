@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import api from "../api/client";
-import type { User, Lab } from "../api/types";
+import type { User } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { Users as UsersIcon } from "lucide-react";

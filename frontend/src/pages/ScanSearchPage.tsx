@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useMemo, useCallback, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useState, useRef, useEffect, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type {
   ScanLookupResult,
@@ -11,33 +11,35 @@ import type {
   Antibody,
   Designation,
   StorageUnit,
-  Fluorochrome,
   AntibodySearchResult,
   StorageGrid as StorageGridType,
 } from "../api/types";
-import StorageGrid from "../components/StorageGrid";
-import MoveDestination from "../components/MoveDestination";
-import OpenVialDialog from "../components/OpenVialDialog";
+import AntibodyCard from "../components/AntibodyCard";
+import ViewToggle from "../components/ViewToggle";
+import LotTable from "../components/LotTable";
+import LotCardList from "../components/LotCardList";
+import { StorageView } from "../components/storage";
 import BarcodeScannerButton from "../components/BarcodeScannerButton";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { useToast } from "../context/ToastContext";
-import { useMoveVials } from "../hooks/useMoveVials";
-import DatePicker from "../components/DatePicker";
+import { useViewPreference } from "../hooks/useViewPreference";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { lotSummaryToLot } from "../utils/lotAdapters";
+import AntibodyForm, { NEW_FLUORO_VALUE, EMPTY_AB_FORM } from "../components/AntibodyForm";
+import LotRegistrationForm, { EMPTY_LOT_FORM } from "../components/LotRegistrationForm";
 
 type ResultMode = "idle" | "scan" | "search" | "register";
 const NEW_ANTIBODY_VALUE = "__new__";
-const NEW_FLUORO_VALUE = "__new_fluoro__";
-const DEFAULT_FLUORO_COLOR = "#9ca3af";
-const EMPTY_SET = new Set<string>();
+// NEW_FLUORO_VALUE, DEFAULT_FLUORO_COLOR imported from AntibodyForm
 
 export default function ScanSearchPage() {
   const { user, labSettings } = useAuth();
   const { fluorochromes, storageUnits: sharedStorageUnits, refreshFluorochromes } = useSharedData();
-  const navigate = useNavigate();
   const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const sealedOnly = labSettings.sealed_counts_only ?? false;
+  const storageEnabled = labSettings.storage_enabled !== false;
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<ResultMode>("idle");
   const [loading, setLoading] = useState(false);
@@ -50,11 +52,8 @@ export default function ScanSearchPage() {
   const [intent, setIntent] = useState<ScanIntent>(null);
   const [selectedCell, setSelectedCell] = useState<StorageCell | null>(null);
   const [selectedVial, setSelectedVial] = useState<Vial | null>(null);
-  const [showQcConfirm, setShowQcConfirm] = useState(false);
   const [showDepleteAllConfirm, setShowDepleteAllConfirm] = useState(false);
   const [showDepleteLotConfirm, setShowDepleteLotConfirm] = useState(false);
-  const [olderLotDismissed, setOlderLotDismissed] = useState(false);
-  const [olderLotSkipNote, setOlderLotSkipNote] = useState("");
   const [receiveQty, setReceiveQty] = useState(1);
   const [receiveStorageId, setReceiveStorageId] = useState("");
   const [receiveAvailableSlots, setReceiveAvailableSlots] = useState<number | null>(null);
@@ -63,20 +62,12 @@ export default function ScanSearchPage() {
   const [overflowSecondUnitId, setOverflowSecondUnitId] = useState("");
   const [storeOpenUnitId, setStoreOpenUnitId] = useState("");
   const [storeOpenGrid, setStoreOpenGrid] = useState<StorageGridType | null>(null);
-  const [viewStorageGrid, setViewStorageGrid] = useState<StorageGridType | null>(null);
-  const [viewStorageTarget, setViewStorageTarget] = useState<StorageCell | null>(null);
-  const [viewStorageLoading, setViewStorageLoading] = useState(false);
+  // ── Inline move mode (StorageView handles internals) ────────────────
+  const [scanMoveMode, setScanMoveMode] = useState(false);
 
-  // ── Bulk open/deplete state ─────────────────────────────────────────
-  const [openMultiSelect, setOpenMultiSelect] = useState(false);
-  const [openSelectedCellIds, setOpenSelectedCellIds] = useState<Set<string>>(new Set());
+  // ── Bulk deplete state ─────────────────────────────────────────────
   const [depleteSelectedVialIds, setDepleteSelectedVialIds] = useState<Set<string>>(new Set());
   const [showBulkDepleteConfirm, setShowBulkDepleteConfirm] = useState(false);
-
-  // ── Move vials state ────────────────────────────────────────────────
-  const [moveSelectedVialIds, setMoveSelectedVialIds] = useState<Set<string>>(new Set());
-  const [moveGrids, setMoveGrids] = useState<Map<string, StorageGridType>>(new Map());
-  const [moveView, setMoveView] = useState<"source" | "destination">("source");
 
   // ── Registration state ──────────────────────────────────────────────
   const [scannedBarcode, setScannedBarcode] = useState("");
@@ -90,22 +81,8 @@ export default function ScanSearchPage() {
     quantity: "1",
     storage_unit_id: "",
   });
-  const [newAbForm, setNewAbForm] = useState({
-    target: "",
-    fluorochrome_choice: "",
-    new_fluorochrome: "",
-    new_fluoro_color: DEFAULT_FLUORO_COLOR,
-    clone: "",
-    vendor: "",
-    catalog_number: "",
-    designation: "ruo" as Designation,
-    name: "",
-    short_code: "",
-    color: "#6366f1",
-    stability_days: "",
-    low_stock_threshold: "",
-    approved_low_threshold: "",
-  });
+  // New antibody form — uses shared AntibodyFormValues type
+  const [newAbForm, setNewAbForm] = useState(EMPTY_AB_FORM);
 
   // ── GS1 Enrich state ───────────────────────────────────────────────
   const [enrichResult, setEnrichResult] = useState<ScanEnrichResult | null>(null);
@@ -116,44 +93,27 @@ export default function ScanSearchPage() {
   const [searchResults, setSearchResults] = useState<AntibodySearchResult[]>([]);
   const [selectedSearchResult, setSelectedSearchResult] = useState<AntibodySearchResult | null>(null);
   const [searchGrids, setSearchGrids] = useState<Map<string, StorageGridType>>(new Map());
-  const [openTarget, setOpenTarget] = useState<StorageCell | null>(null);
-  const [openLoading, setOpenLoading] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
   const [designationFilter, setDesignationFilter] = useState<string>("");
 
+  // Card / list view preference (synced with InventoryPage + SearchPage)
+  const [searchView, setSearchView] = useViewPreference();
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
   // fluorochromes come from SharedDataContext
 
-  // Refs for move hook callbacks to access latest functions
-  const refreshScanRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const loadMoveGridsRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  // Ref so the vialActions hook refresh callback can access current search result
+  const selectedSearchResultRef = useRef(selectedSearchResult);
+  selectedSearchResultRef.current = selectedSearchResult;
 
-  const move = useMoveVials({
-    selectedVialCount: moveSelectedVialIds.size,
-    onSuccess: async (count) => {
-      setMessage(`Moved ${count} vial(s) successfully.`);
-      addToast(`Moved ${count} vial(s)`, "success");
-      setMoveSelectedVialIds(new Set());
-      await refreshScanRef.current();
-      await loadMoveGridsRef.current();
-    },
-    onError: (msg) => {
-      setError(msg);
-      addToast("Failed to move vials", "danger");
-    },
-  });
+
 
   const canEdit =
     user?.role === "super_admin" ||
     user?.role === "lab_admin" ||
     user?.role === "supervisor";
   const canReceive = canEdit || user?.role === "tech";
-
-  const canOpen =
-    user?.role === "super_admin" ||
-    user?.role === "lab_admin" ||
-    user?.role === "supervisor" ||
-    user?.role === "tech";
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -180,23 +140,13 @@ export default function ScanSearchPage() {
     setIntent(null);
     setSelectedCell(null);
     setSelectedVial(null);
-    setShowQcConfirm(false);
     setShowDepleteAllConfirm(false);
     setShowDepleteLotConfirm(false);
     setStoreOpenUnitId("");
     setStoreOpenGrid(null);
-    setViewStorageGrid(null);
-    setViewStorageTarget(null);
-    setOpenMultiSelect(false);
-    setOpenSelectedCellIds(new Set());
+    setScanMoveMode(false);
     setDepleteSelectedVialIds(new Set());
     setShowBulkDepleteConfirm(false);
-    setMoveSelectedVialIds(new Set());
-    setMoveGrids(new Map());
-    setMoveView("source");
-    move.resetDestination();
-    setOlderLotDismissed(false);
-    setOlderLotSkipNote("");
     setReceiveAvailableSlots(null);
     setReceiveIsTemp(false);
     setOverflowMode(null);
@@ -226,7 +176,6 @@ export default function ScanSearchPage() {
     setSearchResults([]);
     setSelectedSearchResult(null);
     setSearchGrids(new Map());
-    setOpenTarget(null);
     setSelectedLotId(null);
     setMessage(null);
     setError(null);
@@ -260,30 +209,14 @@ export default function ScanSearchPage() {
             setEnrichResult(null);
             setSelectedDevice(null);
 
+            // Reset registration form: antibody_id + lot fields from EMPTY_LOT_FORM
             const regDefaults = {
               antibody_id: "",
-              lot_number: "",
-              vendor_barcode: q,
-              expiration_date: "",
-              quantity: "1",
-              storage_unit_id: "",
+              ...EMPTY_LOT_FORM,
+              vendor_barcode: q, // pre-fill with scanned barcode
             };
-            const abDefaults = {
-              target: "",
-              fluorochrome_choice: "",
-              new_fluorochrome: "",
-              new_fluoro_color: DEFAULT_FLUORO_COLOR,
-              clone: "",
-              vendor: "",
-              catalog_number: "",
-              designation: "ruo" as Designation,
-              name: "",
-              short_code: "",
-              color: "#6366f1",
-              stability_days: "",
-              low_stock_threshold: "",
-              approved_low_threshold: "",
-            };
+            // Reset antibody form to empty defaults
+            const abDefaults = EMPTY_AB_FORM;
 
             setRegForm(regDefaults);
             setNewAbForm(abDefaults);
@@ -360,67 +293,6 @@ export default function ScanSearchPage() {
     }
   };
 
-  // ── Scan: Open New ──────────────────────────────────────────────────
-  const confirmOpen = async (force = false) => {
-    if (!selectedCell || !result) return;
-    const vial = result.vials.find((v) => v.location_cell_id === selectedCell.id);
-    if (!vial) { setError("No vial found at this location"); return; }
-    if (result.qc_warning && !force) { setShowQcConfirm(true); return; }
-    setLoading(true);
-    setShowQcConfirm(false);
-    try {
-      const params = new URLSearchParams({ force: String(!!result.qc_warning) });
-      if (olderLotDismissed && olderLotSkipNote) params.set("skip_older_lot_note", olderLotSkipNote);
-      await api.post(`/vials/${vial.id}/open?${params}`, { cell_id: selectedCell.id });
-      setMessage(`Vial opened from cell ${selectedCell.label}. Status updated.`);
-      addToast(`Vial opened from ${selectedCell.label}`, "success");
-      resetScanState();
-      await refreshScan();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to open vial");
-      addToast("Failed to open vial", "danger");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const confirmBulkOpen = async (force = false) => {
-    if (openSelectedCellIds.size === 0 || !result) return;
-    if (result.qc_warning && !force) { setShowQcConfirm(true); return; }
-    setLoading(true);
-    setShowQcConfirm(false);
-    try {
-      const params: Record<string, string> = { force: String(!!result.qc_warning) };
-      if (olderLotDismissed && olderLotSkipNote) params.skip_older_lot_note = olderLotSkipNote;
-      await api.post(`/vials/bulk-open?${new URLSearchParams(params)}`, {
-        cell_ids: Array.from(openSelectedCellIds),
-      });
-      setMessage(`${openSelectedCellIds.size} vial(s) opened.`);
-      addToast(`${openSelectedCellIds.size} vial(s) opened`, "success");
-      setOpenSelectedCellIds(new Set());
-      resetScanState();
-      await refreshScan();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to open vials");
-      addToast("Failed to open vials", "danger");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOpenCellClick = (cell: StorageCell) => {
-    if (openMultiSelect) {
-      setOpenSelectedCellIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(cell.id)) next.delete(cell.id);
-        else next.add(cell.id);
-        return next;
-      });
-    } else {
-      handleCellClick(cell);
-    }
-  };
-
   // ── Scan: Receive More ──────────────────────────────────────────────
   const handleReceive = async (e: FormEvent) => {
     e.preventDefault();
@@ -476,23 +348,6 @@ export default function ScanSearchPage() {
   };
 
   // ── Scan: Deplete ───────────────────────────────────────────────────
-  const confirmDeplete = async () => {
-    if (!selectedVial) return;
-    setLoading(true);
-    try {
-      await api.post(`/vials/${selectedVial.id}/deplete`);
-      setMessage("Vial depleted. Status updated.");
-      addToast("Vial depleted", "success");
-      resetScanState();
-      await refreshScan();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to deplete vial");
-      addToast("Failed to deplete vial", "danger");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const confirmDepleteAll = async () => {
     if (!result) return;
     setLoading(true);
@@ -572,107 +427,6 @@ export default function ScanSearchPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // ── Scan: View Storage ─────────────────────────────────────────────
-  const loadViewStorageGrid = async () => {
-    if (!result?.storage_grids?.length) return;
-    try {
-      const res = await api.get(`/storage/units/${result.storage_grids[0].unit.id}/grid`);
-      setViewStorageGrid(res.data);
-    } catch {
-      setViewStorageGrid(null);
-    }
-  };
-
-  const handleViewStorageCellClick = (cell: StorageCell) => {
-    if (!cell.vial || (cell.vial.status !== "sealed" && cell.vial.status !== "opened")) return;
-    setViewStorageTarget(cell);
-  };
-
-  const handleViewStorageOpen = async (force: boolean) => {
-    if (!viewStorageTarget?.vial) return;
-    setViewStorageLoading(true);
-    try {
-      await api.post(`/vials/${viewStorageTarget.vial.id}/open?force=${force}`, { cell_id: viewStorageTarget.id });
-      setMessage(`Vial opened from cell ${viewStorageTarget.label}. Status updated.`);
-      setViewStorageTarget(null);
-      await refreshScan();
-      await loadViewStorageGrid();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to open vial");
-      setViewStorageTarget(null);
-    } finally {
-      setViewStorageLoading(false);
-    }
-  };
-
-  const handleViewStorageDeplete = async () => {
-    if (!viewStorageTarget?.vial) return;
-    setViewStorageLoading(true);
-    try {
-      await api.post(`/vials/${viewStorageTarget.vial.id}/deplete`);
-      setMessage(`Vial depleted from cell ${viewStorageTarget.label}. Status updated.`);
-      setViewStorageTarget(null);
-      await refreshScan();
-      await loadViewStorageGrid();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to deplete vial");
-      setViewStorageTarget(null);
-    } finally {
-      setViewStorageLoading(false);
-    }
-  };
-
-  // ── Scan: Move Vials ──────────────────────────────────────────────
-  const loadMoveGrids = async () => {
-    if (!result?.storage_grids?.length) return;
-    const grids = new Map<string, StorageGridType>();
-    await Promise.all(
-      result.storage_grids.map(async (sg) => {
-        try {
-          const res = await api.get(`/storage/units/${sg.unit.id}/grid`);
-          grids.set(sg.unit.id, res.data);
-        } catch { /* skip */ }
-      })
-    );
-    setMoveGrids(grids);
-  };
-  refreshScanRef.current = refreshScan;
-  loadMoveGridsRef.current = loadMoveGrids;
-
-  const handleMoveCellClick = (cell: StorageCell) => {
-    if (!cell.vial || (cell.vial.status !== "sealed" && cell.vial.status !== "opened")) return;
-    const vialId = cell.vial.id;
-    setMoveSelectedVialIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(vialId)) next.delete(vialId);
-      else next.add(vialId);
-      return next;
-    });
-  };
-
-  const handleSelectAllLotVials = () => {
-    if (!result) return;
-    const allVialIds = new Set<string>();
-    const lotVialIds = new Set([
-      ...result.vials.map((v) => v.id),
-      ...(result.opened_vials?.map((v) => v.id) ?? []),
-    ]);
-    for (const [, grid] of moveGrids) {
-      for (const cell of grid.cells) {
-        if (cell.vial_id && lotVialIds.has(cell.vial_id)) {
-          allVialIds.add(cell.vial_id);
-        }
-      }
-    }
-    setMoveSelectedVialIds(allVialIds);
-  };
-
-  const handleMoveVials = async () => {
-    if (moveSelectedVialIds.size === 0 || !move.targetUnitId) return;
-    setError(null);
-    await move.executeMove(Array.from(moveSelectedVialIds));
   };
 
   // ── Registration ────────────────────────────────────────────────────
@@ -860,41 +614,6 @@ export default function ScanSearchPage() {
     setSearchGrids(newGrids);
   };
 
-  const handleSearchGridCellClick = (cell: StorageCell) => {
-    if (!cell.vial || (cell.vial.status !== "sealed" && cell.vial.status !== "opened")) return;
-    setOpenTarget(cell);
-  };
-
-  const handleOpenVialFromSearch = async (force: boolean) => {
-    if (!openTarget?.vial) return;
-    setOpenLoading(true);
-    try {
-      await api.post(`/vials/${openTarget.vial.id}/open?force=${force}`, { cell_id: openTarget.id });
-      setMessage(`Vial opened from cell ${openTarget.label}. Status updated.`);
-      setOpenTarget(null);
-      if (selectedSearchResult) await handleSearchSelect(selectedSearchResult);
-    } catch (err: any) {
-      setOpenTarget(null);
-    } finally {
-      setOpenLoading(false);
-    }
-  };
-
-  const handleDepleteVialFromSearch = async () => {
-    if (!openTarget?.vial) return;
-    setOpenLoading(true);
-    try {
-      await api.post(`/vials/${openTarget.vial.id}/deplete`);
-      setMessage(`Vial depleted from cell ${openTarget.label}. Status updated.`);
-      setOpenTarget(null);
-      if (selectedSearchResult) await handleSearchSelect(selectedSearchResult);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to deplete vial");
-      setOpenTarget(null);
-    } finally {
-      setOpenLoading(false);
-    }
-  };
 
   const handleCellClick = (cell: StorageCell) => {
     setSelectedCell(cell);
@@ -902,96 +621,15 @@ export default function ScanSearchPage() {
     setError(null);
   };
 
-  // ── Popout action callbacks ─────────────────────────────────────────
-
-  const getOpenIntentPopoutActions = useCallback(
-    (cell: StorageCell) => {
-      if (!cell.vial) return [];
-      return [
-        { label: "Select", variant: "primary" as const, onClick: () => handleCellClick(cell) },
-      ];
-    },
-    []
-  );
-
-  const getViewStoragePopoutActions = useCallback(
-    (cell: StorageCell) => {
-      if (!cell.vial) return [];
-      const vial = cell.vial;
-      const actions: Array<{ label: string; onClick: () => void; variant?: "primary" | "danger" | "default" }> = [];
-      if (vial.status === "sealed") {
-        actions.push({ label: "Open", variant: "primary", onClick: () => handleViewStorageCellClick(cell) });
-      } else if (vial.status === "opened") {
-        actions.push({ label: "Deplete", variant: "danger", onClick: () => handleViewStorageCellClick(cell) });
-      }
-      return actions;
-    },
-    []
-  );
-
-  const getSearchGridPopoutActions = useCallback(
-    (cell: StorageCell) => {
-      if (!cell.vial) return [];
-      const vial = cell.vial;
-      const actions: Array<{ label: string; onClick: () => void; variant?: "primary" | "danger" | "default" }> = [];
-      if (vial.status === "sealed") {
-        actions.push({ label: "Open", variant: "primary", onClick: () => handleSearchGridCellClick(cell) });
-      } else if (vial.status === "opened") {
-        actions.push({ label: "Deplete", variant: "danger", onClick: () => handleSearchGridCellClick(cell) });
-      }
-      return actions;
-    },
-    []
-  );
-
   // ── Computed values (scan) ──────────────────────────────────────────
-  const highlightCellVialIds = new Set<string>();
-  if (result?.storage_grids?.length && (intent === "open" || intent === "view_storage")) {
-    const gridCells = intent === "view_storage" && viewStorageGrid ? viewStorageGrid.cells : result.storage_grids[0].cells;
-    for (const cell of gridCells) {
-      if (cell.vial_id && result.vials.some((v) => v.id === cell.vial_id)) {
-        highlightCellVialIds.add(cell.vial_id);
-      }
-    }
-  }
-
-  const recommendation = result?.vials
-    .filter((v) => v.location_cell_id)
-    .sort((a, b) => new Date(a.received_at).getTime() - new Date(b.received_at).getTime())[0];
-
-  const recommendedCell = recommendation
-    ? result?.storage_grids?.[0]?.cells.find((c) => c.id === recommendation.location_cell_id)
-    : null;
-
-  const canOpenScan = (result?.vials.length ?? 0) > 0;
   const canDeplete = (result?.opened_vials?.length ?? 0) > 0;
   const unstored_opened = result?.opened_vials?.filter((v) => !v.location_cell_id) ?? [];
   const canStoreOpen = unstored_opened.length > 0;
-  const canMove = (result?.storage_grids?.length ?? 0) > 0;
-  const hasOlderLots = (result?.older_lots?.length ?? 0) > 0;
 
   const fluoroMap = new Map<string, string>();
   for (const f of fluorochromes) {
     fluoroMap.set(f.name.toLowerCase(), f.color);
   }
-
-  // Compute search-mode older lot warning for the OpenVialDialog
-  const searchOlderLotWarning = useMemo(() => {
-    if (!openTarget?.vial?.lot_id || !selectedSearchResult) return null;
-    const lots = selectedSearchResult.lots;
-    const eligible = lots
-      .filter((l) => !l.is_archived && l.vial_counts.sealed > 0)
-      .sort((a, b) => {
-        if (!a.expiration_date && !b.expiration_date) return 0;
-        if (!a.expiration_date) return 1;
-        if (!b.expiration_date) return -1;
-        return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
-      });
-    if (eligible.length < 2) return null;
-    const currentLot = eligible[0];
-    if (openTarget.vial.lot_id === currentLot.id) return null;
-    return `Older lot available: Lot ${currentLot.lot_number} has ${currentLot.vial_counts.sealed} sealed vial(s). Consider using the older lot first.`;
-  }, [openTarget, selectedSearchResult]);
 
   return (
     <div>
@@ -1103,218 +741,29 @@ export default function ScanSearchPage() {
                 ))}
               </select>
             </div>
+            {/* ── New antibody sub-form (shared AntibodyForm component) ── */}
             {regForm.antibody_id === NEW_ANTIBODY_VALUE && (
-              <>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Designation</label>
-                    <select
-                      value={newAbForm.designation}
-                      onChange={(e) => setNewAbForm({ ...newAbForm, designation: e.target.value as Designation })}
-                    >
-                      <option value="ruo">RUO</option>
-                      <option value="asr">ASR</option>
-                      <option value="ivd">IVD</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Vendor</label>
-                    <input
-                      placeholder="Vendor"
-                      value={newAbForm.vendor}
-                      onChange={(e) => setNewAbForm({ ...newAbForm, vendor: e.target.value })}
-                    />
-                  </div>
-                </div>
-                {newAbForm.designation === "ivd" ? (
-                  <>
-                    <div className="form-group">
-                      <label>Product Name</label>
-                      <input
-                        placeholder="IVD product name (required)"
-                        value={newAbForm.name}
-                        onChange={(e) => setNewAbForm({ ...newAbForm, name: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label>Short Code (for grid cells)</label>
-                        <input
-                          placeholder="e.g., MT34"
-                          value={newAbForm.short_code}
-                          onChange={(e) => setNewAbForm({ ...newAbForm, short_code: e.target.value.slice(0, 5) })}
-                          maxLength={5}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Color</label>
-                        <input
-                          type="color"
-                          value={newAbForm.color}
-                          onChange={(e) => setNewAbForm({ ...newAbForm, color: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="form-row">
-                      <div className="form-group">
-                        <label>Target</label>
-                        <input
-                          placeholder="Target (e.g., CD3)"
-                          value={newAbForm.target}
-                          onChange={(e) => setNewAbForm({ ...newAbForm, target: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Fluorochrome</label>
-                        <select
-                          value={newAbForm.fluorochrome_choice}
-                          onChange={(e) =>
-                            setNewAbForm({ ...newAbForm, fluorochrome_choice: e.target.value })
-                          }
-                          required
-                        >
-                          <option value="">Select Fluorochrome</option>
-                          <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
-                          {fluorochromes.map((f) => (
-                            <option key={f.id} value={f.name}>
-                              {f.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    {newAbForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
-                      <div className="form-row">
-                        <div className="form-group">
-                          <label>New Fluorochrome</label>
-                          <input
-                            placeholder="e.g., FITC"
-                            value={newAbForm.new_fluorochrome}
-                            onChange={(e) =>
-                              setNewAbForm({ ...newAbForm, new_fluorochrome: e.target.value })
-                            }
-                            required
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label>Color</label>
-                          <input
-                            type="color"
-                            value={newAbForm.new_fluoro_color}
-                            onChange={(e) =>
-                              setNewAbForm({ ...newAbForm, new_fluoro_color: e.target.value })
-                            }
-                            required
-                          />
-                        </div>
-                      </div>
-                    )}
-                    <div className="form-group">
-                      <label>Clone <small style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</small></label>
-                      <input
-                        placeholder="Clone"
-                        value={newAbForm.clone}
-                        onChange={(e) => setNewAbForm({ ...newAbForm, clone: e.target.value })}
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="form-group">
-                  <label>Catalog # <small style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</small></label>
-                  <input
-                    placeholder="Catalog #"
-                    value={newAbForm.catalog_number}
-                    onChange={(e) => setNewAbForm({ ...newAbForm, catalog_number: e.target.value })}
-                  />
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Stability (days) <small style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</small></label>
-                    <input
-                      type="number"
-                      min={1}
-                      placeholder="Days after opening"
-                      value={newAbForm.stability_days}
-                      onChange={(e) => setNewAbForm({ ...newAbForm, stability_days: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Reorder Point <small style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</small></label>
-                    <input
-                      type="number"
-                      min={1}
-                      placeholder="Total sealed vials"
-                      title="Alert when total vials on hand drops below this level"
-                      value={newAbForm.low_stock_threshold}
-                      onChange={(e) => setNewAbForm({ ...newAbForm, low_stock_threshold: e.target.value })}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Min Ready Stock <small style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</small></label>
-                    <input
-                      type="number"
-                      min={1}
-                      placeholder="Approved vials"
-                      title="Alert when QC-approved vials drops below this level"
-                      value={newAbForm.approved_low_threshold}
-                      onChange={(e) => setNewAbForm({ ...newAbForm, approved_low_threshold: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </>
+              <AntibodyForm
+                values={newAbForm}
+                onChange={setNewAbForm}
+                fluorochromes={fluorochromes}
+                layout="stacked"
+              />
             )}
-            <div className="form-group">
-              <label>Lot Number</label>
-              <input placeholder="e.g., 12345" value={regForm.lot_number} onChange={(e) => setRegForm({ ...regForm, lot_number: e.target.value })} required />
-            </div>
-            <div className="form-group">
-              <label>Vendor Barcode</label>
-              <div className="input-with-scan">
-                <input
-                  placeholder="Vendor barcode"
-                  value={regForm.vendor_barcode}
-                  onChange={(e) => setRegForm({ ...regForm, vendor_barcode: e.target.value })}
-                />
-                <BarcodeScannerButton
-                  label="Scan"
-                  onDetected={(value) => setRegForm({ ...regForm, vendor_barcode: value })}
-                />
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Vials Received</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={regForm.quantity}
-                  onChange={(e) => setRegForm({ ...regForm, quantity: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Expiration Date</label>
-                <DatePicker value={regForm.expiration_date} onChange={(v) => setRegForm({ ...regForm, expiration_date: v })} placeholderText="Expiration date" />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Store in</label>
-              <select value={regForm.storage_unit_id} onChange={(e) => setRegForm({ ...regForm, storage_unit_id: e.target.value })}>
-                <option value="">No storage assignment</option>
-                {storageUnits.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.rows}x{u.cols}) {u.temperature || ""}</option>
-                ))}
-              </select>
-            </div>
+            {/* ── Lot fields (shared LotRegistrationForm component) ── */}
+            <LotRegistrationForm
+              values={{
+                lot_number: regForm.lot_number,
+                vendor_barcode: regForm.vendor_barcode,
+                expiration_date: regForm.expiration_date,
+                quantity: regForm.quantity,
+                storage_unit_id: regForm.storage_unit_id,
+              }}
+              onChange={(lotValues) => setRegForm({ ...regForm, ...lotValues })}
+              storageUnits={storageUnits}
+              storageEnabled={storageEnabled}
+              layout="stacked"
+            />
             <div className="register-actions">
               <button type="submit" disabled={loading}>
                 {loading
@@ -1337,7 +786,7 @@ export default function ScanSearchPage() {
 
       {/* ── Scan Result ────────────────────────────────────────────── */}
       {mode === "scan" && result && (
-        <div className={`scan-result-wrapper${intent === "move" ? " move-active" : ""}`}>
+        <div className={`scan-result-wrapper${scanMoveMode ? " move-active" : ""}`}>
           <div className="scan-info">
             <h2>
               {(() => {
@@ -1356,7 +805,7 @@ export default function ScanSearchPage() {
                 {result.antibody.target} - {result.antibody.fluorochrome}
               </p>
             )}
-            <p>Lot: <strong>{result.lot.lot_number}</strong>{result.is_current_lot && <span className="badge badge-green" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>}{hasOlderLots && <span className="badge" style={{ marginLeft: 6, fontSize: "0.7em", background: "#6b7280", color: "#fff" }}>New</span>} | QC: <span className={`badge ${result.lot.qc_status === "approved" ? "badge-green" : result.lot.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>{result.lot.qc_status}</span></p>
+            <p>Lot: <strong>{result.lot.lot_number}</strong>{result.is_current_lot && <span className="badge badge-green" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>}{(result.older_lots?.length ?? 0) > 0 && <span className="badge" style={{ marginLeft: 6, fontSize: "0.7em", background: "#6b7280", color: "#fff" }}>New</span>} | QC: <span className={`badge ${result.lot.qc_status === "approved" ? "badge-green" : result.lot.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>{result.lot.qc_status}</span></p>
             <p>
               Sealed: <strong>{result.vials.length}</strong>
               {!sealedOnly && (
@@ -1392,136 +841,14 @@ export default function ScanSearchPage() {
 
           {/* Intent Menu */}
           <div className="intent-menu">
-            <button className={`intent-btn ${intent === "open" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("open"); }} disabled={!canOpenScan} title={!canOpenScan ? "No sealed vials" : ""}>{sealedOnly ? "Use Vial" : "Open New"}</button>
             <button className={`intent-btn ${intent === "receive" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("receive"); setReceiveQty(1); const defaultUnit = result.storage_grids?.[0]?.unit.id ?? ""; setReceiveStorageId(defaultUnit); setStorageUnits(sharedStorageUnits); if (defaultUnit) checkAvailableSlots(defaultUnit); }}>Receive More</button>
-            {!sealedOnly && <button className={`intent-btn ${intent === "store_open" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("store_open"); setStoreOpenUnitId(""); setStoreOpenGrid(null); setStorageUnits(sharedStorageUnits); }} disabled={!canStoreOpen} title={!canStoreOpen ? "No unstored opened vials" : ""}>Store Open Vial</button>}
+            {!sealedOnly && storageEnabled && <button className={`intent-btn ${intent === "store_open" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("store_open"); setStoreOpenUnitId(""); setStoreOpenGrid(null); setStorageUnits(sharedStorageUnits); }} disabled={!canStoreOpen} title={!canStoreOpen ? "No unstored opened vials" : ""}>Store Open Vial</button>}
             {!sealedOnly && <button className={`intent-btn ${intent === "deplete" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("deplete"); }} disabled={!canDeplete} title={!canDeplete ? "No opened vials" : ""}>Deplete</button>}
-            {result.storage_grids?.length > 0 && <button className={`intent-btn ${intent === "view_storage" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("view_storage"); loadViewStorageGrid(); }}>View Storage</button>}
-            {canMove && <button className={`intent-btn ${intent === "move" ? "active" : ""}`} onClick={() => { resetScanState(); setIntent("move"); loadMoveGrids(); setStorageUnits(sharedStorageUnits); }} disabled={!canMove} title={!canMove ? "No stored vials" : ""}>Move Vials</button>}
           </div>
-
-          {/* Intent: Open New */}
-          {intent === "open" && (
-            <div className="intent-panel">
-              {hasOlderLots && !olderLotDismissed && (() => {
-                const oldest = result.older_lots![0];
-                const others = result.older_lots!.length - 1;
-                return (
-                  <div className="older-lot-warning">
-                    <p>
-                      <strong>Older lot available:</strong> Lot <strong>{oldest.lot_number}</strong> has{" "}
-                      {oldest.sealed_count} sealed vial{oldest.sealed_count !== 1 ? "s" : ""}{" "}
-                      ({oldest.storage_summary}). Use the older lot first?
-                    </p>
-                    {others > 0 && (
-                      <p style={{ fontSize: "0.85em", opacity: 0.8, marginTop: 4 }}>
-                        +{others} more older lot{others !== 1 ? "s" : ""} with sealed vials
-                      </p>
-                    )}
-                    <div className="older-lot-actions">
-                      {oldest.vendor_barcode ? (
-                        <button className="btn-green" onClick={() => handleLookup(oldest.vendor_barcode!)}>
-                          Switch to Lot {oldest.lot_number}
-                        </button>
-                      ) : (
-                        <span className="info" style={{ fontSize: "0.85em" }}>
-                          Older lot has no barcode — look it up manually
-                        </span>
-                      )}
-                      <button className="btn-secondary" onClick={() => setOlderLotDismissed(true)}>
-                        Use This Lot Anyway
-                      </button>
-                    </div>
-                  </div>
-                );
-              })()}
-              {hasOlderLots && olderLotDismissed && !selectedCell && (
-                <div className="older-lot-note">
-                  <label style={{ fontSize: "0.85em" }}>
-                    Reason for skipping older lot (optional):
-                    <input
-                      type="text"
-                      value={olderLotSkipNote}
-                      onChange={(e) => setOlderLotSkipNote(e.target.value)}
-                      placeholder="e.g. Lot verification in progress"
-                      style={{ marginLeft: 8, width: 260 }}
-                    />
-                  </label>
-                </div>
-              )}
-              {(!hasOlderLots || olderLotDismissed) && (
-                <>
-                  {result.vials.length > 1 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: "0.5rem" }}>
-                      <label style={{ fontSize: "0.85em", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                        <input type="checkbox" checked={openMultiSelect} onChange={(e) => { setOpenMultiSelect(e.target.checked); setOpenSelectedCellIds(new Set()); setSelectedCell(null); }} />
-                        Multi-select
-                      </label>
-                      {openMultiSelect && openSelectedCellIds.size > 0 && (
-                        <button className="btn-sm btn-secondary" onClick={() => setOpenSelectedCellIds(new Set())}>
-                          Clear ({openSelectedCellIds.size})
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {!openMultiSelect && recommendedCell && (
-                    <p className="recommendation">
-                      Suggestion: oldest vial is at cell <strong>{recommendedCell.label}</strong> (received {new Date(recommendation!.received_at).toLocaleDateString()}). Click the cell you are actually pulling from.
-                    </p>
-                  )}
-                  {!openMultiSelect && selectedCell && !showQcConfirm && (
-                    <div className="confirm-action">
-                      <p>You selected cell <strong>{selectedCell.label}</strong>.</p>
-                      <button className="btn-green" onClick={() => confirmOpen()} disabled={loading}>Confirm Open Vial</button>
-                    </div>
-                  )}
-                  {openMultiSelect && openSelectedCellIds.size > 0 && !showQcConfirm && (
-                    <div className="confirm-action">
-                      <p><strong>{openSelectedCellIds.size}</strong> vial{openSelectedCellIds.size !== 1 ? "s" : ""} selected.</p>
-                      <button className="btn-green" onClick={() => confirmBulkOpen()} disabled={loading}>
-                        {loading ? "Opening..." : `Open ${openSelectedCellIds.size} Vial${openSelectedCellIds.size !== 1 ? "s" : ""}`}
-                      </button>
-                    </div>
-                  )}
-                  {showQcConfirm && (
-                    <div className="qc-confirm-dialog">
-                      <p className="qc-confirm-warning">This lot hasn't been approved yet. Are you sure you wish to open {openMultiSelect ? `these ${openSelectedCellIds.size} vials` : "this vial"}?</p>
-                      <div className="qc-confirm-actions">
-                        <button className="btn-red" onClick={() => openMultiSelect ? confirmBulkOpen(true) : confirmOpen(true)} disabled={loading}>Yes, Open Anyway</button>
-                        <button className="btn-secondary" onClick={() => setShowQcConfirm(false)}>Cancel</button>
-                      </div>
-                    </div>
-                  )}
-                  {result.storage_grids?.length > 0 && (
-                    <div className="grid-container">
-                      <h3>{result.storage_grids[0].unit.name}</h3>
-                      <StorageGrid
-                        rows={result.storage_grids[0].unit.rows}
-                        cols={result.storage_grids[0].unit.cols}
-                        cells={result.storage_grids[0].cells}
-                        highlightVialIds={highlightCellVialIds}
-                        recommendedCellId={openMultiSelect ? undefined : recommendedCell?.id}
-                        onCellClick={handleOpenCellClick}
-                        selectedCellId={openMultiSelect ? undefined : selectedCell?.id}
-                        selectedCellIds={openMultiSelect ? openSelectedCellIds : undefined}
-                        clickMode="highlighted"
-                        fluorochromes={fluorochromes}
-                        popoutActions={openMultiSelect ? undefined : getOpenIntentPopoutActions}
-                        singleClickSelect={openMultiSelect}
-                      />
-                    </div>
-                  )}
-                  {(!result.storage_grids || result.storage_grids.length === 0) && result.vials.length > 0 && (
-                    <p className="info">Vials found but not assigned to storage. Assign vials to a storage unit to use the grid selection.</p>
-                  )}
-                </>
-              )}
-            </div>
-          )}
 
           {/* Intent: Receive More */}
           {intent === "receive" && (() => {
-            const needsOverflow = receiveAvailableSlots !== null && !receiveIsTemp && receiveStorageId && receiveQty > receiveAvailableSlots;
+            const needsOverflow = storageEnabled && receiveAvailableSlots !== null && !receiveIsTemp && receiveStorageId && receiveQty > receiveAvailableSlots;
             return (
             <div className="intent-panel">
               <form className="receive-form" onSubmit={handleReceive}>
@@ -1531,18 +858,20 @@ export default function ScanSearchPage() {
                     <label>Quantity</label>
                     <input type="number" min={1} max={100} value={receiveQty} onChange={(e) => setReceiveQty(parseInt(e.target.value) || 1)} required />
                   </div>
-                  <div className="form-group">
-                    <label>Store in</label>
-                    <select value={receiveStorageId} onChange={(e) => { setReceiveStorageId(e.target.value); setOverflowMode(null); setOverflowSecondUnitId(""); checkAvailableSlots(e.target.value); }}>
-                      <option value="">No storage assignment</option>
-                      {storageUnits.map((u) => (
-                        <option key={u.id} value={u.id}>{u.name} ({u.rows}x{u.cols}) {u.temperature || ""}</option>
-                      ))}
-                    </select>
-                    {receiveAvailableSlots !== null && !receiveIsTemp && receiveStorageId && (
-                      <span style={{ fontSize: "0.8em", color: "var(--text-muted)", marginTop: 2 }}>{receiveAvailableSlots} slot{receiveAvailableSlots !== 1 ? "s" : ""} available</span>
-                    )}
-                  </div>
+                  {storageEnabled && (
+                    <div className="form-group">
+                      <label>Store in</label>
+                      <select value={receiveStorageId} onChange={(e) => { setReceiveStorageId(e.target.value); setOverflowMode(null); setOverflowSecondUnitId(""); checkAvailableSlots(e.target.value); }}>
+                        <option value="">No storage assignment</option>
+                        {storageUnits.map((u) => (
+                          <option key={u.id} value={u.id}>{u.name} ({u.rows}x{u.cols}) {u.temperature || ""}</option>
+                        ))}
+                      </select>
+                      {receiveAvailableSlots !== null && !receiveIsTemp && receiveStorageId && (
+                        <span style={{ fontSize: "0.8em", color: "var(--text-muted)", marginTop: 2 }}>{receiveAvailableSlots} slot{receiveAvailableSlots !== 1 ? "s" : ""} available</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {needsOverflow && (
@@ -1573,7 +902,7 @@ export default function ScanSearchPage() {
                   </div>
                 )}
 
-                <button type="submit" disabled={loading || (needsOverflow && !overflowMode) || (needsOverflow && overflowMode === "split" && !overflowSecondUnitId)}>
+                <button type="submit" disabled={loading || (needsOverflow && !overflowMode) || (!!needsOverflow && overflowMode === "split" && !overflowSecondUnitId)}>
                   {loading ? "Receiving..." : "Receive Vials"}
                 </button>
               </form>
@@ -1680,10 +1009,12 @@ export default function ScanSearchPage() {
                     </select>
                   </div>
                   {storeOpenGrid && (
-                    <div className="grid-container">
-                      <h3>{storeOpenGrid.unit.name}</h3>
-                      <StorageGrid rows={storeOpenGrid.unit.rows} cols={storeOpenGrid.unit.cols} cells={storeOpenGrid.cells} highlightVialIds={EMPTY_SET} onCellClick={handleCellClick} selectedCellId={selectedCell?.id} clickMode="empty" fluorochromes={fluorochromes} />
-                    </div>
+                    <StorageView
+                      grids={[storeOpenGrid]}
+                      fluorochromes={fluorochromes}
+                      onCellSelect={handleCellClick}
+                      selectedCellId={selectedCell?.id}
+                    />
                   )}
                   {selectedCell && (
                     <div className="confirm-action">
@@ -1695,112 +1026,17 @@ export default function ScanSearchPage() {
               )}
             </div>
           )}
-          {/* Intent: View Storage */}
-          {intent === "view_storage" && viewStorageGrid && (
-            <div className="intent-panel">
-              <div className="grid-container">
-                <h3>{viewStorageGrid.unit.name}{viewStorageGrid.unit.temperature ? ` (${viewStorageGrid.unit.temperature})` : ""}</h3>
-                <StorageGrid rows={viewStorageGrid.unit.rows} cols={viewStorageGrid.unit.cols} cells={viewStorageGrid.cells} highlightVialIds={highlightCellVialIds} onCellClick={canOpen ? handleViewStorageCellClick : undefined} clickMode={canOpen ? "occupied" : "highlighted"} fluorochromes={fluorochromes} popoutActions={canOpen ? getViewStoragePopoutActions : undefined} />
-                <div className="grid-legend">
-                  <span className="legend-item"><span className="legend-box sealed" /> Sealed</span>
-                  <span className="legend-item"><span className="legend-box opened" /> Opened</span>
-                  <span className="legend-item"><span className="legend-box" /> Empty</span>
-                  <span className="legend-item"><span className="legend-box highlighted-legend" /> Current lot</span>
-                  {canOpen && <span className="legend-item">Tap a vial to see actions</span>}
-                </div>
-              </div>
-              {viewStorageTarget && (
-                <OpenVialDialog
-                  cell={viewStorageTarget}
-                  loading={viewStorageLoading}
-                  onConfirm={handleViewStorageOpen}
-                  onDeplete={handleViewStorageDeplete}
-                  onViewLot={() => {
-                    const abId = viewStorageTarget.vial?.antibody_id;
-                    setViewStorageTarget(null);
-                    if (abId) navigate(`/inventory?antibodyId=${abId}`);
-                  }}
-                  onCancel={() => setViewStorageTarget(null)}
-                  olderLotWarning={hasOlderLots ? `Older lot available: Lot ${result.older_lots![0].lot_number} has ${result.older_lots![0].sealed_count} sealed vial(s). Consider using the older lot first.` : null}
-                />
-              )}
-            </div>
-          )}
-          {/* Intent: Move Vials */}
-          {intent === "move" && (
-            <div className="move-panel">
-              <div className="move-header">
-                <div className="move-header-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 9l2-2 2 2M7 7v7a4 4 0 004 4h1M19 15l-2 2-2-2M17 17V10a4 4 0 00-4-4h-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </div>
-                <span className="move-header-title">Transfer Vials</span>
-                <span className={`move-header-count${moveSelectedVialIds.size === 0 ? " empty" : ""}`}>{moveSelectedVialIds.size}</span>
-                <div className="move-header-actions">
-                  <button className="move-header-btn" onClick={handleSelectAllLotVials} disabled={moveGrids.size === 0}>Select All</button>
-                  <button className="move-header-btn" onClick={() => setMoveSelectedVialIds(new Set())} disabled={moveSelectedVialIds.size === 0}>Clear</button>
-                </div>
-              </div>
-              <div className="move-body">
-                <div className="move-view-toggle">
-                  <button className={moveView === "source" ? "active" : ""} onClick={() => setMoveView("source")}>Source</button>
-                  <button className={moveView === "destination" ? "active" : ""} onClick={() => setMoveView("destination")}>Destination</button>
-                </div>
-                <div className="move-layout">
-                  <div className={`move-pane${moveView === "destination" ? " move-hidden" : ""}`}>
-                    <div className="move-pane-label">Source</div>
-                    {result?.storage_grids?.map((sg) => {
-                      const grid = moveGrids.get(sg.unit.id);
-                      if (!grid) return null;
-                      return (
-                        <div key={sg.unit.id} className="grid-container">
-                          <h3>{grid.unit.name}{grid.unit.temperature ? ` (${grid.unit.temperature})` : ""}</h3>
-                          <StorageGrid
-                            rows={grid.unit.rows}
-                            cols={grid.unit.cols}
-                            cells={grid.cells}
-                            highlightVialIds={moveSelectedVialIds}
-                            onCellClick={handleMoveCellClick}
-                            clickMode="occupied"
-                            fluorochromes={fluorochromes}
-                            singleClickSelect={true}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className={`move-arrow${move.targetUnitId ? " has-dest" : ""}`}>
-                    <div className="move-arrow-line" />
-                    <div className="move-arrow-icon">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12H19M15 6L21 12L15 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    </div>
-                  </div>
-                  <div className={`move-pane${moveView === "source" ? " move-hidden" : ""}`}>
-                    <div className="move-pane-label">Destination</div>
-                    <MoveDestination
-                      move={move}
-                      selectedVialCount={moveSelectedVialIds.size}
-                      fluorochromes={fluorochromes}
-                      storageUnits={storageUnits}
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="move-footer">
-                {move.targetGrid && (
-                  <span className="move-footer-status">
-                    {move.destMode === "auto" && "Vials will fill next available cells"}
-                    {move.destMode === "start" && "Click a cell to set starting position"}
-                    {move.destMode === "pick" && `${move.destPickedCellIds.size} of ${moveSelectedVialIds.size} cells picked`}
-                  </span>
-                )}
-                <button
-                  className="move-go-btn"
-                  onClick={handleMoveVials}
-                  disabled={moveSelectedVialIds.size === 0 || !move.targetUnitId || move.loading || move.insufficientCells}
-                >
-                  {move.loading ? "Moving..." : `Move ${moveSelectedVialIds.size} Vial${moveSelectedVialIds.size !== 1 ? "s" : ""}`}
-                </button>
-              </div>
+
+          {/* Always-visible storage grid(s) with move support */}
+          {storageEnabled && result.storage_grids && result.storage_grids.length > 0 && (
+            <div className="scan-storage-section">
+              <StorageView
+                grids={result.storage_grids}
+                fluorochromes={fluorochromes}
+                lotFilter={{ lotId: result.lot.id, lotNumber: result.lot.lot_number }}
+                onRefresh={refreshScan}
+                onMoveChange={(moving) => setScanMoveMode(moving)}
+              />
             </div>
           )}
         </div>
@@ -1813,9 +1049,32 @@ export default function ScanSearchPage() {
             const filteredResults = designationFilter
               ? searchResults.filter((r) => r.antibody.designation === designationFilter)
               : searchResults;
+
+            /** Compute counts respecting showInactive toggle. */
+            const getResultCounts = (r: AntibodySearchResult) => {
+              const isInactive = (l: typeof r.lots[0]) => l.is_archived || (l.vial_counts.sealed + l.vial_counts.opened === 0);
+              const activeLots = showInactive ? r.lots : r.lots.filter((l) => !isInactive(l));
+              const counts = showInactive
+                ? r.total_vial_counts
+                : {
+                    sealed: activeLots.reduce((s, l) => s + l.vial_counts.sealed, 0),
+                    opened: activeLots.reduce((s, l) => s + l.vial_counts.opened, 0),
+                    depleted: activeLots.reduce((s, l) => s + l.vial_counts.depleted, 0),
+                    total: activeLots.reduce((s, l) => s + l.vial_counts.total, 0),
+                  };
+              return { ...counts, lots: activeLots.length };
+            };
+
+            /** Resolve fluorochrome/IVD color for card display. */
+            const getColor = (r: AntibodySearchResult) => {
+              if (r.antibody.fluorochrome) return fluoroMap.get(r.antibody.fluorochrome.toLowerCase());
+              return r.antibody.color || undefined;
+            };
+
             return (
             <>
-              <div style={{ marginBottom: 8 }}>
+              {/* Filter bar: designation dropdown + inactive toggle + view toggle */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
                 <select
                   value={designationFilter}
                   onChange={(e) => setDesignationFilter(e.target.value)}
@@ -1825,57 +1084,70 @@ export default function ScanSearchPage() {
                   <option value="asr">ASR</option>
                   <option value="ivd">IVD</option>
                 </select>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.85em", color: "#78716c", cursor: "pointer" }}>
+                  <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+                  Show inactive
+                </label>
+                <ViewToggle view={searchView} onChange={setSearchView} />
               </div>
-              <table className="search-results-table">
-                <thead>
-                  <tr>
-                    <th>Target</th>
-                    <th>Fluorochrome</th>
-                    <th>Designation</th>
-                    <th>Clone</th>
-                    <th>Vendor</th>
-                    <th>Catalog #</th>
-                    <th>Sealed</th>
-                    <th>Opened</th>
-                    {showInactive && <th>Depleted</th>}
-                    <th>Lots</th>
-                    <th>Locations</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredResults.map((r) => {
-                    const isLotInactive = (l: typeof r.lots[0]) => l.is_archived || (l.vial_counts.sealed + l.vial_counts.opened === 0);
-                    const activeLots = showInactive ? r.lots : r.lots.filter((l) => !isLotInactive(l));
-                    const counts = showInactive
-                      ? r.total_vial_counts
-                      : {
-                          sealed: activeLots.reduce((s, l) => s + l.vial_counts.sealed, 0),
-                          opened: activeLots.reduce((s, l) => s + l.vial_counts.opened, 0),
-                          depleted: activeLots.reduce((s, l) => s + l.vial_counts.depleted, 0),
-                          total: activeLots.reduce((s, l) => s + l.vial_counts.total, 0),
-                        };
-                    return (
-                      <tr key={r.antibody.id} className={`clickable-row ${selectedSearchResult?.antibody.id === r.antibody.id ? "active" : ""}`} onClick={() => handleSearchSelect(r)}>
-                        <td>{r.antibody.name || r.antibody.target || "—"}</td>
-                        <td>{r.antibody.fluorochrome || "—"}</td>
-                        <td><span className={`badge badge-designation-${r.antibody.designation}`}>{r.antibody.designation.toUpperCase()}</span></td>
-                        <td>{r.antibody.clone || "—"}</td>
-                        <td>{r.antibody.vendor || "—"}</td>
-                        <td>{r.antibody.catalog_number || "—"}</td>
-                        <td>{counts.sealed}</td>
-                        <td>{counts.opened}</td>
-                        {showInactive && <td>{counts.depleted}</td>}
-                        <td>{activeLots.length}</td>
-                        <td>{r.storage_locations.length > 0 ? r.storage_locations.map((l) => l.unit_name).join(", ") : "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: "0.85em", color: "#78716c", cursor: "pointer" }}>
-                <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-                Show inactive (archived &amp; depleted)
-              </label>
+
+              {/* Card view */}
+              {searchView === "card" && (
+                <div className="inventory-grid stagger-reveal">
+                  {filteredResults.map((r) => (
+                    <AntibodyCard
+                      key={r.antibody.id}
+                      antibody={r.antibody}
+                      counts={getResultCounts(r)}
+                      fluoroColor={getColor(r)}
+                      sealedOnly={sealedOnly}
+                      selected={selectedSearchResult?.antibody.id === r.antibody.id}
+                      onClick={() => handleSearchSelect(r)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* List/table view */}
+              {searchView === "list" && (
+                <table className="search-results-table">
+                  <thead>
+                    <tr>
+                      <th>Target</th>
+                      <th>Fluorochrome</th>
+                      <th>Designation</th>
+                      <th>Clone</th>
+                      <th>Vendor</th>
+                      <th>Catalog #</th>
+                      <th>Sealed</th>
+                      <th>Opened</th>
+                      {showInactive && <th>Depleted</th>}
+                      <th>Lots</th>
+                      {storageEnabled && <th>Locations</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredResults.map((r) => {
+                      const counts = getResultCounts(r);
+                      return (
+                        <tr key={r.antibody.id} className={`clickable-row ${selectedSearchResult?.antibody.id === r.antibody.id ? "active" : ""}`} onClick={() => handleSearchSelect(r)}>
+                          <td>{r.antibody.name || r.antibody.target || "\u2014"}</td>
+                          <td>{r.antibody.fluorochrome || "\u2014"}</td>
+                          <td><span className={`badge badge-designation-${r.antibody.designation}`}>{r.antibody.designation.toUpperCase()}</span></td>
+                          <td>{r.antibody.clone || "\u2014"}</td>
+                          <td>{r.antibody.vendor || "\u2014"}</td>
+                          <td>{r.antibody.catalog_number || "\u2014"}</td>
+                          <td>{counts.sealed}</td>
+                          <td>{counts.opened}</td>
+                          {showInactive && <td>{counts.depleted}</td>}
+                          <td>{counts.lots}</td>
+                          {storageEnabled && <td>{r.storage_locations.length > 0 ? r.storage_locations.map((l) => l.unit_name).join(", ") : "\u2014"}</td>}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </>
             );
           })()}
@@ -1931,64 +1203,72 @@ export default function ScanSearchPage() {
                     {selectedSearchResult.antibody.target} - {selectedSearchResult.antibody.fluorochrome}
                   </p>
                 )}
-                {visibleLots.length > 0 && (
-                  <div className="lot-summaries">
-                    {visibleLots.map((lot) => {
-                      const inactive = lot.is_archived || (lot.vial_counts.sealed + lot.vial_counts.opened === 0 && lot.vial_counts.depleted > 0);
-                      return (
-                        <div
-                          key={lot.id}
-                          className={`lot-summary-item clickable-row${selectedLotId === lot.id ? " active" : ""}${inactive ? " lot-row-depleted" : ""}`}
-                          onClick={() => setSelectedLotId(selectedLotId === lot.id ? null : lot.id)}
-                        >
-                          <div className="lot-summary-top">
-                            <span className="lot-summary-number">Lot {lot.lot_number}</span>
-                            {ageBadgeMap.get(lot.id) === "current" && (
-                              <span className="badge badge-green" style={{ fontSize: "0.7em" }}>Current</span>
-                            )}
-                            {ageBadgeMap.get(lot.id) === "new" && (
-                              <span className="badge" style={{ fontSize: "0.7em", background: "#6b7280", color: "#fff" }}>New</span>
-                            )}
-                            <span className={`badge ${lot.qc_status === "approved" ? "badge-green" : lot.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>{lot.qc_status}</span>
-                            {inactive ? (
-                              <span className="lot-summary-counts" style={{ fontStyle: "italic" }}>{lot.is_archived ? "Archived" : "All depleted"}</span>
-                            ) : (
-                              <span className="lot-summary-counts">{lot.vial_counts.sealed} sealed, {lot.vial_counts.opened} opened</span>
-                            )}
-                          </div>
-                          {!inactive && (
-                            <div className="lot-summary-bottom">
-                              {lot.created_at && <span>Rcvd {new Date(lot.created_at).toLocaleDateString()}</span>}
-                              {lot.expiration_date && <span>Exp {lot.expiration_date}</span>}
-                              {lot.vendor_barcode && (
-                                <button
-                                  className="btn-sm btn-secondary"
-                                  style={{ marginLeft: "auto" }}
-                                  onClick={(e) => { e.stopPropagation(); setInput(lot.vendor_barcode!); handleLookup(lot.vendor_barcode!); }}
-                                >
-                                  Search Lot
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {selectedSearchResult.storage_locations.length === 0 ? (
-                  <p className="empty">No vials currently in storage for this antibody.</p>
-                ) : (
-                  selectedSearchResult.storage_locations.map((loc) => {
-                    const grid = searchGrids.get(loc.unit_id);
-                    if (!grid) return null;
-                    return (
-                      <div key={loc.unit_id} className="grid-container">
-                        <h3>{loc.unit_name}{loc.temperature ? ` (${loc.temperature})` : ""}</h3>
-                        <StorageGrid rows={grid.unit.rows} cols={grid.unit.cols} cells={grid.cells} highlightVialIds={searchHighlightIds} onCellClick={canOpen ? handleSearchGridCellClick : undefined} clickMode={canOpen ? "occupied" : "highlighted"} fluorochromes={fluorochromes} popoutActions={canOpen ? getSearchGridPopoutActions : undefined} />
-                      </div>
-                    );
-                  })
+                {visibleLots.length > 0 && (() => {
+                  const convertedLots = visibleLots.map((l) => lotSummaryToLot(l, selectedSearchResult.antibody.id));
+                  const ListComp = isMobile ? LotCardList : LotTable;
+                  return (
+                    <ListComp
+                      lots={convertedLots}
+                      sealedOnly={sealedOnly}
+                      canQC={false}
+                      lotAgeBadgeMap={ageBadgeMap}
+                      storageEnabled={storageEnabled}
+                      onLotClick={(lot) => setSelectedLotId(selectedLotId === lot.id ? null : lot.id)}
+                      selectedLotId={selectedLotId}
+                      extraActions={(lot) =>
+                        lot.vendor_barcode ? (
+                          <button
+                            className="btn-sm btn-secondary"
+                            onClick={(e) => { e.stopPropagation(); setInput(lot.vendor_barcode!); handleLookup(lot.vendor_barcode!); }}
+                          >
+                            Search Lot
+                          </button>
+                        ) : null
+                      }
+                    />
+                  );
+                })()}
+                {/* Lot drilldown: per-lot storage grids (shown when a lot is clicked) */}
+                {storageEnabled && selectedLotId && (() => {
+                  const ddLot = visibleLots.find((l) => l.id === selectedLotId);
+                  if (!ddLot) return null;
+                  return (
+                    <StorageView
+                      grids={Array.from(searchGrids.values())}
+                      fluorochromes={fluorochromes}
+                      lotFilter={{ lotId: ddLot.id, lotNumber: ddLot.lot_number }}
+                      onRefresh={() => {
+                        const sr = selectedSearchResultRef.current;
+                        if (sr) return handleSearchSelect(sr);
+                      }}
+                      className="lot-drilldown-panel"
+                    />
+                  );
+                })()}
+
+                {/* Antibody-level storage grids (shown when no lot is drilled down) */}
+                {storageEnabled && !selectedLotId && (
+                  selectedSearchResult.storage_locations.length === 0 ? (
+                    <p className="empty">No vials currently in storage for this antibody.</p>
+                  ) : (() => {
+                    const gridsArray = selectedSearchResult.storage_locations
+                      .map((loc) => searchGrids.get(loc.unit_id))
+                      .filter((g): g is StorageGridType => !!g);
+                    return gridsArray.length > 0 ? (
+                      <StorageView
+                        grids={gridsArray}
+                        fluorochromes={fluorochromes}
+                        highlightVialIds={searchHighlightIds}
+                        onRefresh={() => {
+                          const sr = selectedSearchResultRef.current;
+                          if (sr) return handleSearchSelect(sr);
+                        }}
+                        legendExtra={
+                          <span className="legend-item"><span className="legend-box highlighted-legend" /> Current antibody</span>
+                        }
+                      />
+                    ) : null;
+                  })()
                 )}
               </div>
             );
@@ -1996,21 +1276,6 @@ export default function ScanSearchPage() {
         </>
       )}
 
-      {openTarget && (
-        <OpenVialDialog
-          cell={openTarget}
-          loading={openLoading}
-          onConfirm={handleOpenVialFromSearch}
-          onDeplete={handleDepleteVialFromSearch}
-          onViewLot={() => {
-            const abId = openTarget.vial?.antibody_id;
-            setOpenTarget(null);
-            if (abId) navigate(`/inventory?antibodyId=${abId}`);
-          }}
-          onCancel={() => setOpenTarget(null)}
-          olderLotWarning={searchOlderLotWarning}
-        />
-      )}
     </div>
   );
 }

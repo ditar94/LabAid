@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import api from "../api/client";
 import type { SupportTicket, TicketStatus } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { formatDate, formatDateTime } from "../utils/format";
 
 const STATUS_BADGE: Record<TicketStatus, string> = {
   open: "badge-yellow",
@@ -135,7 +136,7 @@ export default function TicketsPage() {
                 <div className="ticket-meta">
                   {isSuperAdmin && <span className="ticket-lab">{ticket.lab_name}</span>}
                   <span>{ticket.user_name}</span>
-                  <span>{new Date(ticket.created_at).toLocaleDateString()}</span>
+                  <span>{formatDate(ticket.created_at)}</span>
                 </div>
               </div>
 
@@ -149,7 +150,7 @@ export default function TicketsPage() {
                         <div key={r.id} className="ticket-reply">
                           <div className="reply-meta">
                             <strong>{r.user_name}</strong>
-                            <span>{new Date(r.created_at).toLocaleString()}</span>
+                            <span>{formatDateTime(r.created_at)}</span>
                           </div>
                           <p>{r.message}</p>
                         </div>

@@ -1,11 +1,10 @@
-import type { StorageCell } from "../api/types";
+import type { StorageCell } from "../../api/types";
 
 interface Props {
   cell: StorageCell;
   loading: boolean;
   onConfirm: (force: boolean) => void;
   onDeplete?: () => void;
-  onViewLot: () => void;
   onCancel: () => void;
   olderLotWarning?: string | null;
 }
@@ -15,7 +14,6 @@ export default function OpenVialDialog({
   loading,
   onConfirm,
   onDeplete,
-  onViewLot,
   onCancel,
   olderLotWarning,
 }: Props) {

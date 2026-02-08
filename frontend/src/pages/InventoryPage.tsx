@@ -1,16 +1,18 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type FormEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
-import type { Antibody, Designation, Fluorochrome, Lab, Lot, StorageUnit, StorageGrid as StorageGridData, StorageCell, VialCounts } from "../api/types";
+import type { Antibody, Fluorochrome, Lot, StorageGrid as StorageGridData, VialCounts } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
-import BarcodeScannerButton from "../components/BarcodeScannerButton";
-import DatePicker from "../components/DatePicker";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import AntibodyCard from "../components/AntibodyCard";
+import AntibodyForm, { NEW_FLUORO_VALUE, DEFAULT_FLUORO_COLOR, EMPTY_AB_FORM } from "../components/AntibodyForm";
+import ViewToggle from "../components/ViewToggle";
 import LotTable from "../components/LotTable";
 import LotCardList from "../components/LotCardList";
-import StorageGrid from "../components/StorageGrid";
-import OpenVialDialog from "../components/OpenVialDialog";
+import LotRegistrationForm, { EMPTY_LOT_FORM } from "../components/LotRegistrationForm";
+import { StorageView } from "../components/storage";
+import { useViewPreference } from "../hooks/useViewPreference";
 
 function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
   lot: Lot;
@@ -23,7 +25,7 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
   const [isQcDocument, setIsQcDocument] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleDownload = async (docId: string, fileName: string) => {
+  const handleDownload = async (docId: string, _fileName: string) => {
     const res = await api.get(`/documents/${docId}`, { responseType: "blob" });
     const url = URL.createObjectURL(res.data);
     const newTab = window.open(url, "_blank", "noopener,noreferrer");
@@ -123,8 +125,7 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
   );
 }
 
-const NEW_FLUORO_VALUE = "__new__";
-const DEFAULT_FLUORO_COLOR = "#9ca3af";
+// NEW_FLUORO_VALUE, DEFAULT_FLUORO_COLOR imported from AntibodyForm
 
 type InventoryBadge = {
   label: string;
@@ -143,12 +144,13 @@ type InventoryRow = {
 
 export default function InventoryPage() {
   const { user, labSettings } = useAuth();
-  const { labs, fluorochromes, storageUnits, selectedLab, setSelectedLab, refreshFluorochromes, refreshStorageUnits } = useSharedData();
+  const { labs, fluorochromes, storageUnits, selectedLab, setSelectedLab, refreshFluorochromes } = useSharedData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedAntibodyId = searchParams.get("antibodyId");
   const requestedLabId = searchParams.get("labId");
   const sealedOnly = labSettings.sealed_counts_only ?? false;
+  const storageEnabled = labSettings.storage_enabled !== false;
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
   const [lots, setLots] = useState<Lot[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -183,22 +185,7 @@ export default function InventoryPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [designationFilter, setDesignationFilter] = useState<string>("");
   const [editAbId, setEditAbId] = useState<string | null>(null);
-  const [editAbForm, setEditAbForm] = useState({
-    target: "",
-    fluorochrome_choice: "",
-    new_fluorochrome: "",
-    new_fluoro_color: DEFAULT_FLUORO_COLOR,
-    clone: "",
-    vendor: "",
-    catalog_number: "",
-    designation: "ruo" as Designation,
-    name: "",
-    short_code: "",
-    color: "#6366f1",
-    stability_days: "",
-    low_stock_threshold: "",
-    approved_low_threshold: "",
-  });
+  const [editAbForm, setEditAbForm] = useState(EMPTY_AB_FORM);
   const [editAbLoading, setEditAbLoading] = useState(false);
   const [modalLot, setModalLot] = useState<Lot | null>(null);
   const [qcBlockedLot, setQcBlockedLot] = useState<Lot | null>(null);
@@ -208,8 +195,6 @@ export default function InventoryPage() {
   const [drilldownLotId, setDrilldownLotId] = useState<string | null>(null);
   const [drilldownGrids, setDrilldownGrids] = useState<Map<string, StorageGridData>>(new Map());
   const [drilldownLoading, setDrilldownLoading] = useState(false);
-  const [drilldownOpenTarget, setDrilldownOpenTarget] = useState<StorageCell | null>(null);
-  const [drilldownOpenLoading, setDrilldownOpenLoading] = useState(false);
   const [drilldownStockUnitId, setDrilldownStockUnitId] = useState("");
   const [drilldownStockLoading, setDrilldownStockLoading] = useState(false);
   const [lotFormAvailableSlots, setLotFormAvailableSlots] = useState<number | null>(null);
@@ -217,30 +202,10 @@ export default function InventoryPage() {
   const [editLotForm, setEditLotForm] = useState({ lot_number: "", vendor_barcode: "", expiration_date: "" });
   const [editLotLoading, setEditLotLoading] = useState(false);
 
-  const [abForm, setAbForm] = useState({
-    target: "",
-    fluorochrome_choice: "",
-    new_fluorochrome: "",
-    new_fluoro_color: DEFAULT_FLUORO_COLOR,
-    clone: "",
-    vendor: "",
-    catalog_number: "",
-    designation: "ruo" as Designation,
-    name: "",
-    short_code: "",
-    color: "#6366f1",
-    stability_days: "",
-    low_stock_threshold: "",
-    approved_low_threshold: "",
-  });
+  const [abForm, setAbForm] = useState(EMPTY_AB_FORM);
 
-  const [lotForm, setLotForm] = useState({
-    lot_number: "",
-    vendor_barcode: "",
-    expiration_date: "",
-    quantity: "1",
-    storage_unit_id: "",
-  });
+  // Lot creation form — uses shared LotFormValues type
+  const [lotForm, setLotForm] = useState(EMPTY_LOT_FORM);
 
   const canEdit =
     user?.role === "super_admin" ||
@@ -249,6 +214,8 @@ export default function InventoryPage() {
   const canReceive = canEdit || user?.role === "tech";
   const canQC = canEdit;
   const isMobile = useMediaQuery("(max-width: 768px)");
+  // Card / list view preference (synced with SearchPage via shared key)
+  const [view, setView] = useViewPreference();
 
   // ESC closes topmost modal
   useEffect(() => {
@@ -523,7 +490,6 @@ export default function InventoryPage() {
     });
     setDrilldownLotId(null);
     setDrilldownGrids(new Map());
-    setDrilldownOpenTarget(null);
   }, [expandedId]);
 
   const resetMessages = () => {
@@ -536,13 +502,12 @@ export default function InventoryPage() {
     if (drilldownLotId === lot.id) {
       setDrilldownLotId(null);
       setDrilldownGrids(new Map());
-      setDrilldownOpenTarget(null);
       return;
     }
     setDrilldownLotId(lot.id);
-    setDrilldownOpenTarget(null);
     setDrilldownGrids(new Map());
     setDrilldownStockUnitId("");
+    if (!storageEnabled) return;
     const locations = lot.storage_locations ?? [];
     if (locations.length === 0) return;
     setDrilldownLoading(true);
@@ -562,70 +527,23 @@ export default function InventoryPage() {
     }
   };
 
-  const handleDrilldownCellClick = (cell: StorageCell) => {
-    if (!cell.vial || cell.vial.lot_id !== drilldownLotId) return;
-    if (cell.vial.status !== "sealed" && cell.vial.status !== "opened") return;
-    setDrilldownOpenTarget(cell);
-  };
+  // Refresh handler for lot drilldown — reloads data and re-opens drilldown
+  const drilldownLotIdRef = useRef(drilldownLotId);
+  drilldownLotIdRef.current = drilldownLotId;
+  const lotsRef = useRef(lots);
+  lotsRef.current = lots;
 
-  const getDrilldownPopoutActions = useCallback(
-    (cell: StorageCell) => {
-      if (!cell.vial) return [];
-      const vial = cell.vial;
-      const actions: Array<{ label: string; onClick: () => void; variant?: "primary" | "danger" | "default" }> = [];
-      if (vial.status === "sealed") {
-        actions.push({ label: "Open", variant: "primary", onClick: () => handleDrilldownCellClick(cell) });
-      } else if (vial.status === "opened") {
-        actions.push({ label: "Deplete", variant: "danger", onClick: () => handleDrilldownCellClick(cell) });
-      }
-      return actions;
-    },
-    [drilldownLotId]
-  );
-
-  const handleDrilldownOpen = async (force: boolean) => {
-    if (!drilldownOpenTarget?.vial) return;
-    setDrilldownOpenLoading(true);
-    try {
-      await api.post(`/vials/${drilldownOpenTarget.vial.id}/open?force=${force}`, { cell_id: drilldownOpenTarget.id });
-      setMessage(`Vial opened from cell ${drilldownOpenTarget.label}.`);
-      setDrilldownOpenTarget(null);
-      await loadData();
-      // Re-fetch grids
-      const lot = lots.find((l) => l.id === drilldownLotId);
-      if (lot) {
-        setDrilldownLotId(null);
-        setTimeout(() => handleLotClick(lot), 50);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to open vial");
-      setDrilldownOpenTarget(null);
-    } finally {
-      setDrilldownOpenLoading(false);
+  const handleDrilldownRefresh = async () => {
+    await loadData();
+    const lotId = drilldownLotIdRef.current;
+    const lot = lotsRef.current.find((l) => l.id === lotId);
+    if (lot) {
+      setDrilldownLotId(null);
+      setTimeout(() => handleLotClick(lot), 50);
     }
   };
 
-  const handleDrilldownDeplete = async () => {
-    if (!drilldownOpenTarget?.vial) return;
-    setDrilldownOpenLoading(true);
-    try {
-      await api.post(`/vials/${drilldownOpenTarget.vial.id}/deplete`);
-      setMessage(`Vial depleted from cell ${drilldownOpenTarget.label}.`);
-      setDrilldownOpenTarget(null);
-      await loadData();
-      const lot = lots.find((l) => l.id === drilldownLotId);
-      if (lot) {
-        setDrilldownLotId(null);
-        setTimeout(() => handleLotClick(lot), 50);
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to deplete vial");
-      setDrilldownOpenTarget(null);
-    } finally {
-      setDrilldownOpenLoading(false);
-    }
-  };
-
+  // ── Drilldown stock handler ──────────────────────────────────────────
   const handleDrilldownStock = async () => {
     const lot = lots.find((l) => l.id === drilldownLotId);
     if (!lot?.vendor_barcode || !drilldownStockUnitId) return;
@@ -712,22 +630,7 @@ export default function InventoryPage() {
         { params }
       );
 
-      setAbForm({
-        target: "",
-        fluorochrome_choice: "",
-        new_fluorochrome: "",
-        new_fluoro_color: DEFAULT_FLUORO_COLOR,
-        clone: "",
-        vendor: "",
-        catalog_number: "",
-        designation: "ruo",
-        name: "",
-        short_code: "",
-        color: "#6366f1",
-        stability_days: "",
-        low_stock_threshold: "",
-        approved_low_threshold: "",
-      });
+      setAbForm(EMPTY_AB_FORM);
       setShowAbForm(false);
       setMessage("Antibody created.");
       await loadData();
@@ -828,13 +731,7 @@ export default function InventoryPage() {
           storage_unit_id: lotForm.storage_unit_id || null,
         });
       }
-      setLotForm({
-        lot_number: "",
-        vendor_barcode: "",
-        expiration_date: "",
-        quantity: "1",
-        storage_unit_id: "",
-      });
+      setLotForm(EMPTY_LOT_FORM);
       setShowLotForm(false);
       setMessage("Lot created.");
       await loadData();
@@ -1017,11 +914,139 @@ export default function InventoryPage() {
     }
   };
 
+  // Shared expanded content for both card and list views
+  const renderExpandedContent = (row: InventoryRow, title: string) => {
+    const allAbLots = lotsByAntibody.get(row.antibody.id) || [];
+    const abLots = showInactiveLots ? allAbLots : allAbLots.filter((l) => !isLotInactive(l));
+    return (
+      <>
+        <div className="detail-header">
+          <div>
+            <h3>{title}</h3>
+            <p className="page-desc">Manage lots for this antibody.</p>
+          </div>
+          <div className="filters">
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={showInactiveLots}
+                onChange={() => setShowInactiveLots(!showInactiveLots)}
+              />
+              Show inactive
+            </label>
+            {canEdit && (
+              <button onClick={() => openEditForm(row.antibody)}>
+                Edit Antibody
+              </button>
+            )}
+            {canReceive && (
+              <button onClick={() => setShowLotForm(true)}>
+                + New Lot
+              </button>
+            )}
+          </div>
+        </div>
+
+        {abLots.length > 0 ? (
+          isMobile ? (
+            <LotCardList
+              lots={abLots}
+              sealedOnly={sealedOnly}
+              canQC={canQC}
+              qcDocRequired={labSettings.qc_doc_required ?? false}
+              storageEnabled={storageEnabled}
+              lotAgeBadgeMap={lotAgeBadgeMap}
+              onApproveQC={(id) => updateQC(id, "approved")}
+              onDeplete={(lot) =>
+                setConfirmAction({
+                  lotId: lot.id,
+                  lotNumber: lot.lot_number,
+                  openedCount: lot.vial_counts?.opened ?? 0,
+                  sealedCount: lot.vial_counts?.sealed ?? 0,
+                  totalCount: lot.vial_counts?.total ?? 0,
+                })
+              }
+              onOpenDocs={(lot) => setModalLot(lot)}
+              onArchive={initiateArchive}
+              onEditLot={openEditLot}
+              onConsolidate={storageEnabled ? (lot) => {
+                const unitId = lot.storage_locations?.[0]?.unit_id;
+                if (unitId) navigate(`/storage?lotId=${lot.id}&unitId=${unitId}`);
+              } : undefined}
+              onLotClick={handleLotClick}
+              selectedLotId={drilldownLotId}
+            />
+          ) : (
+            <LotTable
+              lots={abLots}
+              sealedOnly={sealedOnly}
+              canQC={canQC}
+              qcDocRequired={labSettings.qc_doc_required ?? false}
+              storageEnabled={storageEnabled}
+              lotAgeBadgeMap={lotAgeBadgeMap}
+              onApproveQC={(id) => updateQC(id, "approved")}
+              onDeplete={(lot) =>
+                setConfirmAction({
+                  lotId: lot.id,
+                  lotNumber: lot.lot_number,
+                  openedCount: lot.vial_counts?.opened ?? 0,
+                  sealedCount: lot.vial_counts?.sealed ?? 0,
+                  totalCount: lot.vial_counts?.total ?? 0,
+                })
+              }
+              onOpenDocs={(lot) => setModalLot(lot)}
+              onArchive={initiateArchive}
+              onEditLot={openEditLot}
+              onConsolidate={storageEnabled ? (lot) => {
+                const unitId = lot.storage_locations?.[0]?.unit_id;
+                if (unitId) navigate(`/storage?lotId=${lot.id}&unitId=${unitId}`);
+              } : undefined}
+              onLotClick={handleLotClick}
+              selectedLotId={drilldownLotId}
+            />
+          )
+        ) : (
+          <p className="empty">No lots for this antibody yet.</p>
+        )}
+
+        {storageEnabled && drilldownLotId && (() => {
+          const ddLot = abLots.find((l) => l.id === drilldownLotId);
+          if (!ddLot) return null;
+          const locations = ddLot.storage_locations ?? [];
+          const storedCount = locations.length > 0
+            ? locations.reduce((s, l) => s + l.vial_count, 0)
+            : undefined;
+          return (
+            <StorageView
+              grids={Array.from(drilldownGrids.values())}
+              fluorochromes={fluorochromes}
+              loading={drilldownLoading}
+              lotFilter={{ lotId: ddLot.id, lotNumber: ddLot.lot_number }}
+              stockControl={{
+                activeVialCount: (ddLot.vial_counts?.sealed ?? 0) + (ddLot.vial_counts?.opened ?? 0),
+                storedVialCount: storedCount,
+                hasVendorBarcode: !!ddLot.vendor_barcode,
+                storageUnits,
+                stockUnitId: drilldownStockUnitId,
+                onStockUnitChange: setDrilldownStockUnitId,
+                onStock: handleDrilldownStock,
+                stockLoading: drilldownStockLoading,
+              }}
+              onRefresh={handleDrilldownRefresh}
+              className="lot-drilldown-panel"
+            />
+          );
+        })()}
+      </>
+    );
+  };
+
   return (
     <div>
       <div className="page-header">
         <h1>Inventory</h1>
         <div className="filters">
+          <ViewToggle view={view} onChange={setView} />
           {user?.role === "super_admin" && (
             <select
               value={selectedLab}
@@ -1055,137 +1080,35 @@ export default function InventoryPage() {
       {error && <p className="error">{error}</p>}
 
       {showAbForm && (
-        <form className="inline-form" onSubmit={handleCreateAntibody}>
-          <select
-            value={abForm.designation}
-            onChange={(e) =>
-              setAbForm({ ...abForm, designation: e.target.value as Designation })
-            }
-          >
-            <option value="ruo">RUO</option>
-            <option value="asr">ASR</option>
-            <option value="ivd">IVD</option>
-          </select>
-          {abForm.designation === "ivd" && (
-            <>
-              <input
-                placeholder="Product Name (required for IVD)"
-                value={abForm.name}
-                onChange={(e) => setAbForm({ ...abForm, name: e.target.value })}
-                required
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="New antibody">
+          <div className="modal-content">
+            <h2>New Antibody</h2>
+            <form onSubmit={handleCreateAntibody} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <AntibodyForm
+                values={abForm}
+                onChange={setAbForm}
+                fluorochromes={fluorochromes}
+                layout="stacked"
               />
-              <input
-                placeholder="Short Code (e.g., MT34)"
-                value={abForm.short_code}
-                onChange={(e) => setAbForm({ ...abForm, short_code: e.target.value.slice(0, 5) })}
-                maxLength={5}
-                required
-              />
-              <input
-                type="color"
-                value={abForm.color}
-                onChange={(e) => setAbForm({ ...abForm, color: e.target.value })}
-                title="Grid cell color"
-              />
-            </>
-          )}
-          {abForm.designation !== "ivd" && (
-            <>
-              <input
-                placeholder="Target (e.g., CD3)"
-                value={abForm.target}
-                onChange={(e) => setAbForm({ ...abForm, target: e.target.value })}
-                required
-              />
-              <select
-                value={abForm.fluorochrome_choice}
-                onChange={(e) =>
-                  setAbForm({ ...abForm, fluorochrome_choice: e.target.value })
-                }
-                required
-              >
-                <option value="">Select Fluorochrome</option>
-                <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
-                {fluorochromes.map((f) => (
-                  <option key={f.id} value={f.name}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-              {abForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
-                <>
-                  <input
-                    placeholder="New Fluorochrome"
-                    value={abForm.new_fluorochrome}
-                    onChange={(e) =>
-                      setAbForm({ ...abForm, new_fluorochrome: e.target.value })
-                    }
-                    required
-                  />
-                  <input
-                    type="color"
-                    value={abForm.new_fluoro_color}
-                    onChange={(e) =>
-                      setAbForm({ ...abForm, new_fluoro_color: e.target.value })
-                    }
-                    required
-                  />
-                </>
-              )}
-              <input
-                placeholder="Clone"
-                value={abForm.clone}
-                onChange={(e) => setAbForm({ ...abForm, clone: e.target.value })}
-              />
-            </>
-          )}
-          <input
-            placeholder="Vendor"
-            value={abForm.vendor}
-            onChange={(e) => setAbForm({ ...abForm, vendor: e.target.value })}
-          />
-          <input
-            placeholder="Catalog #"
-            value={abForm.catalog_number}
-            onChange={(e) =>
-              setAbForm({ ...abForm, catalog_number: e.target.value })
-            }
-          />
-          <input
-            type="number"
-            placeholder="Stability (days)"
-            min={1}
-            value={abForm.stability_days}
-            onChange={(e) =>
-              setAbForm({ ...abForm, stability_days: e.target.value })
-            }
-          />
-          <input
-            type="number"
-            placeholder="Reorder Point (total sealed vials)"
-            min={1}
-            value={abForm.low_stock_threshold}
-            onChange={(e) =>
-              setAbForm({ ...abForm, low_stock_threshold: e.target.value })
-            }
-            title="Alert when total vials on hand drops below this level"
-          />
-          <input
-            type="number"
-            placeholder="Min Ready Stock (approved vials)"
-            min={1}
-            value={abForm.approved_low_threshold}
-            onChange={(e) =>
-              setAbForm({ ...abForm, approved_low_threshold: e.target.value })
-            }
-            title="Alert when QC-approved vials drops below this level"
-          />
-          <button type="submit" disabled={loading}>
-            {loading ? "Creating..." : "Create Antibody"}
-          </button>
-        </form>
+              <div className="action-btns" style={{ marginTop: "0.5rem" }}>
+                <button type="submit" disabled={loading}>
+                  {loading ? "Creating..." : "Create Antibody"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowAbForm(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
+      {/* ── Card view ── */}
+      {view === "card" && (
       <div className="inventory-grid stagger-reveal" ref={gridRef}>
         {inventoryRows.map((row, index) => {
           const fluoro = row.antibody.fluorochrome ? fluorochromeByName.get(
@@ -1193,385 +1116,112 @@ export default function InventoryPage() {
           ) : undefined;
           const abColor = fluoro?.color || row.antibody.color || undefined;
           const expanded = expandedId === row.antibody.id;
-          const allCardLots = lotsByAntibody.get(row.antibody.id) || [];
-          const cardLots = showInactiveLots ? allCardLots : allCardLots.filter((l) => !isLotInactive(l));
           const rowIndex = Math.floor(index / gridColumns) + 1;
           return (
-            <div
+            <AntibodyCard
               key={row.antibody.id}
-              className={`inventory-card ${
-                expanded ? "expanded" : ""
-              }`}
-              data-antibody-id={row.antibody.id}
-              style={
-                expanded
-                  ? {
-                      gridColumn: "1 / -1",
-                      gridRow: `${rowIndex}`,
-                    }
-                  : undefined
-              }
-              onClick={() => {
-                setExpandedId(expanded ? null : row.antibody.id);
+              antibody={row.antibody}
+              counts={row}
+              badges={antibodyBadges.get(row.antibody.id)}
+              fluoroColor={abColor}
+              sealedOnly={sealedOnly}
+              expanded={expanded}
+              onClick={() => setExpandedId(expanded ? null : row.antibody.id)}
+              style={expanded ? { gridColumn: "1 / -1", gridRow: `${rowIndex}` } : undefined}
+              dataAntibodyId={row.antibody.id}
+              showActiveToggle={canEdit}
+              onToggleActive={() => {
+                setArchiveAbNote("");
+                setArchiveAbPrompt({
+                  id: row.antibody.id,
+                  label: row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed",
+                });
               }}
+              canEditColor={canEdit && !!row.antibody.fluorochrome}
+              onColorChange={(color) => handleUpdateFluoroColor(row.antibody.fluorochrome!, color)}
             >
-              <span className="corner-arrow corner-tl" />
-              <span className="corner-arrow corner-tr" />
-              <span className="corner-arrow corner-bl" />
-              <span className="corner-arrow corner-br" />
-              <div className="inventory-card-header">
-                <div className="inventory-title">
-                  <div
-                    className={`fluoro-circle${canEdit && row.antibody.fluorochrome ? " editable" : ""}`}
-                    style={{ backgroundColor: abColor || DEFAULT_FLUORO_COLOR }}
-                    title={canEdit && row.antibody.fluorochrome ? "Click to change color" : undefined}
-                  >
-                    {canEdit && row.antibody.fluorochrome && (
-                      <>
-                        <span className="fluoro-circle-icon">✎</span>
-                        <input
-                          type="color"
-                          className="fluoro-circle-input"
-                          value={fluoro?.color || DEFAULT_FLUORO_COLOR}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleUpdateFluoroColor(
-                              row.antibody.fluorochrome!,
-                              e.target.value
-                            );
-                          }}
-                        />
-                      </>
-                    )}
-                  </div>
-                  <span>
-                    {row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed"}
-                    {row.antibody.name && row.antibody.target && row.antibody.fluorochrome && (
-                      <span className="inventory-subtitle">{row.antibody.target}-{row.antibody.fluorochrome}</span>
-                    )}
-                  </span>
-                  <span className={`badge badge-designation-${row.antibody.designation}`} style={{ fontSize: "0.7em", marginLeft: 6 }}>
-                    {row.antibody.designation.toUpperCase()}
-                  </span>
-                </div>
-                {canEdit && (
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <div
-                      className="active-switch"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setArchiveAbNote("");
-                        setArchiveAbPrompt({
-                          id: row.antibody.id,
-                          label: row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed",
-                        });
-                      }}
-                      title="Set this antibody as inactive"
-                    >
-                      <span className="active-switch-label on">Active</span>
-                      <div className="active-switch-track on">
-                        <div className="active-switch-thumb" />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="inventory-meta">
-                <span>{row.lots} lot{row.lots === 1 ? "" : "s"}</span>
-                {antibodyBadges.get(row.antibody.id)?.map((b, i) => (
-                  <span
-                    key={i}
-                    className={`badge badge-${b.color}`}
-                    style={{ fontSize: "0.75em" }}
-                  >
-                    {b.label}
-                  </span>
-                ))}
-              </div>
-              <div className="inventory-submeta">
-                <span>Vendor: {row.antibody.vendor || "—"}</span>
-                <span>Catalog #: {row.antibody.catalog_number || "—"}</span>
-              </div>
-              <div className="inventory-counts">
-                <div>
-                  <div className="count-label">Sealed</div>
-                  <div className="count-value">{row.sealed}</div>
-                </div>
-                {!sealedOnly && (
-                  <div>
-                    <div className="count-label">Opened</div>
-                    <div className="count-value">{row.opened}</div>
-                  </div>
-                )}
-                {!sealedOnly && (
-                  <div>
-                    <div className="count-label">Depleted</div>
-                    <div className="count-value">{row.depleted}</div>
-                  </div>
-                )}
-                <div>
-                  <div className="count-label">Total</div>
-                  <div className="count-value">{row.total}</div>
-                </div>
-              </div>
-              <div className="expand-label">Expand</div>
-              <div className="collapse-label">Collapse</div>
-              {expanded && (
-                <div className="inventory-expanded" onClick={(e) => e.stopPropagation()}>
-                  <div className="detail-header">
-                    <div>
-                      <h3>Lots</h3>
-                      <p className="page-desc">Manage lots for this antibody.</p>
-                    </div>
-                    <div className="filters">
-                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input
-                          type="checkbox"
-                          checked={showInactiveLots}
-                          onChange={() => setShowInactiveLots(!showInactiveLots)}
-                        />
-                        Show inactive
-                      </label>
-                      {canEdit && (
-                        <button onClick={() => openEditForm(row.antibody)}>
-                          Edit Antibody
-                        </button>
-                      )}
-                      {canReceive && (
-                        <button onClick={() => setShowLotForm(!showLotForm)}>
-                          {showLotForm ? "Cancel" : "+ New Lot"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {showLotForm && (
-                    <form className="inline-form" onSubmit={handleCreateLot}>
-                      <div className="inline-form-full barcode-row">
-                        <div className="input-with-scan">
-                          <input
-                            placeholder="Vendor Barcode"
-                            value={lotForm.vendor_barcode}
-                            onChange={(e) =>
-                              setLotForm({
-                                ...lotForm,
-                                vendor_barcode: e.target.value,
-                              })
-                            }
-                          />
-                          <BarcodeScannerButton
-                            label="Scan"
-                            onDetected={(value) =>
-                              setLotForm({ ...lotForm, vendor_barcode: value })
-                            }
-                          />
-                        </div>
-                      </div>
-                      <input
-                        placeholder="Lot Number"
-                        value={lotForm.lot_number}
-                        onChange={(e) =>
-                          setLotForm({ ...lotForm, lot_number: e.target.value })
-                        }
-                        required
-                      />
-                      <DatePicker
-                        value={lotForm.expiration_date}
-                        onChange={(v) =>
-                          setLotForm({
-                            ...lotForm,
-                            expiration_date: v,
-                          })
-                        }
-                        placeholderText="Expiration date"
-                      />
-                      <input
-                        type="number"
-                        min={1}
-                        placeholder="Vials received"
-                        value={lotForm.quantity}
-                        onChange={(e) =>
-                          setLotForm({ ...lotForm, quantity: e.target.value })
-                        }
-                      />
-                      <select
-                        value={lotForm.storage_unit_id}
-                        onChange={(e) => {
-                          setLotForm({ ...lotForm, storage_unit_id: e.target.value });
-                          if (e.target.value) {
-                            api.get(`/storage/units/${e.target.value}/available-slots`)
-                              .then((r) => setLotFormAvailableSlots(r.data.available_cells))
-                              .catch(() => setLotFormAvailableSlots(null));
-                          } else {
-                            setLotFormAvailableSlots(null);
-                          }
-                        }}
-                      >
-                        <option value="">No storage assignment</option>
-                        {storageUnits.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.name} ({u.rows}x{u.cols}) {u.temperature || ""}
-                          </option>
-                        ))}
-                      </select>
-                      {lotFormAvailableSlots !== null && lotForm.storage_unit_id && parseInt(lotForm.quantity) > lotFormAvailableSlots && (
-                        <p className="overflow-hint">
-                          Only {lotFormAvailableSlots} slot{lotFormAvailableSlots !== 1 ? "s" : ""} available.{" "}
-                          <button type="button" className="btn-sm" onClick={() => { setLotForm({ ...lotForm, storage_unit_id: "" }); setLotFormAvailableSlots(null); }}>
-                            Use Temp Storage
-                          </button>
-                        </p>
-                      )}
-                      <button type="submit" disabled={loading}>
-                        {loading ? "Saving..." : "Create Lot"}
-                      </button>
-                    </form>
-                  )}
-
-                  {cardLots.length > 0 ? (
-                    isMobile ? (
-                      <LotCardList
-                        lots={cardLots}
-                        sealedOnly={sealedOnly}
-                        canQC={canQC}
-                        qcDocRequired={labSettings.qc_doc_required ?? false}
-                        lotAgeBadgeMap={lotAgeBadgeMap}
-                        onApproveQC={(id) => updateQC(id, "approved")}
-                        onDeplete={(lot) =>
-                          setConfirmAction({
-                            lotId: lot.id,
-                            lotNumber: lot.lot_number,
-                            openedCount: lot.vial_counts?.opened ?? 0,
-                            sealedCount: lot.vial_counts?.sealed ?? 0,
-                            totalCount: lot.vial_counts?.total ?? 0,
-                          })
-                        }
-                        onOpenDocs={(lot) => setModalLot(lot)}
-                        onArchive={initiateArchive}
-                        onEditLot={openEditLot}
-                        onConsolidate={(lot) => {
-                          const unitId = lot.storage_locations?.[0]?.unit_id;
-                          if (unitId) navigate(`/storage?lotId=${lot.id}&unitId=${unitId}`);
-                        }}
-                        onLotClick={handleLotClick}
-                        selectedLotId={drilldownLotId}
-                      />
-                    ) : (
-                      <LotTable
-                        lots={cardLots}
-                        sealedOnly={sealedOnly}
-                        canQC={canQC}
-                        qcDocRequired={labSettings.qc_doc_required ?? false}
-                        lotAgeBadgeMap={lotAgeBadgeMap}
-                        onApproveQC={(id) => updateQC(id, "approved")}
-                        onDeplete={(lot) =>
-                          setConfirmAction({
-                            lotId: lot.id,
-                            lotNumber: lot.lot_number,
-                            openedCount: lot.vial_counts?.opened ?? 0,
-                            sealedCount: lot.vial_counts?.sealed ?? 0,
-                            totalCount: lot.vial_counts?.total ?? 0,
-                          })
-                        }
-                        onOpenDocs={(lot) => setModalLot(lot)}
-                        onArchive={initiateArchive}
-                        onEditLot={openEditLot}
-                        onConsolidate={(lot) => {
-                          const unitId = lot.storage_locations?.[0]?.unit_id;
-                          if (unitId) navigate(`/storage?lotId=${lot.id}&unitId=${unitId}`);
-                        }}
-                        onLotClick={handleLotClick}
-                        selectedLotId={drilldownLotId}
-                      />
-                    )
-                  ) : (
-                    <p className="empty">No lots for this antibody yet.</p>
-                  )}
-
-                  {/* Lot drill-down panel */}
-                  {drilldownLotId && (() => {
-                    const ddLot = cardLots.find((l) => l.id === drilldownLotId);
-                    if (!ddLot) return null;
-                    const locations = ddLot.storage_locations ?? [];
-
-                    const highlightIds = new Set<string>();
-                    for (const [, grid] of drilldownGrids) {
-                      for (const cell of grid.cells) {
-                        if (cell.vial_id && cell.vial?.lot_id === drilldownLotId) {
-                          highlightIds.add(cell.vial_id);
-                        }
-                      }
-                    }
-
-                    const storedCount = locations.reduce((s, l) => s + l.vial_count, 0);
-                    const activeCount = (ddLot.vial_counts?.sealed ?? 0) + (ddLot.vial_counts?.opened ?? 0);
-                    const unstoredCount = Math.max(0, activeCount - storedCount);
-
-                    return (
-                      <div className="lot-drilldown-panel">
-                        <h4>Storage for Lot {ddLot.lot_number}</h4>
-                        {drilldownLoading && <p className="info">Loading grids...</p>}
-
-                        {locations.length === 0 && !drilldownLoading && (
-                          <p className="empty">No vials in storage for this lot.</p>
-                        )}
-
-                        {unstoredCount > 0 && !drilldownLoading && (
-                          <div className="lot-drilldown-stock">
-                            <span>{unstoredCount} unstored vial{unstoredCount !== 1 ? "s" : ""}.</span>
-                            {ddLot.vendor_barcode ? (
-                              <>
-                                <select value={drilldownStockUnitId} onChange={(e) => setDrilldownStockUnitId(e.target.value)}>
-                                  <option value="">Select storage unit</option>
-                                  {storageUnits.filter((u) => !u.is_temporary).map((u) => (
-                                    <option key={u.id} value={u.id}>{u.name} ({u.rows}x{u.cols})</option>
-                                  ))}
-                                </select>
-                                <button disabled={!drilldownStockUnitId || drilldownStockLoading} onClick={handleDrilldownStock}>
-                                  {drilldownStockLoading ? "Stocking..." : "Stock 1 Vial"}
-                                </button>
-                              </>
-                            ) : (
-                              <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Set vendor barcode to enable stocking.</span>
-                            )}
-                          </div>
-                        )}
-
-                        {locations.map((loc) => {
-                          const grid = drilldownGrids.get(loc.unit_id);
-                          if (!grid) return null;
-                          return (
-                            <div key={loc.unit_id} className="grid-container">
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-sm)" }}>
-                                <h4 style={{ margin: 0 }}>{loc.unit_name}{grid.unit.temperature ? ` (${grid.unit.temperature})` : ""}</h4>
-                                <button className="link-btn" onClick={() => navigate(`/storage?unitId=${loc.unit_id}`)} title="Open in Storage page">Manage</button>
-                              </div>
-                              <StorageGrid
-                                rows={grid.unit.rows}
-                                cols={grid.unit.cols}
-                                cells={grid.cells}
-                                highlightVialIds={highlightIds}
-                                onCellClick={handleDrilldownCellClick}
-                                clickMode="highlighted"
-                                fluorochromes={fluorochromes}
-                                popoutActions={getDrilldownPopoutActions}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
+              {renderExpandedContent(row, "Lots")}
+            </AntibodyCard>
           );
         })}
         {inventoryRows.length === 0 && (
           <p className="empty">No antibodies yet.</p>
         )}
       </div>
+      )}
+
+      {/* ── List/table view ── */}
+      {view === "list" && (
+        inventoryRows.length === 0 ? (
+          <p className="empty">No antibodies yet.</p>
+        ) : (
+          <table className="search-results-table">
+            <thead>
+              <tr>
+                <th>Product Name</th>
+                <th>Target</th>
+                <th>Fluorochrome</th>
+                <th>Clone</th>
+                <th>Vendor</th>
+                <th>Catalog #</th>
+                <th>Sealed</th>
+                {!sealedOnly && <th>Opened</th>}
+                {!sealedOnly && <th>Depleted</th>}
+                <th>Lots</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inventoryRows.map((row) => {
+                const ab = row.antibody;
+                const fluoro = ab.fluorochrome ? fluorochromeByName.get(ab.fluorochrome.toLowerCase()) : undefined;
+                const abColor = fluoro?.color || ab.color || undefined;
+                const badges = antibodyBadges.get(ab.id);
+                const expanded = expandedId === ab.id;
+                const colCount = 7 + (sealedOnly ? 0 : 2) + 1;
+                const title = ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join("-") || "Unnamed";
+                return (
+                  <Fragment key={ab.id}>
+                    <tr
+                      className={`clickable-row${expanded ? " active" : ""}${row.lowStock ? " low-stock" : ""}`}
+                      onClick={() => setExpandedId(expanded ? null : ab.id)}
+                      data-antibody-id={ab.id}
+                    >
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {abColor && <span className="color-dot" style={{ backgroundColor: abColor }} />}
+                          {ab.name || "\u2014"}
+                          <span className={`badge badge-designation-${ab.designation}`} style={{ fontSize: "0.7em" }}>{ab.designation.toUpperCase()}</span>
+                          {badges?.map((b, i) => (
+                            <span key={i} className={`badge badge-${b.color}`} style={{ fontSize: "0.7em" }}>{b.label}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td>{ab.target || "\u2014"}</td>
+                      <td>{ab.fluorochrome || "\u2014"}</td>
+                      <td>{ab.clone || "\u2014"}</td>
+                      <td>{ab.vendor || "\u2014"}</td>
+                      <td>{ab.catalog_number || "\u2014"}</td>
+                      <td>{row.sealed}</td>
+                      {!sealedOnly && <td>{row.opened}</td>}
+                      {!sealedOnly && <td>{row.depleted}</td>}
+                      <td>{row.lots}</td>
+                    </tr>
+                    {expanded && (
+                      <tr className="expanded-detail-row">
+                        <td colSpan={colCount} style={{ padding: 0 }}>
+                          <div className="locator-panel" data-antibody-id={ab.id}>
+                            {renderExpandedContent(row, title)}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )
+      )}
 
       <div className="inactive-section">
         <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
@@ -1709,161 +1359,12 @@ export default function InventoryPage() {
           <div className="modal-content">
             <h2>Edit Antibody</h2>
             <form onSubmit={handleEditAntibody} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              <div className="form-group">
-                <label>Designation</label>
-                <select
-                  value={editAbForm.designation}
-                  onChange={(e) =>
-                    setEditAbForm({ ...editAbForm, designation: e.target.value as Designation })
-                  }
-                >
-                  <option value="ruo">RUO</option>
-                  <option value="asr">ASR</option>
-                  <option value="ivd">IVD</option>
-                </select>
-              </div>
-              {editAbForm.designation === "ivd" ? (
-                <>
-                  <div className="form-group">
-                    <label>Product Name</label>
-                    <input
-                      value={editAbForm.name}
-                      onChange={(e) => setEditAbForm({ ...editAbForm, name: e.target.value })}
-                      placeholder="IVD product name"
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Short Code (for grid cells)</label>
-                    <input
-                      value={editAbForm.short_code}
-                      onChange={(e) => setEditAbForm({ ...editAbForm, short_code: e.target.value.slice(0, 5) })}
-                      placeholder="e.g., MT34"
-                      maxLength={5}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Color</label>
-                    <input
-                      type="color"
-                      value={editAbForm.color}
-                      onChange={(e) => setEditAbForm({ ...editAbForm, color: e.target.value })}
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="form-group">
-                    <label>Target</label>
-                    <input
-                      value={editAbForm.target}
-                      onChange={(e) => setEditAbForm({ ...editAbForm, target: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Fluorochrome</label>
-                    <select
-                      value={editAbForm.fluorochrome_choice}
-                      onChange={(e) =>
-                        setEditAbForm({ ...editAbForm, fluorochrome_choice: e.target.value })
-                      }
-                      required
-                    >
-                      <option value="">Select Fluorochrome</option>
-                      <option value={NEW_FLUORO_VALUE}>+ New Fluorochrome</option>
-                      {fluorochromes.map((f) => (
-                        <option key={f.id} value={f.name}>
-                          {f.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {editAbForm.fluorochrome_choice === NEW_FLUORO_VALUE && (
-                    <>
-                      <div className="form-group">
-                        <label>New Fluorochrome Name</label>
-                        <input
-                          value={editAbForm.new_fluorochrome}
-                          onChange={(e) =>
-                            setEditAbForm({ ...editAbForm, new_fluorochrome: e.target.value })
-                          }
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Color</label>
-                        <input
-                          type="color"
-                          value={editAbForm.new_fluoro_color}
-                          onChange={(e) =>
-                            setEditAbForm({ ...editAbForm, new_fluoro_color: e.target.value })
-                          }
-                        />
-                      </div>
-                    </>
-                  )}
-                  <div className="form-group">
-                    <label>Clone</label>
-                    <input
-                      value={editAbForm.clone}
-                      onChange={(e) => setEditAbForm({ ...editAbForm, clone: e.target.value })}
-                    />
-                  </div>
-                </>
-              )}
-              <div className="form-group">
-                <label>Vendor</label>
-                <input
-                  value={editAbForm.vendor}
-                  onChange={(e) => setEditAbForm({ ...editAbForm, vendor: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Catalog #</label>
-                <input
-                  value={editAbForm.catalog_number}
-                  onChange={(e) =>
-                    setEditAbForm({ ...editAbForm, catalog_number: e.target.value })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>Stability (days after opening)</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={editAbForm.stability_days}
-                  onChange={(e) =>
-                    setEditAbForm({ ...editAbForm, stability_days: e.target.value })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>Reorder Point <small style={{ fontWeight: "normal", color: "#888" }}>(total sealed vials)</small></label>
-                <input
-                  type="number"
-                  min={1}
-                  value={editAbForm.low_stock_threshold}
-                  onChange={(e) =>
-                    setEditAbForm({ ...editAbForm, low_stock_threshold: e.target.value })
-                  }
-                  title="Alert when total vials on hand drops below this level"
-                />
-              </div>
-              <div className="form-group">
-                <label>Min Ready Stock <small style={{ fontWeight: "normal", color: "#888" }}>(approved vials)</small></label>
-                <input
-                  type="number"
-                  min={1}
-                  value={editAbForm.approved_low_threshold}
-                  onChange={(e) =>
-                    setEditAbForm({ ...editAbForm, approved_low_threshold: e.target.value })
-                  }
-                  title="Alert when QC-approved vials drops below this level"
-                />
-              </div>
+              <AntibodyForm
+                values={editAbForm}
+                onChange={setEditAbForm}
+                fluorochromes={fluorochromes}
+                layout="stacked"
+              />
               <div className="action-btns" style={{ marginTop: "0.5rem" }}>
                 <button type="submit" disabled={editAbLoading}>
                   {editAbLoading ? "Saving..." : "Save Changes"}
@@ -1872,6 +1373,44 @@ export default function InventoryPage() {
                   type="button"
                   className="btn-secondary"
                   onClick={() => setEditAbId(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {showLotForm && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="New lot">
+          <div className="modal-content">
+            <h2>New Lot</h2>
+            <form onSubmit={handleCreateLot} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <LotRegistrationForm
+                values={lotForm}
+                onChange={setLotForm}
+                storageUnits={storageUnits}
+                storageEnabled={storageEnabled}
+                layout="stacked"
+                availableSlots={lotFormAvailableSlots}
+                onStorageChange={(unitId) => {
+                  if (unitId) {
+                    api.get(`/storage/units/${unitId}/available-slots`)
+                      .then((r) => setLotFormAvailableSlots(r.data.available_cells))
+                      .catch(() => setLotFormAvailableSlots(null));
+                  } else {
+                    setLotFormAvailableSlots(null);
+                  }
+                }}
+              />
+              <div className="action-btns" style={{ marginTop: "0.5rem" }}>
+                <button type="submit" disabled={loading}>
+                  {loading ? "Saving..." : "Create Lot"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowLotForm(false)}
                 >
                   Cancel
                 </button>
@@ -1919,16 +1458,6 @@ export default function InventoryPage() {
             </form>
           </div>
         </div>
-      )}
-      {drilldownOpenTarget && (
-        <OpenVialDialog
-          cell={drilldownOpenTarget}
-          loading={drilldownOpenLoading}
-          onConfirm={handleDrilldownOpen}
-          onDeplete={handleDrilldownDeplete}
-          onViewLot={() => setDrilldownOpenTarget(null)}
-          onCancel={() => setDrilldownOpenTarget(null)}
-        />
       )}
       {modalLot && (
         <DocumentModal

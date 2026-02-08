@@ -48,6 +48,13 @@ def scan_lookup(
         q = q.filter(Lot.lab_id == target_lab_id)
     lot = q.first()
 
+    # Fallback: try matching by lot_number if no vendor_barcode match
+    if not lot:
+        q2 = db.query(Lot).filter(Lot.lot_number == body.barcode)
+        if target_lab_id:
+            q2 = q2.filter(Lot.lab_id == target_lab_id)
+        lot = q2.first()
+
     if not lot:
         raise HTTPException(status_code=404, detail="No lot found for this barcode")
 
@@ -107,89 +114,98 @@ def scan_lookup(
     if lot.qc_status != QCStatus.APPROVED:
         qc_warning = f"WARNING: Lot QC status is '{lot.qc_status.value}'. Lot must be approved before opening vials."
 
-    # Older lots of the same antibody that still have sealed vials
+    # Use-first lots: same antibody, non-archived, with sealed vials, that should
+    # be consumed before this lot (sorted by expiration date — FEFO, matching
+    # the inventory page's "Current"/"New" badge logic).
     older_lot_summaries: list[OlderLotSummary] = []
-    older_lot_rows = (
+    sibling_lot_rows = (
         db.query(Lot)
         .filter(
             Lot.antibody_id == lot.antibody_id,
             Lot.lab_id == lot.lab_id,
             Lot.id != lot.id,
             Lot.is_archived == False,  # noqa: E712
-            Lot.created_at < lot.created_at,
         )
-        .order_by(Lot.created_at.asc())
         .all()
     )
-    if older_lot_rows:
-        older_lot_ids = [ol.id for ol in older_lot_rows]
 
-        # Batch: sealed counts per lot
+    # Batch: sealed counts per sibling lot
+    sibling_ids = [sl.id for sl in sibling_lot_rows]
+    sealed_counts: dict = {}
+    if sibling_ids:
         sealed_counts = dict(
             db.query(Vial.lot_id, sa_func.count(Vial.id))
-            .filter(Vial.lot_id.in_(older_lot_ids), Vial.status == VialStatus.SEALED)
+            .filter(Vial.lot_id.in_(sibling_ids), Vial.status == VialStatus.SEALED)
             .group_by(Vial.lot_id)
             .all()
         )
 
-        # Only process lots that have sealed vials
-        lots_with_sealed = [ol for ol in older_lot_rows if sealed_counts.get(ol.id, 0) > 0]
+    # Filter to only lots with sealed vials, then sort by expiration (FEFO)
+    siblings_with_sealed = [sl for sl in sibling_lot_rows if sealed_counts.get(sl.id, 0) > 0]
 
-        # Batch: storage summary for all relevant lots at once
+    def _exp_sort_key(l: Lot):
+        """Sort: lots WITH expiration first (ascending), then lots WITHOUT."""
+        return (l.expiration_date is None, l.expiration_date or "")
+
+    siblings_with_sealed.sort(key=_exp_sort_key)
+
+    # Determine use-first lots: siblings that sort before this lot
+    scanned_lot_key = _exp_sort_key(lot)
+    scanned_has_sealed = len(vials) > 0
+    use_first_lots = [
+        sl for sl in siblings_with_sealed
+        if _exp_sort_key(sl) < scanned_lot_key
+        or (_exp_sort_key(sl) == scanned_lot_key and sl.created_at < lot.created_at)
+    ]
+
+    if use_first_lots:
+        use_first_ids = [sl.id for sl in use_first_lots]
+
+        # Batch: storage summary
         storage_summaries: dict[UUID, str] = {}
-        if lots_with_sealed:
-            lots_with_sealed_ids = [ol.id for ol in lots_with_sealed]
-            unit_counts_rows = (
-                db.query(Vial.lot_id, StorageUnit.name, sa_func.count(Vial.id))
-                .join(StorageCell, Vial.location_cell_id == StorageCell.id)
-                .join(StorageUnit, StorageCell.storage_unit_id == StorageUnit.id)
-                .filter(
-                    Vial.lot_id.in_(lots_with_sealed_ids),
-                    Vial.status == VialStatus.SEALED,
-                    Vial.location_cell_id.isnot(None),
-                )
-                .group_by(Vial.lot_id, StorageUnit.name)
-                .all()
+        unit_counts_rows = (
+            db.query(Vial.lot_id, StorageUnit.name, sa_func.count(Vial.id))
+            .join(StorageCell, Vial.location_cell_id == StorageCell.id)
+            .join(StorageUnit, StorageCell.storage_unit_id == StorageUnit.id)
+            .filter(
+                Vial.lot_id.in_(use_first_ids),
+                Vial.status == VialStatus.SEALED,
+                Vial.location_cell_id.isnot(None),
             )
-            for lot_id_val, unit_name, count in unit_counts_rows:
-                parts = storage_summaries.get(lot_id_val, [])
-                if isinstance(parts, str):
-                    parts = []
-                parts.append(f"{count} in {unit_name}")
-                storage_summaries[lot_id_val] = parts
+            .group_by(Vial.lot_id, StorageUnit.name)
+            .all()
+        )
+        for lot_id_val, unit_name, count in unit_counts_rows:
+            parts = storage_summaries.get(lot_id_val, [])
+            if isinstance(parts, str):
+                parts = []
+            parts.append(f"{count} in {unit_name}")
+            storage_summaries[lot_id_val] = parts
 
-        for older_lot in lots_with_sealed:
-            parts = storage_summaries.get(older_lot.id, [])
+        for use_first in use_first_lots:
+            parts = storage_summaries.get(use_first.id, [])
             summary = ", ".join(parts) if isinstance(parts, list) and parts else "not stored"
             older_lot_summaries.append(
                 OlderLotSummary(
-                    id=older_lot.id,
-                    lot_number=older_lot.lot_number,
-                    vendor_barcode=older_lot.vendor_barcode,
-                    created_at=older_lot.created_at,
-                    sealed_count=sealed_counts[older_lot.id],
+                    id=use_first.id,
+                    lot_number=use_first.lot_number,
+                    vendor_barcode=use_first.vendor_barcode,
+                    created_at=use_first.created_at,
+                    sealed_count=sealed_counts[use_first.id],
                     storage_summary=summary,
                 )
             )
 
-    # Determine if this is the "current" (oldest active) lot
+    # Determine if this is the "current" lot (soonest-expiring with sealed vials)
     is_current = False
-    if not older_lot_summaries:
-        # Check if newer lots with sealed vials exist
-        newer_with_sealed = (
-            db.query(Lot.id)
-            .join(Vial, Vial.lot_id == Lot.id)
-            .filter(
-                Lot.antibody_id == lot.antibody_id,
-                Lot.lab_id == lot.lab_id,
-                Lot.id != lot.id,
-                Lot.is_archived == False,  # noqa: E712
-                Lot.created_at > lot.created_at,
-                Vial.status == VialStatus.SEALED,
-            )
-            .first()
-        )
-        if newer_with_sealed:
+    if not older_lot_summaries and scanned_has_sealed:
+        # No use-first lots exist; check if any later-expiring siblings exist
+        later_siblings = [
+            sl for sl in siblings_with_sealed
+            if _exp_sort_key(sl) > scanned_lot_key
+            or (_exp_sort_key(sl) == scanned_lot_key and sl.created_at > lot.created_at)
+        ]
+        if later_siblings:
             is_current = True
 
     return ScanLookupResult(

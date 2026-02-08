@@ -24,7 +24,7 @@ import {
 import { useTheme } from "../hooks/useTheme";
 
 export default function Layout() {
-  const { user, logout, impersonatingLab, endImpersonation } = useAuth();
+  const { user, logout, impersonatingLab, endImpersonation, labSettings } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { theme, cycleTheme } = useTheme();
@@ -50,6 +50,7 @@ export default function Layout() {
   const isSupervisor = isAdmin || user?.role === "supervisor";
   // Lab-specific pages should only show if user has a lab context
   const hasLabContext = !isSuperAdmin || isImpersonating;
+  const storageEnabled = labSettings.storage_enabled !== false;
 
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
@@ -140,10 +141,12 @@ export default function Layout() {
                 <Package className="nav-icon" />
                 Inventory
               </NavLink>
-              <NavLink to="/storage" onClick={handleNavClick}>
-                <Warehouse className="nav-icon" />
-                Storage
-              </NavLink>
+              {storageEnabled && (
+                <NavLink to="/storage" onClick={handleNavClick}>
+                  <Warehouse className="nav-icon" />
+                  Storage
+                </NavLink>
+              )}
             </>
           )}
 
@@ -222,10 +225,12 @@ export default function Layout() {
               <Package className="nav-icon" />
               <span>Inventory</span>
             </NavLink>
-            <NavLink to="/storage" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-              <Warehouse className="nav-icon" />
-              <span>Storage</span>
-            </NavLink>
+            {storageEnabled && (
+              <NavLink to="/storage" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
+                <Warehouse className="nav-icon" />
+                <span>Storage</span>
+              </NavLink>
+            )}
           </>
         ) : (
           <>

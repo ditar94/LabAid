@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import api from "../api/client";
-import type { Fluorochrome, Lab } from "../api/types";
+import type { Fluorochrome } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { Palette } from "lucide-react";

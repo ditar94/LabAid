@@ -1,5 +1,9 @@
 import { Fragment, useState, useCallback, useEffect, useRef } from "react";
-import type { StorageCell, Fluorochrome } from "../api/types";
+import type { ReactNode } from "react";
+import type { StorageCell, StorageUnit, Fluorochrome } from "../../api/types";
+import { qcBadgeClass, qcLabel } from "../QcBadge";
+import GridLegend from "./GridLegend";
+import CapacityBar from "./CapacityBar";
 
 interface Props {
   rows: number;
@@ -10,23 +14,28 @@ interface Props {
   recommendedCellId?: string | null;
   onCellClick?: (cell: StorageCell) => void;
   selectedCellId?: string | null;
-  /** Cell IDs that are selected in multi-select mode */
   selectedCellIds?: Set<string>;
-  clickMode?: "highlighted" | "empty" | "occupied";
+  /**
+   * Controls which cells are clickable and how clicks behave:
+   * - "normal": occupied cells with popout expand/collapse (default)
+   * - "source": highlighted occupied cells, immediate toggle (no expand)
+   * - "destination": empty cells only, immediate action (no expand)
+   */
+  selectionMode?: "normal" | "source" | "destination";
   fluorochromes?: Fluorochrome[];
-  /** When true, clicking a cell immediately triggers action without expand step */
-  singleClickSelect?: boolean;
-  /** Cell IDs to show as preview-fill (dashed blue border for move destination preview) */
   previewCellIds?: Set<string>;
-  /** Function returning action buttons to render at the bottom of expanded cell popouts */
   popoutActions?: (cell: StorageCell) => Array<{
     label: string;
     onClick: () => void;
     variant?: "primary" | "danger" | "default";
   }>;
+  unit?: StorageUnit;
+  headerActions?: ReactNode;
+  showTempBadge?: boolean;
+  legendExtra?: ReactNode;
+  hideLegend?: boolean;
 }
 
-/** Convert a hex color to an rgba string at the given opacity. */
 function hexToRgba(hex: string, opacity: number): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.substring(0, 2), 16);
@@ -34,20 +43,6 @@ function hexToRgba(hex: string, opacity: number): string {
   const b = parseInt(h.substring(4, 6), 16);
   if (isNaN(r) || isNaN(g) || isNaN(b)) return "";
   return `rgba(${r},${g},${b},${opacity})`;
-}
-
-/** Format QC status for display. */
-function qcLabel(qc: string | null | undefined): string {
-  if (!qc) return "";
-  if (qc === "approved") return "Approved";
-  if (qc === "failed") return "Failed";
-  return "Pending";
-}
-
-function qcBadgeClass(qc: string | null | undefined): string {
-  if (qc === "approved") return "badge-green";
-  if (qc === "failed") return "badge-red";
-  return "badge-yellow";
 }
 
 export default function StorageGrid({
@@ -60,11 +55,15 @@ export default function StorageGrid({
   onCellClick,
   selectedCellId,
   selectedCellIds,
-  clickMode = "highlighted",
+  selectionMode = "normal",
   fluorochromes = [],
-  singleClickSelect = false,
   previewCellIds,
   popoutActions,
+  unit,
+  headerActions,
+  showTempBadge = true,
+  legendExtra,
+  hideLegend = false,
 }: Props) {
   const [expandedCellId, setExpandedCellId] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -103,13 +102,14 @@ export default function StorageGrid({
 
   const handleCellClick = useCallback(
     (cell: StorageCell, isClickable: boolean) => {
-      const hasVial = !!cell.vial_id;
-
-      // In single-click select mode (e.g., move mode), skip expand and trigger immediately
-      if (singleClickSelect) {
+      // In source/destination mode: immediate action, skip expand/popout
+      if (selectionMode === "source" || selectionMode === "destination") {
         if (isClickable) onCellClick?.(cell);
         return;
       }
+
+      // "normal" mode
+      const hasVial = !!cell.vial_id;
 
       // When popoutActions provided: occupied cell taps only toggle popout, never fire onCellClick
       if (hasVial && cell.vial && popoutActions) {
@@ -132,7 +132,7 @@ export default function StorageGrid({
 
       if (isClickable) onCellClick?.(cell);
     },
-    [expandedCellId, onCellClick, singleClickSelect, popoutActions]
+    [expandedCellId, onCellClick, selectionMode, popoutActions]
   );
 
   // Collapse expanded cell when clicking outside
@@ -145,7 +145,7 @@ export default function StorageGrid({
     [expandedCellId]
   );
 
-  return (
+  const gridElement = (
     <div
       ref={gridRef}
       className={`storage-grid${expandedCellId ? " has-expanded" : ""}`}
@@ -186,10 +186,11 @@ export default function StorageGrid({
 
             const vialInfo = cell.vial;
 
+            // Determine clickability based on selectionMode
             const isClickable =
-              (clickMode === "highlighted" && isHighlighted) ||
-              (clickMode === "empty" && !hasVial) ||
-              (clickMode === "occupied" && hasVial);
+              selectionMode === "destination" ? !hasVial :
+              selectionMode === "source" ? hasVial :
+              hasVial; // "normal"
 
             // When highlighting a specific lot, dim non-relevant occupied cells
             const hasHighlights = highlightVialIds.size > 0;
@@ -200,8 +201,8 @@ export default function StorageGrid({
             else if (isRecommended) className += " recommended";
             else if (isHighlighted) className += " highlighted";
             else if (isNextEmpty) className += " next-empty";
-            else if (clickMode === "empty" && !hasVial) className += " empty-clickable";
-            else if (clickMode === "occupied" && hasVial) className += " occupied-clickable";
+            else if (selectionMode === "destination" && !hasVial) className += " empty-clickable";
+            else if (selectionMode === "normal" && hasVial) className += " occupied-clickable";
             else if (hasVial) className += " occupied";
 
             if (previewCellIds?.has(cell.id)) className += " preview-fill";
@@ -216,20 +217,15 @@ export default function StorageGrid({
             const fluoroColor = vialInfo?.antibody_fluorochrome
               ? fluoroMap.get(vialInfo.antibody_fluorochrome.toLowerCase())
               : undefined;
-            // Fallback to IVD antibody color when no fluorochrome color
             const effectiveColor = fluoroColor || (vialInfo?.color ?? undefined);
 
-            // Build inline style for fluorochrome tint
             const cellStyle: React.CSSProperties = {};
             if (hasVial && effectiveColor) {
-              cellStyle["--fluoro-color" as string] = effectiveColor;
-              cellStyle["--fluoro-bg" as string] = hexToRgba(effectiveColor, 0.12);
-              cellStyle["--fluoro-bg-strong" as string] = hexToRgba(effectiveColor, 0.25);
+              (cellStyle as Record<string, string>)["--fluoro-color"] = effectiveColor;
+              (cellStyle as Record<string, string>)["--fluoro-bg"] = hexToRgba(effectiveColor, 0.12);
+              (cellStyle as Record<string, string>)["--fluoro-bg-strong"] = hexToRgba(effectiveColor, 0.25);
             }
 
-            // Determine popout positioning: if cell is in the right half of
-            // the grid, pop out to the left; otherwise to the right.
-            // Similarly for top/bottom.
             const popLeft = c >= cols / 2;
             const popUp = r >= rows / 2;
 
@@ -327,4 +323,52 @@ export default function StorageGrid({
       ))}
     </div>
   );
+
+  // Panel mode: wrap grid with header + legend
+  if (unit) {
+    const totalCells = cells.length;
+    const occupiedCount = cells.filter((c) => !!c.vial_id).length;
+
+    return (
+      <div className="grid-container">
+        <div className="move-panel compact">
+          <div className="move-header">
+            <div className="move-header-icon">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <rect x="2" y="3" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.5" />
+                <circle cx="10" cy="6.5" r="1" fill="currentColor" />
+                <circle cx="10" cy="13.5" r="1" fill="currentColor" />
+              </svg>
+            </div>
+            <span className="move-header-title">
+              {unit.name}
+              {showTempBadge && unit.is_temporary && (
+                <span className="temp-badge">Auto</span>
+              )}
+            </span>
+            {unit.temperature && (
+              <span className="move-header-temp">{unit.temperature}</span>
+            )}
+            <div className="move-header-capacity">
+              <CapacityBar occupied={occupiedCount} total={totalCells} />
+            </div>
+            {headerActions && (
+              <div className="move-header-actions">
+                {headerActions}
+              </div>
+            )}
+          </div>
+          <div className="move-body">
+            {gridElement}
+            {!hideLegend && (
+              <GridLegend>{legendExtra}</GridLegend>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return gridElement;
 }

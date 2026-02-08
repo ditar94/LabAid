@@ -83,6 +83,7 @@ class LabSettingsUpdate(BaseModel):
     expiry_warn_days: int | None = None
     qc_doc_required: bool | None = None
     support_access_enabled: bool | None = None
+    storage_enabled: bool | None = None
 
 
 class SetupRequest(BaseModel):

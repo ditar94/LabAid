@@ -1,13 +1,21 @@
-import { useState } from "react";
-import type { Lot } from "../api/types";
+// ── LotCardList — Shared mobile card layout for lot rows ─────────────────────
+// Mobile companion to LotTable. Uses the same LotListProps interface so both
+// components can be swapped via `isMobile ? <LotCardList> : <LotTable>`.
+
 import type { LotListProps } from "./LotTable";
-import ActionMenu, { type ActionMenuItem } from "./ActionMenu";
+import ActionMenu from "./ActionMenu";
+import QcBadge from "./QcBadge";
+import LotAgeBadge from "./LotAgeBadge";
+import { formatDate } from "../utils/format";
+import { buildLotActions } from "../utils/lotActions";
+import { useLotBarcodeCopy } from "../hooks/useLotBarcodeCopy";
 
 export default function LotCardList({
   lots,
   sealedOnly,
   canQC,
   qcDocRequired,
+  storageEnabled = true,
   lotAgeBadgeMap,
   onApproveQC,
   onDeplete,
@@ -17,36 +25,15 @@ export default function LotCardList({
   onConsolidate,
   onLotClick,
   selectedLotId,
+  prefixColumn,
+  customBadges,
+  extraActions,
+  extraColumns,
+  hideActions,
+  hideQc,
+  hideReceived,
 }: LotListProps) {
-  const [expandedBarcode, setExpandedBarcode] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const handleCopy = async (lot: Lot) => {
-    if (!lot.vendor_barcode) return;
-    try {
-      await navigator.clipboard.writeText(lot.vendor_barcode);
-      setCopiedId(lot.id);
-      setTimeout(() => setCopiedId(null), 1500);
-    } catch {
-      // Clipboard API not available
-    }
-  };
-
-  const buildActions = (lot: Lot): ActionMenuItem[] => {
-    const items: ActionMenuItem[] = [];
-    if (onEditLot) {
-      items.push({ label: "Edit", icon: "✎", onClick: () => onEditLot(lot) });
-    }
-    if ((lot.vial_counts?.total ?? 0) > 0) {
-      items.push({ label: "Deplete", icon: "⊘", variant: "danger", onClick: () => onDeplete(lot) });
-    }
-    items.push({ label: `Docs${lot.documents?.length ? ` (${lot.documents.length})` : ""}`, icon: "📄", onClick: () => onOpenDocs(lot) });
-    items.push({ label: lot.is_archived ? "Unarchive" : "Archive", icon: lot.is_archived ? "↩" : "▣", onClick: () => onArchive(lot) });
-    if (lot.is_split && onConsolidate) {
-      items.push({ label: "Consolidate", icon: "⊞", onClick: () => onConsolidate(lot) });
-    }
-    return items;
-  };
+  const { expandedBarcode, setExpandedBarcode, copiedId, handleCopy } = useLotBarcodeCopy();
 
   return (
     <div className="lot-card-list">
@@ -56,50 +43,54 @@ export default function LotCardList({
           className={`lot-card${lot.is_archived ? " lot-row-archived" : ""}${!lot.is_archived && (lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0 ? " lot-row-depleted" : ""}${onLotClick ? " clickable" : ""}${selectedLotId === lot.id ? " active" : ""}`}
           onClick={() => onLotClick?.(lot)}
         >
+          {/* Optional prefix (e.g., antibody name + vendor for Dashboard) */}
+          {prefixColumn && (
+            <div style={{ padding: "0.5rem 0.75rem 0", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {prefixColumn.render(lot)}
+            </div>
+          )}
+
           {/* Header: lot number + QC badge + actions */}
           <div className="lot-card-header">
             <div className="lot-card-id">
               {lot.lot_number}
-              {lotAgeBadgeMap.get(lot.id) === "current" && (
-                <span className="badge badge-green" style={{ fontSize: "0.7em" }}>Current</span>
-              )}
-              {lotAgeBadgeMap.get(lot.id) === "new" && (
-                <span className="badge" style={{ fontSize: "0.7em", background: "#6b7280", color: "#fff" }}>New</span>
-              )}
+              <LotAgeBadge age={lotAgeBadgeMap.get(lot.id)} />
+              {/* Custom badges (e.g., Dashboard contextual badges) */}
+              {customBadges?.get(lot.id)}
             </div>
             <span style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
-              {qcDocRequired && lot.qc_status === "pending" && !lot.has_qc_document ? (
-                <span className="badge badge-orange" title="QC document required">Pending</span>
-              ) : (
-                <span
-                  className={`badge ${
-                    lot.qc_status === "approved"
-                      ? "badge-green"
-                      : lot.qc_status === "failed"
-                      ? "badge-red"
-                      : "badge-yellow"
-                  }`}
-                >
-                  {lot.qc_status}
-                </span>
+              {!hideQc && (
+                <QcBadge
+                  status={lot.qc_status}
+                  needsDoc={!!(qcDocRequired && !lot.has_qc_document)}
+                />
               )}
-              {canQC && lot.qc_status !== "approved" && (
+              {!hideActions && canQC && lot.qc_status !== "approved" && onApproveQC && (
                 <button className="approve-chip" onClick={(e) => { e.stopPropagation(); onApproveQC(lot.id); }}>
                   Approve
                 </button>
               )}
-              <span onClick={(e) => e.stopPropagation()}>
-                <ActionMenu items={buildActions(lot)} />
-              </span>
+              {!hideActions && extraActions && (
+                <span onClick={(e) => e.stopPropagation()}>
+                  {extraActions(lot)}
+                </span>
+              )}
+              {!hideActions && (
+                <span onClick={(e) => e.stopPropagation()}>
+                  <ActionMenu items={buildLotActions({ lot, onEditLot, onDeplete, onOpenDocs, onArchive, onConsolidate })} />
+                </span>
+              )}
             </span>
           </div>
 
           {/* Body: details */}
           <div className="lot-card-body">
-            <div className="lot-card-row">
-              <span>Received</span>
-              <span>{new Date(lot.created_at).toLocaleDateString()}</span>
-            </div>
+            {!hideReceived && (
+              <div className="lot-card-row">
+                <span>Received</span>
+                <span>{formatDate(lot.created_at)}</span>
+              </div>
+            )}
             <div className="lot-card-row">
               <span>Expiration</span>
               <span>{lot.expiration_date || "\u2014"}</span>
@@ -119,8 +110,16 @@ export default function LotCardList({
               <span><strong>{lot.vial_counts?.total ?? 0}</strong></span>
             </div>
 
+            {/* Extra columns rendered as additional card rows */}
+            {extraColumns?.map((col) => (
+              <div key={col.header} className="lot-card-row">
+                <span>{col.header}</span>
+                <span>{col.render(lot)}</span>
+              </div>
+            ))}
+
             {/* Storage location */}
-            {lot.storage_locations && lot.storage_locations.length > 0 && (
+            {storageEnabled && lot.storage_locations && lot.storage_locations.length > 0 && (
               <div className="lot-card-row" style={{ alignItems: "flex-start" }}>
                 <span>Location</span>
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
@@ -152,7 +151,7 @@ export default function LotCardList({
                 </span>
                 <button
                   className="lot-card-copy-btn"
-                  onClick={() => handleCopy(lot)}
+                  onClick={() => handleCopy(lot.id, lot.vendor_barcode!)}
                   title="Copy barcode"
                 >
                   {copiedId === lot.id ? "\u2713" : "\u2398"}

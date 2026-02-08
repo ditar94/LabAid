@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import type {
-  Antibody, Lot, Lab, Fluorochrome, TempStorageSummary, TempStorageSummaryItem,
-  StorageGrid as StorageGridData, StorageCell, StorageUnit, VialMoveResult,
+  Antibody, Lot, TempStorageSummary, TempStorageSummaryItem,
+  StorageGrid as StorageGridData,
   LotRequest,
 } from "../api/types";
-import StorageGrid from "../components/StorageGrid";
+import { StorageView } from "../components/storage";
+import type { StorageViewHandle } from "../components/storage";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -24,14 +25,17 @@ import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import PullToRefresh from "../components/PullToRefresh";
 import LotRequestReviewModal from "../components/LotRequestReviewModal";
+import LotTable from "../components/LotTable";
+import LotCardList from "../components/LotCardList";
+import { formatDate } from "../utils/format";
 
 const DEFAULT_EXPIRY_WARN_DAYS = 30;
 const CURRENT_LOT_EXPIRY_WARN_DAYS = 7;
-const EMPTY_SET = new Set<string>();
+const EMPTY_LOT_AGE_MAP = new Map<string, "current" | "new">();
 
 export default function DashboardPage() {
   const { user, labSettings, refreshUser } = useAuth();
-  const { labs, fluorochromes, storageUnits, selectedLab, setSelectedLab, refreshLabData } = useSharedData();
+  const { labs, fluorochromes, selectedLab, setSelectedLab } = useSharedData();
   const navigate = useNavigate();
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
   const [selectedCard, setSelectedCard] = useState<"requests" | "pending" | "low" | "expiring" | "temp" | null>(null);
@@ -47,18 +51,13 @@ export default function DashboardPage() {
   const [tempSelectedItem, setTempSelectedItem] = useState<TempStorageSummaryItem | null>(null);
   const [tempGrid, setTempGrid] = useState<StorageGridData | null>(null);
   const [tempGridLoading, setTempGridLoading] = useState(false);
-  const [tempMoveSelectedIds, setTempMoveSelectedIds] = useState<Set<string>>(new Set());
-  const [tempMoveTargetUnitId, setTempMoveTargetUnitId] = useState("");
-  const [tempMoveTargetGrid, setTempMoveTargetGrid] = useState<StorageGridData | null>(null);
-  const [tempDestMode, setTempDestMode] = useState<"auto" | "start" | "pick">("auto");
-  const [tempDestStartCellId, setTempDestStartCellId] = useState<string | null>(null);
-  const [tempDestPickedCellIds, setTempDestPickedCellIds] = useState<Set<string>>(new Set());
-  const [tempMoveLoading, setTempMoveLoading] = useState(false);
-  const nonTempUnits = useMemo(() => storageUnits.filter((u) => !u.is_temporary), [storageUnits]);
   const [tempMessage, setTempMessage] = useState<string | null>(null);
   const [tempError, setTempError] = useState<string | null>(null);
+  const tempViewRef = useRef<StorageViewHandle>(null);
 
   const isMobile = useMediaQuery("(max-width: 768px)");
+  // Dynamic lot list component — LotCardList on mobile, LotTable on desktop
+  const LotList = isMobile ? LotCardList : LotTable;
   const { addToast } = useToast();
   const [labSettingsRef, labSettingsVisible] = useIntersectionObserver();
 
@@ -77,8 +76,8 @@ export default function DashboardPage() {
     }
     const results = await Promise.all(fetches);
     const [abRes, lotRes, lowStockRes, tempRes] = results;
-    const antibodies = abRes.data;
-    const lots = lotRes.data;
+    const antibodies: Antibody[] = abRes.data;
+    const lots: Lot[] = lotRes.data;
 
     setAntibodies(antibodies);
     setAllLots(lots);
@@ -278,12 +277,15 @@ export default function DashboardPage() {
   }, [lowStock, abVialStats]);
 
   const isSupervisorPlus = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
+  const storageEnabled = labSettings.storage_enabled !== false;
   const cards = [
     ...(isSupervisorPlus && pendingRequests.length > 0
       ? [{ key: "requests" as const, label: "Pending Antibodies", count: pendingRequests.length, className: "info", icon: PackagePlus }]
       : []),
     { key: "pending" as const, label: "Pending QC", count: pendingLots.length, className: "warn", icon: Clock },
-    { key: "temp" as const, label: "Temp Storage", count: tempSummary?.total_vials ?? 0, className: "warn", icon: Thermometer },
+    ...(storageEnabled
+      ? [{ key: "temp" as const, label: "Temp Storage", count: tempSummary?.total_vials ?? 0, className: "warn", icon: Thermometer }]
+      : []),
     { key: "low" as const, label: "Low Stock", count: lowStock.length, className: "danger", icon: AlertTriangle },
     { key: "expiring" as const, label: "Expiring Lots", count: expiringLots.length, className: "warn", icon: CalendarClock },
   ];
@@ -304,33 +306,47 @@ export default function DashboardPage() {
     }
   };
 
+  // Helper: render antibody label + vendor as a prefix column for LotTable/LotCardList
+  const renderLotPrefix = (lot: Lot, extraBadges?: React.ReactNode) => {
+    const label = lotLabel(lot);
+    const color = lot.antibody_fluorochrome
+      ? fluoroMap.get(lot.antibody_fluorochrome.toLowerCase())
+      : undefined;
+    const ab = antibodyMap.get(lot.antibody_id);
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {color && <div className="color-dot" style={{ backgroundColor: color }} />}
+          {label}
+          {ab && <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.75em" }}>{ab.designation.toUpperCase()}</span>}
+          {extraBadges}
+        </div>
+        <div style={{ fontSize: "0.85em", color: "var(--text-muted)" }}>{lotVendor(lot)}</div>
+      </div>
+    );
+  };
+
   // ── Temp storage drill-down handlers ──
 
+  // Toggle drill-down for a temp storage lot item
   const handleTempLotClick = useCallback(async (item: TempStorageSummaryItem) => {
+    // Collapse if clicking the same lot
     if (tempSelectedItem?.lot_id === item.lot_id) {
       setTempSelectedItem(null);
       setTempGrid(null);
-      setTempMoveSelectedIds(new Set());
-      setTempMoveTargetUnitId("");
-      setTempMoveTargetGrid(null);
-      setTempDestMode("auto");
-      setTempDestStartCellId(null);
-      setTempDestPickedCellIds(new Set());
       setTempMessage(null);
       setTempError(null);
       return;
     }
 
+    // Expand new lot
     setTempSelectedItem(item);
-    setTempMoveSelectedIds(new Set(item.vial_ids));
-    setTempMoveTargetUnitId("");
-    setTempMoveTargetGrid(null);
-    setTempDestStartCellId(null);
     setTempMessage(null);
     setTempError(null);
 
     if (!tempSummary?.unit_id) return;
 
+    // Load the temp storage grid (source)
     setTempGridLoading(true);
     try {
       const gridRes = await api.get<StorageGridData>(`/storage/units/${tempSummary.unit_id}/grid`);
@@ -340,122 +356,25 @@ export default function DashboardPage() {
     } finally {
       setTempGridLoading(false);
     }
-  }, [tempSelectedItem, tempSummary, selectedLab]);
+  }, [tempSelectedItem, tempSummary]);
 
-  const handleTempMoveCellClick = useCallback((cell: StorageCell) => {
-    if (!cell.vial_id) return;
-    setTempMoveSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cell.vial_id!)) next.delete(cell.vial_id!);
-      else next.add(cell.vial_id!);
-      return next;
-    });
-  }, []);
-
-  const handleTempTargetUnitChange = useCallback(async (unitId: string) => {
-    setTempMoveTargetUnitId(unitId);
-    setTempDestMode("auto");
-    setTempDestStartCellId(null);
-    setTempDestPickedCellIds(new Set());
-    setTempMoveTargetGrid(null);
-    if (!unitId) return;
+  // Auto-enter move mode when temp grid loads with a selected item
+  const handleTempRefresh = useCallback(async () => {
     try {
-      const res = await api.get<StorageGridData>(`/storage/units/${unitId}/grid`);
-      setTempMoveTargetGrid(res.data);
-    } catch {
-      setTempError("Failed to load target grid");
-    }
-  }, []);
-
-  const handleTempTargetCellClick = (cell: StorageCell) => {
-    if (cell.vial_id) return;
-    if (tempDestMode === "auto") {
-      setTempDestMode("start");
-      setTempDestStartCellId(cell.id);
-    } else if (tempDestMode === "start") {
-      if (tempDestStartCellId === cell.id) {
-        // Toggle off — back to auto
-        setTempDestMode("auto");
-        setTempDestStartCellId(null);
-      } else {
-        // Different cell — switch to pick mode with both
-        setTempDestMode("pick");
-        setTempDestPickedCellIds(new Set([tempDestStartCellId!, cell.id]));
-        setTempDestStartCellId(null);
-      }
-    } else {
-      // pick mode — toggle cell
-      setTempDestPickedCellIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(cell.id)) next.delete(cell.id);
-        else next.add(cell.id);
-        return next;
-      });
-    }
-  };
-
-  // Compute preview cells for target grid (start mode only)
-  const tempPreviewCellIds = useMemo(() => {
-    if (tempDestMode !== "start" || !tempMoveTargetGrid || !tempDestStartCellId || tempMoveSelectedIds.size === 0) return new Set<string>();
-    const emptyCells = tempMoveTargetGrid.cells
-      .filter((c) => !c.vial_id)
-      .sort((a, b) => a.row - b.row || a.col - b.col);
-    const startIdx = emptyCells.findIndex((c) => c.id === tempDestStartCellId);
-    if (startIdx < 0) return new Set<string>();
-    const preview = emptyCells.slice(startIdx, startIdx + tempMoveSelectedIds.size);
-    return new Set(preview.map((c) => c.id));
-  }, [tempMoveTargetGrid, tempDestStartCellId, tempMoveSelectedIds, tempDestMode]);
-
-  const tempInsufficientCells = useMemo(() => {
-    if (tempDestMode === "start") {
-      if (!tempDestStartCellId || !tempMoveTargetGrid) return false;
-      return tempPreviewCellIds.size < tempMoveSelectedIds.size;
-    }
-    if (tempDestMode === "pick") {
-      return tempDestPickedCellIds.size !== tempMoveSelectedIds.size;
-    }
-    return false;
-  }, [tempPreviewCellIds, tempMoveSelectedIds, tempDestStartCellId, tempMoveTargetGrid, tempDestMode, tempDestPickedCellIds]);
-
-  const handleTempMove = useCallback(async () => {
-    if (!tempMoveTargetUnitId || tempMoveSelectedIds.size === 0) return;
-    setTempMoveLoading(true);
-    setTempMessage(null);
-    setTempError(null);
-    try {
-      const movePayload: Record<string, unknown> = {
-        vial_ids: Array.from(tempMoveSelectedIds),
-        target_unit_id: tempMoveTargetUnitId,
-      };
-      if (tempDestMode === "start" && tempDestStartCellId) {
-        movePayload.start_cell_id = tempDestStartCellId;
-      } else if (tempDestMode === "pick" && tempDestPickedCellIds.size > 0) {
-        movePayload.target_cell_ids = Array.from(tempDestPickedCellIds);
-      }
-      const res = await api.post<VialMoveResult>("/vials/move", movePayload);
-      setTempMessage(`Moved ${res.data.moved_count} vial(s) successfully.`);
-      addToast(`Moved ${res.data.moved_count} vial(s) successfully`, "success");
-      // Refresh temp summary
       const tempRes = await api.get<TempStorageSummary>("/storage/temp-storage/summary", {
         params: { lab_id: selectedLab },
       });
       setTempSummary(tempRes.data);
-      // Reset drill-down
-      setTempSelectedItem(null);
-      setTempGrid(null);
-      setTempMoveSelectedIds(new Set());
-      setTempMoveTargetUnitId("");
-      setTempMoveTargetGrid(null);
-      setTempDestMode("auto");
-      setTempDestStartCellId(null);
-      setTempDestPickedCellIds(new Set());
-    } catch {
-      setTempError("Failed to move vials.");
-      addToast("Failed to move vials", "danger");
-    } finally {
-      setTempMoveLoading(false);
+    } catch { /* ignore */ }
+    setTempSelectedItem(null);
+    setTempGrid(null);
+  }, [selectedLab]);
+
+  useEffect(() => {
+    if (tempGrid && tempSelectedItem) {
+      tempViewRef.current?.enterMoveMode(new Set(tempSelectedItem.vial_ids));
     }
-  }, [tempMoveTargetUnitId, tempMoveSelectedIds, tempDestMode, tempDestStartCellId, tempDestPickedCellIds, selectedLab]);
+  }, [tempGrid, tempSelectedItem]);
 
   const allClear = cards.every((c) => c.count === 0);
 
@@ -532,7 +451,7 @@ export default function DashboardPage() {
           ) : isMobile ? (
             <div className="dash-card-list">
               {pendingRequests.map((req) => {
-                const ab = req.proposed_antibody;
+                const ab = req.proposed_antibody as Record<string, string>;
                 const abLabel = ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join(" - ") || "Unnamed";
                 return (
                   <div key={req.id} className="dash-card clickable" onClick={() => setReviewingRequest(req)} role="button" tabIndex={0}>
@@ -541,7 +460,7 @@ export default function DashboardPage() {
                     <div className="dash-card-row"><span>Barcode</span><span style={{ fontSize: "0.85em", wordBreak: "break-all" }}>{req.barcode}</span></div>
                     <div className="dash-card-row"><span>Lot #</span><span>{req.lot_number || "—"}</span></div>
                     <div className="dash-card-row"><span>Quantity</span><span>{req.quantity}</span></div>
-                    <div className="dash-card-row"><span>Submitted</span><span>{new Date(req.created_at).toLocaleDateString()}</span></div>
+                    <div className="dash-card-row"><span>Submitted</span><span>{formatDate(req.created_at)}</span></div>
                     <div className="dash-card-row">
                       <span />
                       <button className="btn-sm" onClick={(e) => { e.stopPropagation(); setReviewingRequest(req); }}>Review</button>
@@ -564,7 +483,7 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {pendingRequests.map((req) => {
-                  const ab = req.proposed_antibody;
+                  const ab = req.proposed_antibody as Record<string, string>;
                   const abLabel = ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join(" - ") || "Unnamed";
                   return (
                     <tr key={req.id}>
@@ -579,7 +498,7 @@ export default function DashboardPage() {
                       <td>{req.user_full_name || "Unknown"}</td>
                       <td>{req.lot_number || "—"}</td>
                       <td>{req.quantity}</td>
-                      <td>{new Date(req.created_at).toLocaleDateString()}</td>
+                      <td>{formatDate(req.created_at)}</td>
                       <td>
                         <button className="btn-sm" onClick={() => setReviewingRequest(req)}>Review</button>
                       </td>
@@ -611,86 +530,35 @@ export default function DashboardPage() {
           <h2>Pending QC Lots</h2>
           {pendingLots.length === 0 ? (
             <p className="page-desc">No pending QC lots.</p>
-          ) : isMobile ? (
-            <div className="dash-card-list">
-              {pendingLots.map((lot) => {
-                const counts = lot.vial_counts || { sealed: 0, opened: 0, depleted: 0, total: 0 };
-                const label = lotLabel(lot);
-                const color = lot.antibody_fluorochrome
-                  ? fluoroMap.get(lot.antibody_fluorochrome.toLowerCase())
-                  : undefined;
-                return (
-                  <div key={lot.id} className="dash-card" onClick={() => navigateToInventory(lot.antibody_id)} role="button" tabIndex={0} onKeyDown={(e) => handleRowKey(e, lot.antibody_id)}>
-                    <div className="dash-card-title">
-                      {color && <div className="color-dot" style={{ backgroundColor: color }} />}
-                      {label}
-                      {(() => { const ab = antibodyMap.get(lot.antibody_id); return ab ? <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>{ab.designation.toUpperCase()}</span> : null; })()}
-                      {pendingQCBadges.get(lot.id)?.map((badge, i) => (
-                        <span key={i} className="badge badge-red" style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge}</span>
-                      ))}
-                      {(labSettings.qc_doc_required ?? false) && !lot.has_qc_document && (
-                        <span className="badge badge-orange needs-doc-badge" style={{ marginLeft: 6, fontSize: "0.7em" }}>Needs QC</span>
-                      )}
-                    </div>
-                    <div className="dash-card-row"><span>Vendor</span><span>{lotVendor(lot)}</span></div>
-                    <div className="dash-card-row"><span>Lot #</span><span>{lot.lot_number}</span></div>
-                    <div className="dash-card-row"><span>Expiration</span><span>{lot.expiration_date ? new Date(lot.expiration_date).toLocaleDateString() : "—"}</span></div>
-                    <div className="dash-card-row"><span>Sealed</span><span>{counts.sealed}</span></div>
-                    <div className="dash-card-row"><span>Opened</span><span>{counts.opened}</span></div>
-                    <div className="dash-card-row"><span>Total</span><span>{counts.total}</span></div>
-                  </div>
-                );
-              })}
-            </div>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Antibody</th>
-                  <th>Vendor</th>
-                  <th>Lot #</th>
-                  <th>Expiration</th>
-                  <th>Sealed</th>
-                  <th>Opened</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingLots.map((lot) => {
-                  const counts = lot.vial_counts || { sealed: 0, opened: 0, depleted: 0, total: 0 };
-                  const label = lotLabel(lot);
-                  const color = lot.antibody_fluorochrome
-                    ? fluoroMap.get(lot.antibody_fluorochrome.toLowerCase())
-                    : undefined;
-                  return (
-                    <tr key={lot.id} className="clickable-row" onClick={() => navigateToInventory(lot.antibody_id)} onKeyDown={(e) => handleRowKey(e, lot.antibody_id)} role="button" tabIndex={0}>
-                      <td>
-                        {color && <div className="color-dot" style={{ backgroundColor: color }} />}
-                        {label}
-                        {(() => { const ab = antibodyMap.get(lot.antibody_id); return ab ? <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.75em" }}>{ab.designation.toUpperCase()}</span> : null; })()}
-                        {pendingQCBadges.get(lot.id)?.map((badge, i) => (
-                          <span key={i} className="badge badge-red" style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge}</span>
-                        ))}
-                        {(labSettings.qc_doc_required ?? false) && !lot.has_qc_document && (
-                          <span className="badge badge-orange needs-doc-badge" style={{ marginLeft: 6, fontSize: "0.7em" }}>Needs QC</span>
-                        )}
-                      </td>
-                      <td>{lotVendor(lot)}</td>
-                      <td>{lot.lot_number}</td>
-                      <td>{lot.expiration_date ? new Date(lot.expiration_date).toLocaleDateString() : "—"}</td>
-                      <td>{counts.sealed}</td>
-                      <td>{counts.opened}</td>
-                      <td>{counts.total}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <LotList
+              lots={pendingLots}
+              sealedOnly={false}
+              hideDepleted
+              canQC={false}
+              storageEnabled={false}
+              lotAgeBadgeMap={EMPTY_LOT_AGE_MAP}
+              hideActions
+              hideQc
+              onLotClick={(lot) => navigateToInventory(lot.antibody_id)}
+              prefixColumn={{
+                header: "Antibody",
+                render: (lot) => renderLotPrefix(lot, <>
+                  {pendingQCBadges.get(lot.id)?.map((badge, i) => (
+                    <span key={i} className="badge badge-red" style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge}</span>
+                  ))}
+                  {(labSettings.qc_doc_required ?? false) && !lot.has_qc_document && (
+                    <span className="badge badge-orange needs-doc-badge" style={{ marginLeft: 6, fontSize: "0.7em" }}>Needs QC</span>
+                  )}
+                </>),
+              }}
+            />
           )}
         </div>
         </div>
       </div>
 
+      {storageEnabled && (
       <div className={`dashboard-section-wrapper${selectedCard === "temp" ? " open" : ""}`}>
         <div className="dashboard-section-inner">
         <div className="dashboard-section" id="dashboard-section-temp">
@@ -717,7 +585,7 @@ export default function DashboardPage() {
                       <span />
                       <button
                         className="btn-sm btn-secondary"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/scan?barcode=${encodeURIComponent(item.vendor_barcode!)}`); }}
+                        onClick={(e) => { e.stopPropagation(); navigate(`/scan-search?barcode=${encodeURIComponent(item.vendor_barcode!)}`); }}
                       >
                         Search Lot
                       </button>
@@ -752,7 +620,7 @@ export default function DashboardPage() {
                       {item.vendor_barcode && (
                         <button
                           className="btn-sm btn-secondary"
-                          onClick={() => navigate(`/scan?barcode=${encodeURIComponent(item.vendor_barcode!)}`)}
+                          onClick={() => navigate(`/scan-search?barcode=${encodeURIComponent(item.vendor_barcode!)}`)}
                         >
                           Search Lot
                         </button>
@@ -777,84 +645,15 @@ export default function DashboardPage() {
                   <h3 style={{ margin: "0 0 0.5rem" }}>
                     {tempSelectedItem.antibody_name || [tempSelectedItem.antibody_target, tempSelectedItem.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"} — Lot {tempSelectedItem.lot_number}
                   </h3>
-                  <p className="page-desc" style={{ margin: "0 0 0.5rem" }}>
-                    Click cells to select/deselect vials to move. {tempMoveSelectedIds.size} selected.
-                  </p>
-                  <StorageGrid
-                    rows={tempGrid.unit.rows}
-                    cols={tempGrid.unit.cols}
-                    cells={tempGrid.cells}
-                    highlightVialIds={tempMoveSelectedIds}
-                    onCellClick={handleTempMoveCellClick}
-                    clickMode="occupied"
-                    singleClickSelect
+                  <StorageView
+                    ref={tempViewRef}
+                    grids={[tempGrid]}
+                    fluorochromes={fluorochromes}
+                    highlightVialIds={new Set(tempSelectedItem.vial_ids)}
+                    highlightOnly
+                    onRefresh={handleTempRefresh}
+                    excludeUnitIds={[tempGrid.unit.id]}
                   />
-
-                  {/* Move controls */}
-                  <div className="move-controls" style={{ marginTop: "1rem" }}>
-                    <label>
-                      Move to:
-                      <select
-                        value={tempMoveTargetUnitId}
-                        onChange={(e) => handleTempTargetUnitChange(e.target.value)}
-                        style={{ marginLeft: 8 }}
-                      >
-                        <option value="">Select storage unit…</option>
-                        {nonTempUnits.map((u) => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <button
-                      className="btn-primary"
-                      disabled={tempMoveSelectedIds.size === 0 || !tempMoveTargetUnitId || tempMoveLoading || tempInsufficientCells}
-                      onClick={handleTempMove}
-                      style={{ marginLeft: 12 }}
-                    >
-                      {tempMoveLoading ? "Moving…" : `Move ${tempMoveSelectedIds.size} Vial(s)`}
-                    </button>
-                  </div>
-
-                  {/* Target grid preview */}
-                  {tempMoveTargetGrid && (
-                    <div style={{ marginTop: "1rem" }}>
-                      <h4 style={{ margin: "0 0 0.25rem" }}>Destination: {tempMoveTargetGrid.unit.name}</h4>
-                      <p className="page-desc" style={{ margin: "0 0 0.5rem", fontSize: "0.85em" }}>
-                        {tempDestMode === "auto" && "Click an empty cell to set a starting position, or leave for auto-placement."}
-                        {tempDestMode === "start" && `Vials will fill from the selected cell. Click another cell to pick individual positions.`}
-                        {tempDestMode === "pick" && `Pick mode: ${tempDestPickedCellIds.size}/${tempMoveSelectedIds.size} cells selected. Click cells to toggle.`}
-                        {tempDestMode !== "auto" && (
-                          <button
-                            className="btn-secondary btn-sm"
-                            style={{ marginLeft: 8 }}
-                            onClick={() => { setTempDestMode("auto"); setTempDestStartCellId(null); setTempDestPickedCellIds(new Set()); }}
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </p>
-                      <StorageGrid
-                        rows={tempMoveTargetGrid.unit.rows}
-                        cols={tempMoveTargetGrid.unit.cols}
-                        cells={tempMoveTargetGrid.cells}
-                        highlightVialIds={EMPTY_SET}
-                        selectedCellId={tempDestMode === "start" ? tempDestStartCellId : undefined}
-                        selectedCellIds={tempDestMode === "pick" ? tempDestPickedCellIds : undefined}
-                        onCellClick={handleTempTargetCellClick}
-                        clickMode="empty"
-                        singleClickSelect
-                        previewCellIds={tempDestMode === "start" ? tempPreviewCellIds : undefined}
-                      />
-                      {tempInsufficientCells && (
-                        <p className="error" style={{ marginTop: 4 }}>
-                          {tempDestMode === "pick"
-                            ? `Select exactly ${tempMoveSelectedIds.size} cell(s) to match the number of vials.`
-                            : "Not enough empty cells from the selected position."}
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </>
               ) : null}
             </div>
@@ -862,6 +661,7 @@ export default function DashboardPage() {
         </div>
         </div>
       </div>
+      )}
 
       <div className={`dashboard-section-wrapper${selectedCard === "low" ? " open" : ""}`}>
         <div className="dashboard-section-inner">
@@ -953,91 +753,49 @@ export default function DashboardPage() {
           <h2>Expiring Lots</h2>
           {expiringLots.length === 0 ? (
             <p className="page-desc">No expiring lots.</p>
-          ) : isMobile ? (
-            <div className="dash-card-list">
-              {expiringLots.map((lot) => {
-                const isExpired = new Date(lot.expiration_date!) < new Date();
-                const counts = lot.vial_counts || { sealed: 0, opened: 0, depleted: 0, total: 0 };
-                const label = lotLabel(lot);
-                const ab = antibodyMap.get(lot.antibody_id);
-                const color = lot.antibody_fluorochrome
-                  ? fluoroMap.get(lot.antibody_fluorochrome.toLowerCase())
-                  : undefined;
-                return (
-                  <div key={lot.id} className="dash-card" onClick={() => navigateToInventory(lot.antibody_id)} role="button" tabIndex={0} onKeyDown={(e) => handleRowKey(e, lot.antibody_id)}>
-                    <div className="dash-card-title">
-                      {color && <div className="color-dot" style={{ backgroundColor: color }} />}
-                      {label}
-                      {ab && <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>{ab.designation.toUpperCase()}</span>}
-                      <span className={`badge ${isExpired ? "badge-red" : "badge-yellow"}`} style={{ marginLeft: 6, fontSize: "0.7em" }}>
+          ) : (
+            <LotList
+              lots={expiringLots}
+              sealedOnly
+              canQC={false}
+              storageEnabled={false}
+              lotAgeBadgeMap={EMPTY_LOT_AGE_MAP}
+              hideActions
+              hideQc
+              hideReceived
+              onLotClick={(lot) => navigateToInventory(lot.antibody_id)}
+              prefixColumn={{
+                header: "Antibody",
+                render: (lot) => renderLotPrefix(lot),
+              }}
+              extraColumns={[
+                {
+                  header: "Catalog #",
+                  render: (lot) => <>{antibodyMap.get(lot.antibody_id)?.catalog_number || "\u2014"}</>,
+                },
+                {
+                  header: "Status",
+                  render: (lot) => {
+                    const isExpired = new Date(lot.expiration_date!) < new Date();
+                    return (
+                      <span className={`badge ${isExpired ? "badge-red" : "badge-yellow"}`}>
                         {isExpired ? "Expired" : daysUntil(lot.expiration_date!)}
                       </span>
+                    );
+                  },
+                },
+                {
+                  header: "Backup",
+                  render: (lot) => (
+                    <>
                       {expiringLotBadges.get(lot.id)?.map((badge, i) => (
-                        <span key={i} className={`badge ${badge.color}`} style={{ marginLeft: 4, fontSize: "0.7em" }}>{badge.label}</span>
+                        <span key={i} className={`badge ${badge.color}`} style={{ fontSize: "0.8em" }}>{badge.label}</span>
                       ))}
-                    </div>
-                    <div className="dash-card-row"><span>Vendor</span><span>{lotVendor(lot)}</span></div>
-                    <div className="dash-card-row"><span>Lot #</span><span>{lot.lot_number}</span></div>
-                    <div className="dash-card-row"><span>Catalog #</span><span>{ab?.catalog_number || "—"}</span></div>
-                    <div className="dash-card-row"><span>Expiration</span><span>{lot.expiration_date ? new Date(lot.expiration_date).toLocaleDateString() : "—"}</span></div>
-                    <div className="dash-card-row"><span>Sealed</span><span>{counts.sealed}</span></div>
-                    <div className="dash-card-row"><span>Total</span><span>{counts.total}</span></div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Antibody</th>
-                  <th>Vendor</th>
-                  <th>Lot #</th>
-                  <th>Catalog #</th>
-                  <th>Expiration</th>
-                  <th>Status</th>
-                  <th>Sealed</th>
-                  <th>Total</th>
-                  <th>Backup</th>
-                </tr>
-              </thead>
-              <tbody>
-                {expiringLots.map((lot) => {
-                  const isExpired = new Date(lot.expiration_date!) < new Date();
-                  const counts = lot.vial_counts || { sealed: 0, opened: 0, depleted: 0, total: 0 };
-                  const label = lotLabel(lot);
-                  const ab = antibodyMap.get(lot.antibody_id);
-                  const color = lot.antibody_fluorochrome
-                    ? fluoroMap.get(lot.antibody_fluorochrome.toLowerCase())
-                    : undefined;
-                  return (
-                    <tr key={lot.id} className="clickable-row" onClick={() => navigateToInventory(lot.antibody_id)} onKeyDown={(e) => handleRowKey(e, lot.antibody_id)} role="button" tabIndex={0}>
-                      <td>
-                        {color && <div className="color-dot" style={{ backgroundColor: color }} />}
-                        {label}
-                        {ab && <span className={`badge badge-designation-${ab.designation}`} style={{ marginLeft: 6, fontSize: "0.75em" }}>{ab.designation.toUpperCase()}</span>}
-                      </td>
-                      <td>{lotVendor(lot)}</td>
-                      <td>{lot.lot_number}</td>
-                      <td>{ab?.catalog_number || "—"}</td>
-                      <td>{lot.expiration_date ? new Date(lot.expiration_date).toLocaleDateString() : "—"}</td>
-                      <td>
-                        <span className={`badge ${isExpired ? "badge-red" : "badge-yellow"}`}>
-                          {isExpired ? "Expired" : daysUntil(lot.expiration_date!)}
-                        </span>
-                      </td>
-                      <td>{counts.sealed}</td>
-                      <td>{counts.total}</td>
-                      <td>
-                        {expiringLotBadges.get(lot.id)?.map((badge, i) => (
-                          <span key={i} className={`badge ${badge.color}`} style={{ fontSize: "0.8em" }}>{badge.label}</span>
-                        ))}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    </>
+                  ),
+                },
+              ]}
+            />
           )}
         </div>
         </div>
@@ -1124,6 +882,29 @@ export default function DashboardPage() {
               }}
             />
             Allow LabAid support to access your lab data for troubleshooting
+          </label>
+          <label className="flex-center mt-md">
+            <input
+              type="checkbox"
+              checked={labSettings.storage_enabled !== false}
+              onChange={async () => {
+                try {
+                  await api.patch(`/labs/${user.lab_id}/settings`, {
+                    storage_enabled: labSettings.storage_enabled === false,
+                  });
+                  await refreshUser();
+                  addToast(
+                    labSettings.storage_enabled === false
+                      ? "Storage tracking enabled"
+                      : "Storage tracking disabled",
+                    "success"
+                  );
+                } catch {
+                  addToast("Failed to update setting", "danger");
+                }
+              }}
+            />
+            Enable storage location tracking (grids, containers)
           </label>
         </div>
       )}

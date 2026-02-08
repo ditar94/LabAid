@@ -35,7 +35,7 @@ interface SharedDataContextType {
 const SharedDataContext = createContext<SharedDataContextType | null>(null);
 
 export function SharedDataProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, labSettings } = useAuth();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
   const [storageUnits, setStorageUnits] = useState<StorageUnit[]>([]);
@@ -47,7 +47,6 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
     if (user?.role !== "super_admin") return;
     const res = await api.get<Lab[]>("/labs/");
     setLabs(res.data);
-    return res.data;
   }, [user?.role]);
 
   // Fetch fluorochromes for selected lab
@@ -62,11 +61,15 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
   // Fetch storage units for selected lab
   const refreshStorageUnits = useCallback(async () => {
     if (!selectedLab || !user) return;
+    if (labSettings.storage_enabled === false) {
+      setStorageUnits([]);
+      return;
+    }
     const params: Record<string, string> = {};
     if (user.role === "super_admin") params.lab_id = selectedLab;
     const res = await api.get<StorageUnit[]>("/storage/units", { params });
     setStorageUnits(res.data);
-  }, [selectedLab, user]);
+  }, [selectedLab, user, labSettings.storage_enabled]);
 
   // Refresh both fluorochromes and storage units
   const refreshLabData = useCallback(async () => {
@@ -82,12 +85,16 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (user.role === "super_admin") {
-      refreshLabs().then((labsList) => {
-        if (labsList && labsList.length > 0 && !selectedLab) {
-          setSelectedLab(labsList[0].id);
-        }
+      (async () => {
+        try {
+          const res = await api.get<Lab[]>("/labs/");
+          setLabs(res.data);
+          if (res.data.length > 0 && !selectedLab) {
+            setSelectedLab(res.data[0].id);
+          }
+        } catch { /* ignore */ }
         setLoading(false);
-      }).catch(() => setLoading(false));
+      })();
     } else {
       setSelectedLab(user.lab_id || "");
       setLoading(false);
@@ -99,6 +106,12 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
     if (!selectedLab || !user) return;
     refreshLabData();
   }, [selectedLab]);
+
+  // Re-fetch storage units when storage_enabled setting changes
+  useEffect(() => {
+    if (!selectedLab || !user) return;
+    refreshStorageUnits();
+  }, [labSettings.storage_enabled]);
 
   return (
     <SharedDataContext.Provider

@@ -132,6 +132,15 @@ def search_antibodies(
         ))
     )
 
+    # Subquery: antibody IDs that have a matching lot number
+    lot_ab_ids = (
+        db.query(Lot.antibody_id)
+        .filter(
+            Lot.lab_id == target_lab_id,
+            Lot.lot_number.ilike(term),
+        )
+    )
+
     # 1. Find matching antibodies
     search_query = db.query(Antibody).filter(
         Antibody.lab_id == target_lab_id,
@@ -143,6 +152,7 @@ def search_antibodies(
             Antibody.catalog_number.ilike(term),
             Antibody.name.ilike(term),
             Antibody.id.in_(component_ab_ids),
+            Antibody.id.in_(lot_ab_ids),
         ),
     )
 

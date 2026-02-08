@@ -5,13 +5,14 @@ import type { GlobalSearchResult } from "../api/types";
 import { Search, Building2, FlaskConical, TestTubes } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { qcBadgeClass } from "../components/QcBadge";
 
 export default function GlobalSearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GlobalSearchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { startImpersonation } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
@@ -205,15 +206,7 @@ export default function GlobalSearchPage() {
                       : "—"}
                   </td>
                   <td>
-                    <span
-                      className={`badge ${
-                        lot.qc_status === "approved"
-                          ? "badge-success"
-                          : lot.qc_status === "failed"
-                          ? "badge-danger"
-                          : "badge-warning"
-                      }`}
-                    >
+                    <span className={`badge ${qcBadgeClass(lot.qc_status)}`}>
                       {lot.qc_status}
                     </span>
                   </td>
