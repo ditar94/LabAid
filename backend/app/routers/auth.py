@@ -1,6 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -27,6 +29,8 @@ from app.schemas.schemas import (
     UserOut,
 )
 
+limiter = Limiter(key_func=get_remote_address)
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # Role hierarchy for scope checks (higher index = higher privilege)
@@ -40,7 +44,8 @@ _ROLE_RANK = {
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(func.lower(User.email) == body.email.lower(), User.is_active.is_(True)).first()
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(

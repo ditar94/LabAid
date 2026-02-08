@@ -515,3 +515,86 @@ def get_temp_storage_summary(
     total = sum(l.vial_count for l in lots)
 
     return TempStorageSummary(total_vials=total, unit_id=temp_unit.id, lots=lots)
+
+
+# ── Delete / archive storage unit ────────────────────────────────────────
+
+
+class DeleteStorageUnitOut(BaseModel):
+    id: UUID
+    name: str
+    deleted: bool
+    message: str
+
+
+@router.delete("/units/{unit_id}", response_model=DeleteStorageUnitOut)
+def delete_storage_unit(
+    unit_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+):
+    """
+    Soft-delete a storage unit (set is_active=False).
+    Rejects if the unit contains vials or is the lab's temporary storage.
+    Vials must be moved out before the unit can be removed.
+    """
+    q = db.query(StorageUnit).filter(StorageUnit.id == unit_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(StorageUnit.lab_id == current_user.lab_id)
+    unit = q.first()
+
+    if not unit:
+        raise HTTPException(status_code=404, detail="Storage unit not found")
+
+    if unit.is_temporary:
+        raise HTTPException(status_code=400, detail="Cannot delete temporary storage")
+
+    if not unit.is_active:
+        raise HTTPException(status_code=400, detail="Storage unit is already deleted")
+
+    # Check for vials still stored in this unit (non-archived lots only)
+    occupied_count = (
+        db.query(Vial)
+        .join(StorageCell, Vial.location_cell_id == StorageCell.id)
+        .join(Lot, Vial.lot_id == Lot.id)
+        .filter(
+            StorageCell.storage_unit_id == unit_id,
+            Lot.is_archived.is_(False),
+        )
+        .count()
+    )
+    if occupied_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete: {occupied_count} vial(s) still stored in this unit. Move them first.",
+        )
+
+    # Clear any pending lot requests referencing this unit
+    from app.models.models import LotRequest, LotRequestStatus
+
+    db.query(LotRequest).filter(
+        LotRequest.storage_unit_id == unit_id,
+        LotRequest.status == LotRequestStatus.PENDING,
+    ).update({LotRequest.storage_unit_id: None})
+
+    unit.is_active = False
+
+    log_audit(
+        db,
+        lab_id=unit.lab_id,
+        user_id=current_user.id,
+        action="storage_unit.deleted",
+        entity_type="storage_unit",
+        entity_id=unit.id,
+        before_state={"name": unit.name, "is_active": True},
+        after_state={"name": unit.name, "is_active": False},
+    )
+
+    db.commit()
+
+    return DeleteStorageUnitOut(
+        id=unit.id,
+        name=unit.name,
+        deleted=True,
+        message=f"Storage unit '{unit.name}' has been removed.",
+    )

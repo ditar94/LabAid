@@ -76,6 +76,7 @@ def snapshot_lab(lab) -> dict:
         "id": str(lab.id),
         "name": lab.name,
         "is_active": lab.is_active,
+        "billing_status": getattr(lab, "billing_status", None),
         "settings": lab.settings or {},
     }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
-import type { Lab } from "../api/types";
+import type { Lab, BillingStatus } from "../api/types";
 import { Building2, LogIn } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
@@ -18,6 +18,10 @@ export default function LabsPage() {
   const [suspendPrompt, setSuspendPrompt] = useState<{ id: string; name: string } | null>(null);
   const [suspendLoading, setSuspendLoading] = useState(false);
   const [enteringLabId, setEnteringLabId] = useState<string | null>(null);
+  const [editingTrialId, setEditingTrialId] = useState<string | null>(null);
+  const [trialDate, setTrialDate] = useState("");
+  const [editingBillingUrlId, setEditingBillingUrlId] = useState<string | null>(null);
+  const [billingUrl, setBillingUrl] = useState("");
   const { addToast } = useToast();
   const { startImpersonation } = useAuth();
   const navigate = useNavigate();
@@ -66,6 +70,17 @@ export default function LabsPage() {
     }
   };
 
+  const handleBillingChange = async (labId: string, status: BillingStatus) => {
+    try {
+      await api.patch(`/labs/${labId}/billing`, { billing_status: status });
+      await load();
+      refreshLabs();
+      addToast(`Billing status updated to ${status.replace("_", " ")}`, "success");
+    } catch {
+      addToast("Failed to update billing status", "danger");
+    }
+  };
+
   const handleEnterLab = async (labId: string) => {
     setEnteringLabId(labId);
     try {
@@ -76,6 +91,30 @@ export default function LabsPage() {
       addToast(detail, "danger");
     } finally {
       setEnteringLabId(null);
+    }
+  };
+
+  const handleTrialDateSave = async (labId: string) => {
+    try {
+      await api.patch(`/labs/${labId}/trial`, {
+        trial_ends_at: trialDate ? new Date(trialDate).toISOString() : null,
+      });
+      setEditingTrialId(null);
+      await load();
+      addToast("Trial end date updated", "success");
+    } catch {
+      addToast("Failed to update trial date", "danger");
+    }
+  };
+
+  const handleBillingUrlSave = async (labId: string) => {
+    try {
+      await api.patch(`/labs/${labId}/settings`, { billing_url: billingUrl || null });
+      setEditingBillingUrlId(null);
+      await load();
+      addToast("Billing URL updated", "success");
+    } catch {
+      addToast("Failed to update billing URL", "danger");
     }
   };
 
@@ -120,6 +159,9 @@ export default function LabsPage() {
             <tr>
               <th>Name</th>
               <th>Status</th>
+              <th>Billing</th>
+              <th>Trial Ends</th>
+              <th>Billing URL</th>
               <th>Support Access</th>
               <th>Created At</th>
               <th></th>
@@ -148,6 +190,74 @@ export default function LabsPage() {
                       <div className="active-switch-thumb" />
                     </div>
                   </div>
+                </td>
+                <td>
+                  <select
+                    className="billing-select"
+                    value={l.billing_status || "trial"}
+                    onChange={(e) => handleBillingChange(l.id, e.target.value as BillingStatus)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="trial">Trial</option>
+                    <option value="active">Active</option>
+                    <option value="past_due">Past Due</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </td>
+                <td>
+                  {l.billing_status === "trial" ? (
+                    editingTrialId === l.id ? (
+                      <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <input
+                          type="date"
+                          value={trialDate}
+                          onChange={(e) => setTrialDate(e.target.value)}
+                          style={{ width: 140 }}
+                        />
+                        <button className="btn-sm" onClick={() => handleTrialDateSave(l.id)}>Save</button>
+                        <button className="btn-sm btn-secondary" onClick={() => setEditingTrialId(null)}>Cancel</button>
+                      </span>
+                    ) : (
+                      <span
+                        style={{ cursor: "pointer", textDecoration: "underline dotted" }}
+                        title="Click to edit"
+                        onClick={() => {
+                          setEditingTrialId(l.id);
+                          setTrialDate(l.trial_ends_at ? l.trial_ends_at.slice(0, 10) : "");
+                        }}
+                      >
+                        {l.trial_ends_at ? new Date(l.trial_ends_at).toLocaleDateString() : "Not set"}
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-muted">-</span>
+                  )}
+                </td>
+                <td>
+                  {editingBillingUrlId === l.id ? (
+                    <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      <input
+                        type="url"
+                        placeholder="https://..."
+                        value={billingUrl}
+                        onChange={(e) => setBillingUrl(e.target.value)}
+                        style={{ width: 180 }}
+                      />
+                      <button className="btn-sm" onClick={() => handleBillingUrlSave(l.id)}>Save</button>
+                      <button className="btn-sm btn-secondary" onClick={() => setEditingBillingUrlId(null)}>Cancel</button>
+                    </span>
+                  ) : (
+                    <span
+                      style={{ cursor: "pointer", textDecoration: "underline dotted" }}
+                      title="Click to edit"
+                      onClick={() => {
+                        setEditingBillingUrlId(l.id);
+                        setBillingUrl((l.settings as Record<string, unknown>)?.billing_url as string || "");
+                      }}
+                    >
+                      {(l.settings as Record<string, unknown>)?.billing_url ? "Set" : "Not set"}
+                    </span>
+                  )}
                 </td>
                 <td>
                   <span

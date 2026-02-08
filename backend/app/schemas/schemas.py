@@ -71,11 +71,21 @@ class Lab(BaseModel):
     id: UUID
     name: str
     is_active: bool
+    billing_status: str = "trial"
+    trial_ends_at: datetime | None = None
     settings: dict = {}
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class BillingStatusUpdate(BaseModel):
+    billing_status: str  # trial, active, past_due, cancelled
+
+
+class TrialEndsAtUpdate(BaseModel):
+    trial_ends_at: datetime | None
 
 
 class LabSettingsUpdate(BaseModel):
@@ -84,6 +94,7 @@ class LabSettingsUpdate(BaseModel):
     qc_doc_required: bool | None = None
     support_access_enabled: bool | None = None
     storage_enabled: bool | None = None
+    billing_url: str | None = None
 
 
 class SetupRequest(BaseModel):

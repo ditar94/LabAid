@@ -31,10 +31,13 @@ export default function StoragePage() {
   const [error, setError] = useState<string | null>(null);
   const [isMoving, setIsMoving] = useState(false);
   const [form, setForm] = useState({ name: "", rows: 10, cols: 10, temperature: "" });
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   selectedGridRef.current = selectedGrid;
 
   const canCreate = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
+  const canDelete = user?.role === "super_admin" || user?.role === "lab_admin";
   const canStock =
     user?.role === "super_admin" ||
     user?.role === "lab_admin" ||
@@ -101,6 +104,25 @@ export default function StoragePage() {
     if (!grid) return;
     const res = await api.get(`/storage/units/${grid.unit.id}/grid`);
     setSelectedGrid(res.data);
+  };
+
+  // ── Delete storage unit ────────────────────────────────────────────────────
+
+  const handleDeleteUnit = async (unitId: string) => {
+    setDeleteLoading(true);
+    try {
+      const res = await api.delete(`/storage/units/${unitId}`);
+      setMessage(res.data.message);
+      setError(null);
+      setConfirmDeleteId(null);
+      if (selectedGrid?.unit.id === unitId) setSelectedGrid(null);
+      refreshStorageUnits();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to delete storage unit");
+      setConfirmDeleteId(null);
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   // ── Stocking mode ──────────────────────────────────────────────────────────
@@ -319,6 +341,27 @@ export default function StoragePage() {
                 </>
               )}
             </p>
+            {canDelete && !unit.is_temporary && (
+              confirmDeleteId === unit.id ? (
+                <div className="confirm-delete-bar" onClick={(e) => e.stopPropagation()}>
+                  <span>Delete this unit?</span>
+                  <button className="btn-sm btn-danger" disabled={deleteLoading} onClick={() => handleDeleteUnit(unit.id)}>
+                    {deleteLoading ? "Deleting…" : "Yes, delete"}
+                  </button>
+                  <button className="btn-sm btn-secondary" onClick={() => setConfirmDeleteId(null)}>Cancel</button>
+                </div>
+              ) : (
+                <button
+                  className="btn-icon btn-delete-unit"
+                  title="Delete storage unit"
+                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(unit.id); }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              )
+            )}
           </div>
         ))}
         {units.length === 0 && (

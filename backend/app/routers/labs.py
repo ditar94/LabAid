@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from typing import List
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.database import get_db
 from app.models import models
+from app.models.models import BillingStatus
 from app.schemas import schemas
 from app.middleware.auth import get_current_user, require_role
 from app.services.audit import log_audit, snapshot_lab
@@ -32,6 +34,7 @@ def create_lab(
             detail="Not enough permissions",
         )
     db_lab = models.Lab(name=lab.name)
+    db_lab.trial_ends_at = datetime.now(timezone.utc) + timedelta(days=7)
     db.add(db_lab)
     db.flush()
 
@@ -77,7 +80,12 @@ def get_my_lab_settings(
     lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
-    return lab.settings or {}
+    return {
+        **(lab.settings or {}),
+        "billing_status": lab.billing_status,
+        "is_active": lab.is_active,
+        "trial_ends_at": lab.trial_ends_at.isoformat() if lab.trial_ends_at else None,
+    }
 
 
 @router.patch("/{lab_id}/settings", response_model=schemas.Lab)
@@ -159,6 +167,85 @@ def suspend_lab(
                 except Exception:
                     pass
             doc.storage_class = new_class
+
+    db.commit()
+    db.refresh(lab)
+    return lab
+
+
+@router.patch("/{lab_id}/billing", response_model=schemas.Lab)
+def update_billing_status(
+    lab_id: UUID,
+    body: schemas.BillingStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    """
+    Update a lab's billing status. Automatically suspends labs that become
+    past_due/cancelled, and reactivates labs that become active/trial.
+    """
+    valid = {s.value for s in BillingStatus}
+    if body.billing_status not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid billing_status. Must be one of: {', '.join(valid)}")
+
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    before = snapshot_lab(lab)
+    old_status = lab.billing_status
+    lab.billing_status = body.billing_status
+    lab.billing_updated_at = datetime.now(timezone.utc)
+
+    # Auto-suspend when billing lapses; auto-reactivate when restored
+    if body.billing_status in (BillingStatus.PAST_DUE.value, BillingStatus.CANCELLED.value):
+        if lab.is_active:
+            lab.is_active = False
+    elif body.billing_status in (BillingStatus.ACTIVE.value, BillingStatus.TRIAL.value):
+        if not lab.is_active:
+            lab.is_active = True
+
+    log_audit(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="lab.billing_updated",
+        entity_type="lab",
+        entity_id=lab.id,
+        before_state=before,
+        after_state=snapshot_lab(lab),
+        note=f"Billing status: {old_status} → {body.billing_status}",
+    )
+
+    db.commit()
+    db.refresh(lab)
+    return lab
+
+
+@router.patch("/{lab_id}/trial", response_model=schemas.Lab)
+def update_trial_ends_at(
+    lab_id: UUID,
+    body: schemas.TrialEndsAtUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    before = snapshot_lab(lab)
+    lab.trial_ends_at = body.trial_ends_at
+
+    log_audit(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="lab.trial_updated",
+        entity_type="lab",
+        entity_id=lab.id,
+        before_state=before,
+        after_state=snapshot_lab(lab),
+    )
 
     db.commit()
     db.refresh(lab)

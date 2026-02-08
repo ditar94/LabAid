@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
@@ -70,7 +71,13 @@ class LabSuspensionMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.routers.auth import limiter
+
 app = FastAPI(title="LabAid - Flow Cytometry Inventory", version="1.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(LabSuspensionMiddleware)
 app.add_middleware(
@@ -98,4 +105,29 @@ app.include_router(lot_requests.router)
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    checks: dict = {}
+
+    # Database connectivity
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {e}"
+    finally:
+        db.close()
+
+    # Object storage connectivity
+    from app.services.object_storage import object_storage
+
+    if object_storage.enabled:
+        try:
+            object_storage._client.head_bucket(Bucket=object_storage._bucket)
+            checks["storage"] = "ok"
+        except Exception as e:
+            checks["storage"] = f"error: {e}"
+    else:
+        checks["storage"] = "disabled"
+
+    overall = "ok" if all(v == "ok" or v == "disabled" for v in checks.values()) else "degraded"
+    return {"status": overall, "checks": checks}

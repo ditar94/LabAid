@@ -20,6 +20,9 @@ import {
   Sun,
   Moon,
   Monitor,
+  Info,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 
@@ -51,6 +54,50 @@ export default function Layout() {
   // Lab-specific pages should only show if user has a lab context
   const hasLabContext = !isSuperAdmin || isImpersonating;
   const storageEnabled = labSettings.storage_enabled !== false;
+
+  const accountBanner = useMemo(() => {
+    if (!hasLabContext) return null;
+    const billing = labSettings.billing_status;
+    const active = labSettings.is_active;
+    const billingUrl = labSettings.billing_url;
+    if (active === false) {
+      return { variant: "suspended", icon: XCircle, message: "Your lab is suspended. You have read-only access." };
+    }
+    if (billing === "cancelled") {
+      return {
+        variant: "cancelled",
+        icon: XCircle,
+        message: "Your account has been cancelled.",
+        action: billingUrl ? { text: "Reactivate", url: billingUrl } : undefined,
+      };
+    }
+    if (billing === "past_due") {
+      return {
+        variant: "past-due",
+        icon: AlertTriangle,
+        message: "Your payment is past due. Update your payment method to avoid interruption.",
+        action: billingUrl ? { text: "Update payment", url: billingUrl } : undefined,
+      };
+    }
+    if (billing === "trial") {
+      let trialMsg = "Your lab is on a free trial.";
+      if (labSettings.trial_ends_at) {
+        const now = new Date();
+        const ends = new Date(labSettings.trial_ends_at);
+        const diffMs = ends.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays <= 0) {
+          trialMsg = "Your free trial has expired.";
+        } else if (diffDays === 1) {
+          trialMsg = "Your free trial ends tomorrow.";
+        } else {
+          trialMsg = `Your free trial ends in ${diffDays} days.`;
+        }
+      }
+      return { variant: "trial", icon: Info, message: trialMsg };
+    }
+    return null;
+  }, [hasLabContext, labSettings.billing_status, labSettings.is_active, labSettings.trial_ends_at, labSettings.billing_url]);
 
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
@@ -208,6 +255,22 @@ export default function Layout() {
         </div>
       </nav>
       <main className="main-content">
+        {accountBanner && (
+          <div className={`account-banner account-banner--${accountBanner.variant}`} role="status">
+            <accountBanner.icon size={16} />
+            <span>{accountBanner.message}</span>
+            {accountBanner.action && (
+              <a
+                href={accountBanner.action.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="account-banner-link"
+              >
+                {accountBanner.action.text}
+              </a>
+            )}
+          </div>
+        )}
         <Outlet />
       </main>
       <nav className="bottom-nav">

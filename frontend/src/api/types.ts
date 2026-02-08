@@ -27,12 +27,20 @@ export interface LabSettings {
   qc_doc_required?: boolean;
   support_access_enabled?: boolean;
   storage_enabled?: boolean;
+  billing_status?: BillingStatus;
+  is_active?: boolean;
+  trial_ends_at?: string | null;
+  billing_url?: string;
 }
+
+export type BillingStatus = "trial" | "active" | "past_due" | "cancelled";
 
 export interface Lab {
   id: string;
   name: string;
   is_active: boolean;
+  billing_status: BillingStatus;
+  trial_ends_at: string | null;
   settings: LabSettings;
   created_at: string;
 }

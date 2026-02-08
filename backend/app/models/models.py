@@ -64,6 +64,13 @@ class Designation(str, enum.Enum):
     ASR = "asr"
 
 
+class BillingStatus(str, enum.Enum):
+    TRIAL = "trial"
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    CANCELLED = "cancelled"
+
+
 # ── Models ─────────────────────────────────────────────────────────────────
 
 
@@ -73,6 +80,9 @@ class Lab(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(200), nullable=False, unique=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    billing_status = Column(String(20), nullable=False, server_default="trial", default="trial")
+    billing_updated_at = Column(DateTime(timezone=True), nullable=True)
+    trial_ends_at = Column(DateTime(timezone=True), nullable=True)
     settings = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

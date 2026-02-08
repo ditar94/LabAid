@@ -151,25 +151,25 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 ### Must-Do Before Real Users (Blocking)
 
 - [ ] HTTPS enforced in production (Cloud Run / load balancer TLS termination)
-- [ ] CORS lockdown — restrict `allow_origins` to production domain (currently dev-only `localhost:5173`)
-- [ ] Add `VITE_API_BASE_URL` and use it in `frontend/src/api/client.ts`
-- [ ] Secrets management (Key Vault or equivalent); no secrets committed to repo
+- [x] CORS lockdown — configurable via `CORS_ORIGINS` env var; documented in `.env.example`
+- [x] Add `VITE_API_BASE_URL` and use it in `frontend/src/api/client.ts`
+- [x] Secrets management — `.env` gitignored, `.env.example` templates with placeholder values
 - [ ] Database backups enabled — at minimum daily snapshots with tested restore process
 - [x] bcrypt password hashing (passlib + bcrypt scheme)
 - [x] JWT expiration set to reasonable window (8 hours)
 
 ### Should-Do Before Launch
 
-- [ ] Rate limiting on login endpoint (API middleware or Cloud Armor)
-- [ ] Create a storage interface with env-based switch (local disk for dev, GCS for prod)
+- [x] Rate limiting on login endpoint (slowapi — 5 req/min per IP)
+- [x] Create a storage interface with env-based switch (local disk for dev, GCS for prod)
 - [ ] Monitoring + alerts configured for API errors and auth/storage issues
 - [ ] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
-- [ ] Uptime monitoring + health checks (API, DB, storage)
+- [x] Uptime monitoring + health checks (`/api/health` checks DB + storage connectivity)
 - [ ] Staging environment mirrors prod (including storage backend) and runs restore drills
 - [ ] Add staging `.env` + deployment notes to mirror prod config
 - [ ] Deployment automation or documented, repeatable deploy steps
 - [ ] Migration process defined and rehearsed (staging first, then prod)
-- [ ] Add minimal integration tests (auth + document upload/download) and run against staging
+- [x] Add minimal integration tests (auth + document upload/download) with pytest + SQLite test DB
 
 ### Post-Launch / Hardening
 
@@ -446,7 +446,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] View inventory and storage grids
 - [x] Store vials (1-by-1 stocking workflow)
 - [x] Open vials from the scan screen
-- [ ] Can receive inventory (add TECH to receive endpoint's `require_role`)
+- [x] Can receive inventory (add TECH to receive endpoint's `require_role`)
 - [x] Cannot register lots or approve QC
 - [x] If scanned barcode is unregistered or lot not QC'd, show message: "Contact your supervisor"
 
@@ -513,8 +513,8 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] Backend hot-reload via volume mount
 - [x] Frontend Vite dev server with HMR
 - [x] CORS configured for local dev
-- [ ] Payment/account automation: track billing status and trigger lab suspension/reactivation without data loss
-- [ ] Storage templates/racks: ability to remove
+- [x] Payment/account automation: billing_status on Lab (trial/active/past_due/cancelled) with auto-suspend/reactivate
+- [x] Storage templates/racks: ability to remove
 
 ### Unified Storage Grid — Compact + Hover Expand
 > One `StorageGrid` component used identically across the entire app (Storage page, Scan/Search scan result, Scan/Search "View Storage" intent, Search page locator). All views show the same info and interactions — the only difference is which vials are highlighted when viewing a specific lot.
@@ -822,7 +822,7 @@ Shared feature modules — each its own file, callable with page-specific config
 
 *StorageGridPanel Module*
 - [x] `src/components/StorageGridPanel.tsx` — Grid + header (name, temp, capacity bar, actions) + legend panel
-- [ ] Update StoragePage to use StorageGridPanel
+- [x] Update StoragePage to use StorageGridPanel
 - [x] Update ScanSearchPage scan mode to use StorageGridPanel
 - [x] Update InventoryPage drilldown to use StorageGridPanel
 - [x] Update SearchPage to use StorageGridPanel
