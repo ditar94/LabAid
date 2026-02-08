@@ -2149,10 +2149,12 @@ td.mono {
   box-shadow: var(--shadow-xs);
 }
 
-.storage-card:hover {
-  border-color: var(--primary-300);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .storage-card:hover {
+    border-color: var(--primary-300);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
 }
 
 .storage-card.active {
@@ -2197,8 +2199,15 @@ td.mono {
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
-.storage-card:hover .btn-delete-unit { opacity: 1; }
-.btn-delete-unit:hover { color: var(--danger); }
+@media (hover: hover) {
+  .storage-card:hover .btn-delete-unit { opacity: 1; }
+  .btn-delete-unit:hover { color: var(--danger); }
+}
+
+/* On touch devices, always show delete button */
+@media (hover: none) {
+  .btn-delete-unit { opacity: 0.6; }
+}
 
 .confirm-delete-bar {
   display: flex;
@@ -3789,6 +3798,8 @@ h2 .temp-badge {
   justify-content: center;
   z-index: 1000;
   animation: fadeIn var(--duration-fast) var(--ease-out);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modal-content {
@@ -3799,6 +3810,7 @@ h2 .temp-badge {
   width: 90%;
   max-height: 80vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: var(--shadow-2xl);
   animation: scaleIn var(--duration-normal) var(--ease-out);
 }
@@ -5175,15 +5187,53 @@ textarea:focus-visible {
     overflow-x: hidden;
   }
 
+  .app-layout {
+    display: block;
+    min-height: 0;
+  }
+
   .main-content {
     padding: var(--space-lg);
     padding-top: 3.5rem;
-    overflow-x: hidden;
+    overflow: visible !important;
+    height: auto !important;
     max-width: 100vw;
   }
 
   .main-content > * {
     animation: none;
+  }
+
+  /* ── Force card view on mobile (hide list toggle + tables) ─────── */
+  .view-toggle {
+    display: none;
+  }
+
+  .search-results-table {
+    display: none !important;
+  }
+
+  /* ── Sticky form submit buttons ────────────────────────────────── */
+  .register-actions,
+  form > .action-btns:last-child,
+  form > button[type="submit"]:last-child {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: var(--card-bg);
+    padding: var(--space-sm) 0;
+    margin-top: var(--space-sm);
+    border-top: 1px solid var(--border);
+  }
+
+  .modal-content .action-btns:last-child {
+    position: sticky;
+    bottom: calc(-1 * var(--space-xl));
+    z-index: 10;
+    background: var(--card-bg);
+    padding: var(--space-sm) 0 var(--space-xl);
+    margin-top: var(--space-sm);
+    border-top: 1px solid var(--border);
   }
 
   /* ── Sidebar toggle ─────────────────────────────────────────────── */
@@ -5348,54 +5398,8 @@ textarea:focus-visible {
     margin-bottom: var(--space-sm);
   }
 
-  /* ── Bottom Navigation ──────────────────────────────────────────── */
-  .bottom-nav {
-    display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 1100;
-    height: 56px;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: var(--card-bg);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
-    flex-direction: row;
-    align-items: stretch;
-    justify-content: space-around;
-  }
-
-  .bottom-nav-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    flex: 1;
-    text-decoration: none;
-    color: var(--neutral-400);
-    font-size: 0.6rem;
-    font-weight: 600;
-    transition: color var(--duration-fast) var(--ease-out);
-    padding: var(--space-xs) 0;
-  }
-
-  .bottom-nav-item.active {
-    color: var(--primary-500);
-  }
-
-  .bottom-nav-item .nav-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .main-content {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px) + var(--space-lg));
-  }
-
   .toast-container {
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + var(--space-sm));
+    bottom: var(--space-sm);
   }
 
   /* ── Touch Targets (44px minimum) ───────────────────────────────── */
@@ -5421,15 +5425,32 @@ textarea:focus-visible {
     height: 44px;
   }
 
-  /* ── Grid Cell Size Variable ────────────────────────────────────── */
-  :root {
-    --grid-cell-size: 44px;
+  /* ── Grid: fit to viewport on mobile ─────────────────────────────── */
+  .grid-container {
+    overflow-x: hidden;
+    min-width: 0;
+    width: 100%;
   }
 
-  /* ── Mobile Grid Horizontal Scroll ──────────────────────────────── */
-  .grid-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  .move-panel.compact {
+    width: 100%;
+  }
+
+  .storage-grid {
+    width: 100% !important;
+  }
+
+  .grid-cell {
+    width: auto !important;
+    height: auto !important;
+    aspect-ratio: 1;
+    min-width: 0;
+    font-size: clamp(0.5rem, 2vw, 0.75rem);
+  }
+
+  .grid-header,
+  .grid-row-label {
+    font-size: clamp(0.5rem, 2vw, 0.7rem);
   }
 }
 

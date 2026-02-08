@@ -115,16 +115,6 @@ export default function ScanSearchPage() {
     user?.role === "supervisor";
   const canReceive = canEdit || user?.role === "tech";
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    if (!loading && mode === "idle") {
-      inputRef.current?.focus();
-    }
-  }, [loading, mode]);
-
   // Auto-trigger lookup if ?barcode= query param is present (e.g. from StoragePage link)
   useEffect(() => {
     const bc = searchParams.get("barcode");
@@ -283,13 +273,6 @@ export default function ScanSearchPage() {
       setResult(res.data);
     } catch {
       setResult(null);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleLookup();
     }
   };
 
@@ -645,8 +628,11 @@ export default function ScanSearchPage() {
           placeholder="Scan barcode or search antibodies..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          autoFocus
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); inputRef.current?.blur(); handleLookup(); } }}
+          enterKeyHint="go"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
         />
         <BarcodeScannerButton
           onDetected={(value) => {
@@ -655,7 +641,7 @@ export default function ScanSearchPage() {
           }}
           disabled={loading}
         />
-        <button onClick={() => handleLookup()} disabled={loading}>
+        <button onClick={() => { inputRef.current?.blur(); handleLookup(); }} disabled={loading}>
           {loading ? "Looking up..." : "Go"}
         </button>
         {mode !== "idle" && (

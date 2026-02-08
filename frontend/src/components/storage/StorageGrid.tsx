@@ -145,13 +145,17 @@ export default function StorageGrid({
     [expandedCellId]
   );
 
+  const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
+
   const gridElement = (
     <div
       ref={gridRef}
       className={`storage-grid${expandedCellId ? " has-expanded" : ""}`}
       style={{
         display: "grid",
-        gridTemplateColumns: `24px repeat(${cols}, var(--grid-cell-size, 42px))`,
+        gridTemplateColumns: isMobile
+          ? `18px repeat(${cols}, minmax(0, 1fr))`
+          : `24px repeat(${cols}, var(--grid-cell-size, 42px))`,
         gap: "2px",
       }}
       onClick={handleGridClick}
