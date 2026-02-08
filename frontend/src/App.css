@@ -4145,7 +4145,7 @@ h2 .temp-badge {
 .inventory-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  grid-auto-flow: dense;
+  grid-auto-flow: row;
   gap: var(--space-lg);
   margin-bottom: var(--space-xl);
 }
