@@ -14,6 +14,7 @@
 
 import type { ReactNode } from "react";
 import type { Antibody } from "../api/types";
+import CopyButton from "./CopyButton";
 
 /** Default fallback color for fluorochrome circles when no color is set. */
 const DEFAULT_FLUORO_COLOR = "#9ca3af";
@@ -196,7 +197,7 @@ export default function AntibodyCard({
       {/* ── Submeta row: vendor + catalog number ── */}
       <div className="inventory-submeta">
         <span>Vendor: {antibody.vendor || "\u2014"}</span>
-        <span>Catalog #: {antibody.catalog_number || "\u2014"}</span>
+        <span>Catalog #: {antibody.catalog_number ? <>{antibody.catalog_number} <CopyButton value={antibody.catalog_number} /></> : "\u2014"}</span>
       </div>
 
       {/* ── Vial count columns ── */}

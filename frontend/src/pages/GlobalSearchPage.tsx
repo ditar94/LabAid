@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import type { GlobalSearchResult } from "../api/types";
 import { Search, Building2, FlaskConical, TestTubes } from "lucide-react";
+import CopyButton from "../components/CopyButton";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { qcBadgeClass } from "../components/QcBadge";
@@ -161,7 +162,7 @@ export default function GlobalSearchPage() {
                   <td>{ab.fluorochrome || "—"}</td>
                   <td><span className={`badge badge-designation-${ab.designation}`}>{ab.designation.toUpperCase()}</span></td>
                   <td>{ab.clone || "—"}</td>
-                  <td style={{ fontFamily: "var(--font-mono)" }}>{ab.catalog_number || "—"}</td>
+                  <td style={{ fontFamily: "var(--font-mono)" }}>{ab.catalog_number ? <>{ab.catalog_number} <CopyButton value={ab.catalog_number} /></> : "—"}</td>
                   <td>
                     <span className="badge badge-info">{ab.lab_name}</span>
                   </td>

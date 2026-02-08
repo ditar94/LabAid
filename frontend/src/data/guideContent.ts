@@ -340,6 +340,21 @@ To unarchive a lot, find it with "Show inactive" enabled and click the Unarchive
 All edits are recorded in the audit log.`,
       },
       {
+        id: "change-fluoro-color",
+        title: "How to Change a Fluorochrome Color",
+        body: `Fluorochrome colors are used throughout the app to color-code antibody cards and storage grid cells, making it easier to visually identify reagents at a glance.
+
+From the Inventory page (Card view):
+1. Find the antibody card whose fluorochrome color you want to change.
+2. Hover over the colored circle in the top-left corner of the card — a small pencil icon appears.
+3. Click the circle to open a color picker.
+4. Choose the new color. The change is saved immediately and applies everywhere that fluorochrome appears.
+
+This updates the color for the fluorochrome itself, so every antibody using the same fluorochrome will reflect the new color.
+
+Note: Only Admins and Supervisors can change fluorochrome colors. The color circle is not editable for Tech or Read Only users.`,
+      },
+      {
         id: "create-storage",
         title: "How to Create a Storage Unit",
         body: `Storage units represent physical containers like fridges, freezers, or benchtop holders.

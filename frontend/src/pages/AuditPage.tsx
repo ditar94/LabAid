@@ -648,7 +648,7 @@ export default function AuditPage() {
                   log.action.startsWith("vial.") || log.action.startsWith("vials.") ? "action-vial" :
                   log.action.startsWith("lot.") ? "action-lot" :
                   log.action.startsWith("antibody.") ? "action-antibody" :
-                  log.action.startsWith("user.") || log.action.startsWith("storage_unit.") || log.action.startsWith("support.") ? "action-admin" :
+                  log.action.startsWith("user.") || log.action.startsWith("lab.") || log.action.startsWith("storage_unit.") || log.action.startsWith("support.") ? "action-admin" :
                   ""
                 }`}>{log.action}</span>
                 {log.is_support_action && (

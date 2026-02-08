@@ -236,6 +236,8 @@ def update_trial_ends_at(
     before = snapshot_lab(lab)
     lab.trial_ends_at = body.trial_ends_at
 
+    old_date = before.get("trial_ends_at") or "none"
+    new_date = str(body.trial_ends_at) if body.trial_ends_at else "none"
     log_audit(
         db,
         lab_id=lab.id,
@@ -245,6 +247,7 @@ def update_trial_ends_at(
         entity_id=lab.id,
         before_state=before,
         after_state=snapshot_lab(lab),
+        note=f"Trial end date: {old_date} → {new_date}",
     )
 
     db.commit()

@@ -4,6 +4,7 @@
 
 import type { LotListProps } from "./LotTable";
 import ActionMenu from "./ActionMenu";
+import CopyButton from "./CopyButton";
 import QcBadge from "./QcBadge";
 import LotAgeBadge from "./LotAgeBadge";
 import { formatDate } from "../utils/format";
@@ -33,7 +34,7 @@ export default function LotCardList({
   hideQc,
   hideReceived,
 }: LotListProps) {
-  const { expandedBarcode, setExpandedBarcode, copiedId, handleCopy } = useLotBarcodeCopy();
+  const { expandedBarcode, setExpandedBarcode } = useLotBarcodeCopy();
 
   return (
     <div className="lot-card-list">
@@ -149,13 +150,7 @@ export default function LotCardList({
                     ? lot.vendor_barcode.slice(0, 12) + "\u2026"
                     : lot.vendor_barcode}
                 </span>
-                <button
-                  className="lot-card-copy-btn"
-                  onClick={() => handleCopy(lot.id, lot.vendor_barcode!)}
-                  title="Copy barcode"
-                >
-                  {copiedId === lot.id ? "\u2713" : "\u2398"}
-                </button>
+                <CopyButton value={lot.vendor_barcode!} />
               </div>
             )}
           </div>

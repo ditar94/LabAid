@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type { Antibody, Fluorochrome, Lot, StorageGrid as StorageGridData, VialCounts } from "../api/types";
@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import AntibodyCard from "../components/AntibodyCard";
+import CopyButton from "../components/CopyButton";
 import AntibodyForm, { NEW_FLUORO_VALUE, DEFAULT_FLUORO_COLOR, EMPTY_AB_FORM } from "../components/AntibodyForm";
 import ViewToggle from "../components/ViewToggle";
 import LotTable from "../components/LotTable";
@@ -117,7 +118,7 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
           </div>
           {error && <p className="error">{error}</p>}
         </div>
-        <button onClick={onClose} className="modal-close-btn">
+        <button onClick={onClose} className="btn-secondary" style={{ marginTop: "var(--space-lg)" }}>
           {onUploadAndApprove ? "Cancel" : "Close"}
         </button>
       </div>
@@ -159,7 +160,6 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [gridColumns, setGridColumns] = useState(1);
   const gridRef = useRef<HTMLDivElement>(null);
   const [showInactiveLots, setShowInactiveLots] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
@@ -277,27 +277,6 @@ export default function InventoryPage() {
       }
     });
   }, [requestedAntibodyId, autoExpandedId, antibodies]);
-
-  useLayoutEffect(() => {
-    const grid = gridRef.current;
-    if (!grid) return;
-    const minCardWidth = 240;
-    const updateColumns = () => {
-      const styles = window.getComputedStyle(grid);
-      const gap = parseFloat(styles.columnGap || styles.gap || "0") || 0;
-      const width = grid.clientWidth || 1;
-      const cols = Math.max(1, Math.floor((width + gap) / (minCardWidth + gap)));
-      setGridColumns(cols);
-    };
-    updateColumns();
-    const observer = new ResizeObserver(updateColumns);
-    observer.observe(grid);
-    window.addEventListener("resize", updateColumns);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", updateColumns);
-    };
-  }, []);
 
   const fluorochromeByName = useMemo(() => {
     const map = new Map<string, Fluorochrome>();
@@ -1110,13 +1089,12 @@ export default function InventoryPage() {
       {/* ── Card view ── */}
       {view === "card" && (
       <div className="inventory-grid stagger-reveal" ref={gridRef}>
-        {inventoryRows.map((row, index) => {
+        {inventoryRows.map((row) => {
           const fluoro = row.antibody.fluorochrome ? fluorochromeByName.get(
             row.antibody.fluorochrome.toLowerCase()
           ) : undefined;
           const abColor = fluoro?.color || row.antibody.color || undefined;
           const expanded = expandedId === row.antibody.id;
-          const rowIndex = Math.floor(index / gridColumns) + 1;
           return (
             <AntibodyCard
               key={row.antibody.id}
@@ -1127,7 +1105,6 @@ export default function InventoryPage() {
               sealedOnly={sealedOnly}
               expanded={expanded}
               onClick={() => setExpandedId(expanded ? null : row.antibody.id)}
-              style={expanded ? { gridColumn: "1 / -1", gridRow: `${rowIndex}` } : undefined}
               dataAntibodyId={row.antibody.id}
               showActiveToggle={canEdit}
               onToggleActive={() => {
@@ -1140,7 +1117,10 @@ export default function InventoryPage() {
               canEditColor={canEdit && !!row.antibody.fluorochrome}
               onColorChange={(color) => handleUpdateFluoroColor(row.antibody.fluorochrome!, color)}
             >
-              {renderExpandedContent(row, "Lots")}
+              {expanded && renderExpandedContent(
+                row,
+                row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Lots",
+              )}
             </AntibodyCard>
           );
         })}
@@ -1158,8 +1138,7 @@ export default function InventoryPage() {
           <table className="search-results-table">
             <thead>
               <tr>
-                <th>Product Name</th>
-                <th>Target</th>
+                <th>Product</th>
                 <th>Fluorochrome</th>
                 <th>Clone</th>
                 <th>Vendor</th>
@@ -1177,7 +1156,7 @@ export default function InventoryPage() {
                 const abColor = fluoro?.color || ab.color || undefined;
                 const badges = antibodyBadges.get(ab.id);
                 const expanded = expandedId === ab.id;
-                const colCount = 7 + (sealedOnly ? 0 : 2) + 1;
+                const colCount = 6 + (sealedOnly ? 0 : 2) + 1;
                 const title = ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join("-") || "Unnamed";
                 return (
                   <Fragment key={ab.id}>
@@ -1189,18 +1168,20 @@ export default function InventoryPage() {
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           {abColor && <span className="color-dot" style={{ backgroundColor: abColor }} />}
-                          {ab.name || "\u2014"}
+                          <span>
+                            {ab.name || ab.target || "\u2014"}
+                            {ab.name && ab.target && <span className="inventory-subtitle">{ab.target}</span>}
+                          </span>
                           <span className={`badge badge-designation-${ab.designation}`} style={{ fontSize: "0.7em" }}>{ab.designation.toUpperCase()}</span>
                           {badges?.map((b, i) => (
                             <span key={i} className={`badge badge-${b.color}`} style={{ fontSize: "0.7em" }}>{b.label}</span>
                           ))}
                         </div>
                       </td>
-                      <td>{ab.target || "\u2014"}</td>
                       <td>{ab.fluorochrome || "\u2014"}</td>
                       <td>{ab.clone || "\u2014"}</td>
                       <td>{ab.vendor || "\u2014"}</td>
-                      <td>{ab.catalog_number || "\u2014"}</td>
+                      <td>{ab.catalog_number ? <>{ab.catalog_number} <CopyButton value={ab.catalog_number} /></> : "\u2014"}</td>
                       <td>{row.sealed}</td>
                       {!sealedOnly && <td>{row.opened}</td>}
                       {!sealedOnly && <td>{row.depleted}</td>}
@@ -1263,7 +1244,7 @@ export default function InventoryPage() {
                     </td>
                     <td><span className={`badge badge-designation-${row.antibody.designation}`}>{row.antibody.designation.toUpperCase()}</span></td>
                     <td>{row.antibody.vendor || "—"}</td>
-                    <td>{row.antibody.catalog_number || "—"}</td>
+                    <td>{row.antibody.catalog_number ? <>{row.antibody.catalog_number} <CopyButton value={row.antibody.catalog_number} /></> : "—"}</td>
                     {canEdit && (
                       <td>
                         <button

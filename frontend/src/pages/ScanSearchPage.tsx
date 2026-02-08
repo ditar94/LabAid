@@ -15,6 +15,7 @@ import type {
   StorageGrid as StorageGridType,
 } from "../api/types";
 import AntibodyCard from "../components/AntibodyCard";
+import CopyButton from "../components/CopyButton";
 import ViewToggle from "../components/ViewToggle";
 import LotTable from "../components/LotTable";
 import LotCardList from "../components/LotCardList";
@@ -1122,7 +1123,7 @@ export default function ScanSearchPage() {
                           <td><span className={`badge badge-designation-${r.antibody.designation}`}>{r.antibody.designation.toUpperCase()}</span></td>
                           <td>{r.antibody.clone || "\u2014"}</td>
                           <td>{r.antibody.vendor || "\u2014"}</td>
-                          <td>{r.antibody.catalog_number || "\u2014"}</td>
+                          <td>{r.antibody.catalog_number ? <>{r.antibody.catalog_number} <CopyButton value={r.antibody.catalog_number} /></> : "\u2014"}</td>
                           <td>{counts.sealed}</td>
                           <td>{counts.opened}</td>
                           {showInactive && <td>{counts.depleted}</td>}

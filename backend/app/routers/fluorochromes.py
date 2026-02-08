@@ -123,6 +123,7 @@ def update_fluorochrome(
         raise HTTPException(status_code=404, detail="Fluorochrome not found")
 
     before = snapshot_fluorochrome(fluoro)
+    old_color = fluoro.color
     fluoro.color = body.color
 
     log_audit(
@@ -134,6 +135,7 @@ def update_fluorochrome(
         entity_id=fluoro.id,
         before_state=before,
         after_state=snapshot_fluorochrome(fluoro),
+        note=f"{fluoro.name}: color {old_color} → {body.color}",
     )
 
     db.commit()

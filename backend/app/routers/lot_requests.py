@@ -269,18 +269,20 @@ def approve_lot_request(
     req.reviewed_by = current_user.id
     req.reviewed_at = datetime.now(timezone.utc)
 
+    ab_label = ab.name or "-".join(filter(None, [ab.target, ab.fluorochrome])) or "Unnamed"
     log_audit(
         db,
         lab_id=target_lab_id,
         user_id=current_user.id,
         action="lot_request.approved",
-        entity_type="lot_request",
-        entity_id=req.id,
+        entity_type="antibody",
+        entity_id=ab.id,
         after_state={
             "antibody_id": str(ab.id),
             "lot_id": str(lot.id),
             "quantity": req.quantity,
         },
+        note=f"{ab_label}, Lot {lot.lot_number} ({req.quantity} vials)",
     )
 
     db.commit()

@@ -25,6 +25,7 @@ import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import PullToRefresh from "../components/PullToRefresh";
 import LotRequestReviewModal from "../components/LotRequestReviewModal";
+import CopyButton from "../components/CopyButton";
 import LotTable from "../components/LotTable";
 import LotCardList from "../components/LotCardList";
 import { formatDate } from "../utils/format";
@@ -688,7 +689,7 @@ export default function DashboardPage() {
                     <div className="dash-card-row"><span>Approved</span><span>{stats?.approved ?? 0}{ab.approved_low_threshold != null ? ` / ${ab.approved_low_threshold}` : ""}</span></div>
                     <div className="dash-card-row"><span>Pending</span><span>{stats?.pending ?? 0}</span></div>
                     <div className="dash-card-row"><span>Total</span><span>{stats?.total ?? 0}{ab.low_stock_threshold != null ? ` / ${ab.low_stock_threshold}` : ""}</span></div>
-                    <div className="dash-card-row"><span>Catalog #</span><span>{ab.catalog_number || "—"}</span></div>
+                    <div className="dash-card-row"><span>Catalog #</span><span>{ab.catalog_number ? <>{ab.catalog_number} <CopyButton value={ab.catalog_number} /></> : "—"}</span></div>
                   </div>
                 );
               })}
@@ -733,7 +734,7 @@ export default function DashboardPage() {
                           <span className="text-muted text-xs" style={{ marginLeft: 4 }}>/ {ab.low_stock_threshold}</span>
                         )}
                       </td>
-                      <td>{ab.catalog_number || "—"}</td>
+                      <td>{ab.catalog_number ? <>{ab.catalog_number} <CopyButton value={ab.catalog_number} /></> : "—"}</td>
                       <td>
                         {badge && <span className={`badge ${badge.color}`}>{badge.label}</span>}
                       </td>
@@ -771,7 +772,10 @@ export default function DashboardPage() {
               extraColumns={[
                 {
                   header: "Catalog #",
-                  render: (lot) => <>{antibodyMap.get(lot.antibody_id)?.catalog_number || "\u2014"}</>,
+                  render: (lot) => {
+                    const catNum = antibodyMap.get(lot.antibody_id)?.catalog_number;
+                    return catNum ? <>{catNum} <CopyButton value={catNum} /></> : <>&#8212;</>;
+                  },
                 },
                 {
                   header: "Status",

@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import type { Lot } from "../api/types";
 import ActionMenu from "./ActionMenu";
+import CopyButton from "./CopyButton";
 import QcBadge from "./QcBadge";
 import LotAgeBadge from "./LotAgeBadge";
 import { formatDate } from "../utils/format";
@@ -74,7 +75,7 @@ export default function LotTable({
   hideQc,
   hideReceived,
 }: LotListProps) {
-  const { expandedBarcode, setExpandedBarcode, copiedId, handleCopy } = useLotBarcodeCopy();
+  const { expandedBarcode, setExpandedBarcode } = useLotBarcodeCopy();
 
   // Depleted column hidden by sealedOnly OR the explicit hideDepleted flag
   const showDepleted = !sealedOnly && !hideDepleted;
@@ -118,13 +119,7 @@ export default function LotTable({
                       >
                         {lot.vendor_barcode}
                       </span>
-                      <button
-                        className="lot-barcode-copy"
-                        onClick={(e) => { e.stopPropagation(); handleCopy(lot.id, lot.vendor_barcode!); }}
-                        title="Copy barcode"
-                      >
-                        {copiedId === lot.id ? "\u2713" : "\u2398"}
-                      </button>
+                      <CopyButton value={lot.vendor_barcode!} />
                     </>
                   ) : (
                     <span
