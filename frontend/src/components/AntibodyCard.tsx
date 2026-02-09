@@ -38,6 +38,8 @@ interface AntibodyCardProps {
   sealedOnly?: boolean;
   /** If true, card is in expanded state (shows children, full-width). */
   expanded?: boolean;
+  /** If true, card is transitioning from expanded to collapsed. */
+  collapsing?: boolean;
   /** If true, card has a selected visual state (for search pages). */
   selected?: boolean;
   /** Click handler for the card. */
@@ -78,6 +80,7 @@ export default function AntibodyCard({
   fluoroColor,
   sealedOnly = false,
   expanded = false,
+  collapsing = false,
   selected = false,
   onClick,
   children,
@@ -102,7 +105,7 @@ export default function AntibodyCard({
 
   return (
     <div
-      className={`inventory-card${expanded ? " expanded" : ""}${selected ? " selected" : ""}`}
+      className={`inventory-card${expanded ? " expanded" : ""}${collapsing ? " collapsing" : ""}${selected ? " selected" : ""}`}
       data-antibody-id={dataAntibodyId}
       style={style}
       onClick={onClick}
@@ -229,9 +232,11 @@ export default function AntibodyCard({
       <div className="collapse-label">Collapse</div>
 
       {/* ── Expanded content: lot tables, drilldowns, forms (provided by page) ── */}
-      {expanded && children && (
+      {(expanded || collapsing) && children && (
         <div className="inventory-expanded" onClick={(e) => e.stopPropagation()}>
-          {children}
+          <div className="inventory-expanded-inner">
+            {children}
+          </div>
         </div>
       )}
     </div>

@@ -4162,6 +4162,17 @@ h2 .temp-badge {
   margin-bottom: var(--space-xl);
 }
 
+.inventory-card-motion {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  will-change: transform;
+}
+
+.inventory-card-motion > .inventory-card {
+  flex: 1 1 auto;
+}
+
 .inventory-card {
   background: var(--card-bg);
   border: 1px solid var(--border-light);
@@ -4360,9 +4371,36 @@ h2 .temp-badge {
 
 .inventory-expanded {
   margin-top: var(--space-md);
-  padding-top: var(--space-lg);
   border-top: 1px solid var(--border-light);
-  animation: fadeIn var(--duration-normal) var(--ease-out);
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+  transition: grid-template-rows 100ms var(--ease-out),
+              margin-top 100ms var(--ease-out),
+              border-top-color 100ms var(--ease-out),
+              opacity 100ms var(--ease-out);
+}
+
+.inventory-expanded-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding-top: var(--space-lg);
+  transform: translateY(0);
+  transition: padding-top 100ms var(--ease-out), transform 100ms var(--ease-out);
+}
+
+.inventory-card.collapsing .inventory-expanded {
+  grid-template-rows: 0fr;
+  margin-top: 0;
+  border-top-color: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.inventory-card.collapsing .inventory-expanded-inner {
+  padding-top: 0;
+  transform: translateY(-4px);
 }
 
 .expand-label,

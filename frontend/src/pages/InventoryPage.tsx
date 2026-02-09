@@ -143,6 +143,8 @@ type InventoryRow = {
   lowStock: boolean;
 };
 
+const CARD_COLLAPSE_MS = 100;
+
 export default function InventoryPage() {
   const { user, labSettings } = useAuth();
   const { labs, fluorochromes, storageUnits, selectedLab, setSelectedLab, refreshFluorochromes } = useSharedData();
@@ -155,12 +157,15 @@ export default function InventoryPage() {
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
   const [lots, setLots] = useState<Lot[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [closingId, setClosingId] = useState<string | null>(null);
   const [showAbForm, setShowAbForm] = useState(false);
   const [showLotForm, setShowLotForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const cardMotionRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const previousCardRectsRef = useRef<Map<string, { left: number; top: number; width: number; height: number }>>(new Map());
   const [gridCols, setGridCols] = useState(3);
   const [showInactiveLots, setShowInactiveLots] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
@@ -217,6 +222,38 @@ export default function InventoryPage() {
   const isMobile = useMediaQuery("(max-width: 768px)");
   // Card / list view preference (synced with SearchPage via shared key)
   const [view, setView] = useViewPreference();
+  const collapseTimerRef = useRef<number | null>(null);
+
+  const clearCollapseTimer = useCallback(() => {
+    if (collapseTimerRef.current !== null) {
+      window.clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearCollapseTimer(), [clearCollapseTimer]);
+
+  const handleCardToggle = useCallback((antibodyId: string) => {
+    if (expandedId === antibodyId) {
+      if (closingId === antibodyId) {
+        clearCollapseTimer();
+        setClosingId(null);
+        return;
+      }
+      clearCollapseTimer();
+      setClosingId(antibodyId);
+      collapseTimerRef.current = window.setTimeout(() => {
+        setExpandedId((current) => (current === antibodyId ? null : current));
+        setClosingId((current) => (current === antibodyId ? null : current));
+        collapseTimerRef.current = null;
+      }, CARD_COLLAPSE_MS);
+      return;
+    }
+
+    clearCollapseTimer();
+    setClosingId(null);
+    setExpandedId(antibodyId);
+  }, [expandedId, closingId, clearCollapseTimer]);
 
   // ESC closes topmost modal
   useEffect(() => {
@@ -287,6 +324,8 @@ export default function InventoryPage() {
     if (autoExpandedId === requestedAntibodyId) return;
     const exists = antibodies.some((ab) => ab.id === requestedAntibodyId);
     if (!exists) return;
+    clearCollapseTimer();
+    setClosingId(null);
     setExpandedId(requestedAntibodyId);
     setAutoExpandedId(requestedAntibodyId);
     requestAnimationFrame(() => {
@@ -297,7 +336,7 @@ export default function InventoryPage() {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     });
-  }, [requestedAntibodyId, autoExpandedId, antibodies]);
+  }, [requestedAntibodyId, autoExpandedId, antibodies, clearCollapseTimer]);
 
   const fluorochromeByName = useMemo(() => {
     const map = new Map<string, Fluorochrome>();
@@ -1041,44 +1080,73 @@ export default function InventoryPage() {
     );
   };
 
-  // Keep expanded cards anchored by reordering the visual sequence so the
-  // expanded card always starts a new grid row.
+  // Keep expansion motion one-directional: expanded card takes the row and
+  // all siblings from that row flow to the next row.
   const cardRows = useMemo(() => {
     if (!expandedId || gridCols <= 1 || gridCols > 3) return inventoryRows;
     const expandedIdx = inventoryRows.findIndex((r) => r.antibody.id === expandedId);
     if (expandedIdx < 0) return inventoryRows;
 
-    const colOffset = expandedIdx % gridCols;
-    if (colOffset === 0) return inventoryRows;
+    const rowStart = expandedIdx - (expandedIdx % gridCols);
+    const rowEnd = Math.min(rowStart + gridCols, inventoryRows.length);
+    const rowItems = inventoryRows.slice(rowStart, rowEnd);
+    const expandedRow = rowItems.find((r) => r.antibody.id === expandedId);
+    if (!expandedRow) return inventoryRows;
 
-    const before = inventoryRows.slice(0, expandedIdx);
-    const expandedRow = inventoryRows[expandedIdx];
-    const after = inventoryRows.slice(expandedIdx + 1);
-
-    const sameRowBefore = before.slice(before.length - colOffset);
-    const earlierRows = before.slice(0, before.length - colOffset);
-
-    const moveFromEarlierCount = Math.min(colOffset, earlierRows.length);
-    const earlierStay = earlierRows.slice(0, earlierRows.length - moveFromEarlierCount);
-    const movedFromEarlier = earlierRows.slice(earlierRows.length - moveFromEarlierCount);
-
-    const remainingMoveCount = colOffset - moveFromEarlierCount;
-    const movedFromSameRow = remainingMoveCount > 0 ? sameRowBefore.slice(0, remainingMoveCount) : [];
-    const sameRowStay = remainingMoveCount > 0 ? sameRowBefore.slice(remainingMoveCount) : sameRowBefore;
-
+    const rowSiblings = rowItems.filter((r) => r.antibody.id !== expandedId);
     return [
-      ...earlierStay,
-      ...sameRowStay,
+      ...inventoryRows.slice(0, rowStart),
       expandedRow,
-      ...movedFromEarlier,
-      ...movedFromSameRow,
-      ...after,
+      ...rowSiblings,
+      ...inventoryRows.slice(rowEnd),
     ];
   }, [inventoryRows, expandedId, gridCols]);
+
+  // Smoothly animate card movement when row reordering changes.
+  useLayoutEffect(() => {
+    const nextRects = new Map<string, { left: number; top: number; width: number; height: number }>();
+    for (const [id, el] of cardMotionRefs.current.entries()) {
+      const rect = el.getBoundingClientRect();
+      nextRects.set(id, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    }
+
+    const prevRects = previousCardRectsRef.current;
+    for (const [id, next] of nextRects.entries()) {
+      const prev = prevRects.get(id);
+      if (!prev) continue;
+
+      const dx = prev.left - next.left;
+      const dy = prev.top - next.top;
+      const sx = next.width > 0 ? prev.width / next.width : 1;
+      const sy = next.height > 0 ? prev.height / next.height : 1;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue;
+
+      const el = cardMotionRefs.current.get(id);
+      if (!el) continue;
+      el.style.transition = "none";
+      el.style.transformOrigin = "top left";
+      el.style.zIndex = "3";
+      el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+      void el.offsetWidth;
+      el.style.transition = "transform 160ms var(--ease-out)";
+      el.style.transform = "translate(0, 0) scale(1, 1)";
+      const handleEnd = () => {
+        el.style.transition = "";
+        el.style.transform = "";
+        el.style.transformOrigin = "";
+        el.style.zIndex = "";
+        el.removeEventListener("transitionend", handleEnd);
+      };
+      el.addEventListener("transitionend", handleEnd);
+    }
+
+    previousCardRectsRef.current = nextRects;
+  }, [cardRows, expandedId, closingId, gridCols]);
 
   // Helper to render a single antibody card with dynamic grid positioning
   const renderCard = (row: typeof inventoryRows[0]) => {
     const isExpanded = expandedId === row.antibody.id;
+    const isCollapsing = closingId === row.antibody.id;
     const fluoro = row.antibody.fluorochrome ? fluorochromeByName.get(
       row.antibody.fluorochrome.toLowerCase()
     ) : undefined;
@@ -1088,33 +1156,45 @@ export default function InventoryPage() {
       isExpanded && gridCols > 1 && gridCols <= 3 ? { gridColumn: "1 / -1" } : {};
 
     return (
-      <AntibodyCard
+      <div
         key={row.antibody.id}
-        antibody={row.antibody}
-        counts={row}
-        badges={antibodyBadges.get(row.antibody.id)}
-        fluoroColor={abColor}
-        sealedOnly={sealedOnly}
-        expanded={isExpanded}
-        onClick={() => setExpandedId(isExpanded ? null : row.antibody.id)}
-        dataAntibodyId={row.antibody.id}
-        showActiveToggle={canEdit}
-        onToggleActive={() => {
-          setArchiveAbNote("");
-          setArchiveAbPrompt({
-            id: row.antibody.id,
-            label: row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed",
-          });
-        }}
-        canEditColor={canEdit && !!row.antibody.fluorochrome}
-        onColorChange={(color) => handleUpdateFluoroColor(row.antibody.fluorochrome!, color)}
+        className="inventory-card-motion"
         style={gridColumnStyle}
+        ref={(node) => {
+          if (node) {
+            cardMotionRefs.current.set(row.antibody.id, node);
+          } else {
+            cardMotionRefs.current.delete(row.antibody.id);
+          }
+        }}
       >
-        {isExpanded && renderExpandedContent(
-          row,
-          row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Lots",
-        )}
-      </AntibodyCard>
+        <AntibodyCard
+          antibody={row.antibody}
+          counts={row}
+          badges={antibodyBadges.get(row.antibody.id)}
+          fluoroColor={abColor}
+          sealedOnly={sealedOnly}
+          expanded={isExpanded}
+          collapsing={isCollapsing}
+          onClick={() => handleCardToggle(row.antibody.id)}
+          dataAntibodyId={row.antibody.id}
+          showActiveToggle={canEdit}
+          onToggleActive={() => {
+            setArchiveAbNote("");
+            setArchiveAbPrompt({
+              id: row.antibody.id,
+              label: row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed",
+            });
+          }}
+          canEditColor={canEdit && !!row.antibody.fluorochrome}
+          onColorChange={(color) => handleUpdateFluoroColor(row.antibody.fluorochrome!, color)}
+        >
+          {isExpanded && renderExpandedContent(
+            row,
+            row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Lots",
+          )}
+        </AntibodyCard>
+      </div>
     );
   };
 
@@ -1230,7 +1310,11 @@ export default function InventoryPage() {
                   <Fragment key={ab.id}>
                     <tr
                       className={`clickable-row${expanded ? " active" : ""}${row.lowStock ? " low-stock" : ""}`}
-                      onClick={() => setExpandedId(expanded ? null : ab.id)}
+                      onClick={() => {
+                        clearCollapseTimer();
+                        setClosingId(null);
+                        setExpandedId(expanded ? null : ab.id);
+                      }}
                       data-antibody-id={ab.id}
                     >
                       <td>
