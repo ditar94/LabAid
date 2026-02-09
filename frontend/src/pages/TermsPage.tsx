@@ -1,7 +1,10 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 export default function TermsPage() {
+  const { user } = useAuth();
+
   return (
     <div className="login-container">
       <div className="login-orb login-orb-1" aria-hidden="true" />
@@ -9,9 +12,9 @@ export default function TermsPage() {
       <div className="login-orb login-orb-3" aria-hidden="true" />
 
       <div className="login-card login-card--terms">
-        <Link to="/login" className="terms-back-link">
+        <Link to={user ? "/" : "/login"} className="terms-back-link">
           <ArrowLeft size={16} />
-          Back to Login
+          {user ? "Back" : "Back to Login"}
         </Link>
 
         <h1>Terms of Use</h1>

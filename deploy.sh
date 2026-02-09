@@ -70,6 +70,7 @@ setup() {
 deploy_backend() {
   info "Building backend Docker image..."
   docker build \
+    --platform linux/amd64 \
     -f backend/Dockerfile.prod \
     -t "${IMAGE}" \
     backend/

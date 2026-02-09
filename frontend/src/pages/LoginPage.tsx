@@ -41,7 +41,7 @@ export default function LoginPage() {
           </div>
           <div>
             <h1>LabAid</h1>
-            <p className="subtitle">Flow Cytometry Inventory</p>
+            <p className="subtitle">Laboratory Inventory Management</p>
           </div>
         </div>
         <form onSubmit={handleSubmit}>

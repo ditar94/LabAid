@@ -271,7 +271,7 @@ function exportAuditCsv(logs: AuditLogEntry[]) {
 const PAGE_SIZE = 100;
 
 export default function AuditPage() {
-  const { user } = useAuth();
+  const { user, impersonatingLab } = useAuth();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
@@ -301,15 +301,15 @@ export default function AuditPage() {
     return () => document.removeEventListener("click", handler, true);
   }, [actionDropdownOpen]);
 
-  // Load labs for super admin
+  // Load labs for super admin (not when impersonating)
   useEffect(() => {
-    if (user?.role === "super_admin") {
+    if (user?.role === "super_admin" && !impersonatingLab) {
       api.get("/labs/").then((r) => {
         setLabs(r.data);
         if (r.data.length > 0) setSelectedLab(r.data[0].id);
       });
     }
-  }, [user]);
+  }, [user, impersonatingLab]);
 
   // Load antibodies
   useEffect(() => {
@@ -521,7 +521,7 @@ export default function AuditPage() {
       </div>
 
       <div className="audit-filters">
-        {user?.role === "super_admin" && (
+        {user?.role === "super_admin" && labs.length > 0 && (
           <select
             value={selectedLab}
             onChange={(e) => setSelectedLab(e.target.value)}
@@ -628,6 +628,7 @@ export default function AuditPage() {
         </div>
       )}
 
+      <div className="table-scroll">
       <table>
         <thead>
           <tr>
@@ -730,6 +731,7 @@ export default function AuditPage() {
           )}
         </tbody>
       </table>
+      </div>
       {hasMore && (
         <div style={{ textAlign: "center", padding: "1rem" }}>
           <button className="btn-sm btn-secondary" onClick={loadMore}>

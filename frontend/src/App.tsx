@@ -7,9 +7,12 @@ import { lazy, Suspense, type ReactNode } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
+// Eagerly-loaded pages (entry points users hit first — no loading flash)
+import LoginPage from "./pages/LoginPage";
+import SetupPage from "./pages/SetupPage";
+
 // Lazy-loaded pages — each becomes a separate chunk
-const LoginPage = lazy(() => import("./pages/LoginPage"));
-const SetupPage = lazy(() => import("./pages/SetupPage"));
+const LabSetupWizardPage = lazy(() => import("./pages/LabSetupWizardPage"));
 const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const InventoryPage = lazy(() => import("./pages/InventoryPage"));
@@ -28,12 +31,20 @@ function PageLoader() {
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, labSettings } = useAuth();
   const location = useLocation();
   if (loading) return <div className="loading">Loading...</div>;
   if (!user) return <Navigate to="/login" />;
   if (user.must_change_password && location.pathname !== "/change-password") {
     return <Navigate to="/change-password" />;
+  }
+  // Lab admin first-login wizard
+  if (
+    user.role === "lab_admin" &&
+    labSettings.setup_complete !== true &&
+    location.pathname !== "/lab-setup"
+  ) {
+    return <Navigate to="/lab-setup" />;
   }
   return <>{children}</>;
 }
@@ -49,6 +60,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <ChangePasswordPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lab-setup"
+          element={
+            <ProtectedRoute>
+              <LabSetupWizardPage />
             </ProtectedRoute>
           }
         />

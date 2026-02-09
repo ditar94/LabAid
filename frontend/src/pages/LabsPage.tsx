@@ -154,6 +154,7 @@ export default function LabsPage() {
           description="Create your first lab to get started."
         />
       ) : (
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -269,7 +270,7 @@ export default function LabsPage() {
                 </td>
                 <td>{new Date(l.created_at).toLocaleString()}</td>
                 <td>
-                  {l.settings?.support_access_enabled && l.is_active && (
+                  {l.is_active && (
                     <button
                       className="btn-sm"
                       onClick={() => handleEnterLab(l.id)}
@@ -285,6 +286,7 @@ export default function LabsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {suspendPrompt && (

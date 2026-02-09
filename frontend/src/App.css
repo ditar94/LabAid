@@ -868,6 +868,108 @@ body {
   font-size: var(--text-sm);
 }
 
+/* ── Lab Setup Wizard ──────────────────────────────────────────────── */
+
+.setup-steps {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xl);
+}
+
+.setup-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--neutral-600);
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+
+.setup-step-dot.active {
+  background: var(--primary-400);
+  transform: scale(1.4);
+}
+
+.setup-step-dot.done {
+  background: var(--success-500);
+}
+
+.wizard-step {
+  margin-bottom: var(--space-xl);
+}
+
+.wizard-step-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--neutral-100);
+  margin-bottom: var(--space-sm);
+}
+
+.wizard-step-desc {
+  font-size: var(--text-sm);
+  color: var(--neutral-400);
+  line-height: 1.6;
+  margin-bottom: var(--space-lg);
+}
+
+.wizard-control {
+  padding: var(--space-md);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.wizard-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.wizard-toggle-label {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--neutral-200);
+}
+
+.wizard-number-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.wizard-number-row .stability-input {
+  width: 80px;
+}
+
+.wizard-number-label {
+  font-size: var(--text-sm);
+  color: var(--neutral-400);
+}
+
+.wizard-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--neutral-400);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 0;
+  min-height: auto;
+}
+
+.btn-link:hover {
+  color: var(--neutral-200);
+  background: none;
+  transform: none;
+  box-shadow: none;
+}
+
 /* ── Layout ───────────────────────────────────────────────────────────── */
 
 .app-layout {
@@ -963,7 +1065,7 @@ body {
 /* Impersonation banner */
 .impersonation-banner {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-sm);
   margin: 0 var(--space-md) var(--space-sm);
@@ -975,6 +1077,7 @@ body {
 
 .impersonation-banner-info {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-xs);
   color: #fbbf24;
@@ -984,9 +1087,6 @@ body {
 
 .impersonation-lab-name {
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .impersonation-badge {
@@ -1609,6 +1709,86 @@ td.mono {
   font-size: 0.5625rem;
   padding: 0.05rem 0.35rem;
   border-radius: var(--radius-sm);
+}
+
+/* ── Toggle Switch (iOS-style) ────────────────────────────────────────── */
+
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  border: none;
+  background: var(--neutral-300);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.25s ease;
+}
+
+.toggle-switch.toggle-on {
+  background: #34c759;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.25s ease;
+}
+
+.toggle-switch.toggle-on .toggle-thumb {
+  transform: translateX(20px);
+}
+
+.toggle-switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .toggle-switch {
+  background: var(--neutral-600);
+}
+
+[data-theme="dark"] .toggle-switch.toggle-on {
+  background: #30d158;
+}
+
+/* ── Setting Row (label + toggle) ────────────────────────────────────── */
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-label .setting-title {
+  font-weight: 600;
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.setting-label .setting-desc {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 /* ── Forms ────────────────────────────────────────────────────────────── */
@@ -5659,9 +5839,8 @@ textarea:focus-visible {
   }
 
   /* ── Sticky form submit buttons ────────────────────────────────── */
-  .register-actions,
   form > .action-btns:last-child,
-  form > button[type="submit"]:last-child {
+  form > button[type="submit"]:last-child:not(.login-submit) {
     position: sticky;
     bottom: 0;
     z-index: 10;
@@ -5732,15 +5911,24 @@ textarea:focus-visible {
     height: 36px;
   }
 
-  /* ── Tables: wrap instead of scroll ──────────────────────────── */
+  /* ── Tables: horizontal scroll wrapper ───────────────────────── */
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 calc(-1 * var(--space-lg));
+    padding: 0 var(--space-lg);
+  }
+
   table {
     width: 100%;
     table-layout: auto;
+    min-width: 500px;
   }
 
   th, td {
     padding: var(--space-sm) 0.65rem;
     font-size: var(--text-xs);
+    white-space: nowrap;
   }
 
   /* ── Detail header & filters: stack vertically ─────────────────── */
@@ -5925,6 +6113,55 @@ textarea:focus-visible {
 
   .guide-category-count {
     display: none;
+  }
+
+  /* ── Login card: reduce padding on mobile ────────────────────────── */
+  .login-card {
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+  }
+
+  .login-brand {
+    margin-bottom: var(--space-md);
+  }
+
+  .login-footer {
+    margin-top: var(--space-md);
+  }
+
+  /* ── Page header: keep buttons right-aligned ───────────────────── */
+  .page-header {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .page-header .filters {
+    margin-left: auto;
+  }
+
+  /* ── Cell popout: clamp to viewport on mobile ─────────────────── */
+  .cell-popout {
+    position: fixed;
+    left: 50% !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: var(--space-lg) !important;
+    transform: translateX(-50%) scale(0.88) translateY(4px);
+    margin: 0 !important;
+    min-width: 240px;
+    max-width: calc(100vw - 2 * var(--space-lg));
+  }
+
+  .storage-grid:not(.has-expanded) .grid-cell:hover > .cell-popout,
+  .grid-cell.expanded > .cell-popout {
+    transform: translateX(-50%) scale(1) translateY(0);
+  }
+
+  /* ── Inline form: fix color input and button on mobile ─────────── */
+  .inline-form input[type="color"] {
+    width: 48px !important;
+    height: 40px;
+    flex-shrink: 0;
+    align-self: flex-start;
   }
 
   /* ── Terms of Use mobile ─────────────────────────────────────────── */

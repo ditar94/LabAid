@@ -35,28 +35,31 @@ interface SharedDataContextType {
 const SharedDataContext = createContext<SharedDataContextType | null>(null);
 
 export function SharedDataProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading, labSettings } = useAuth();
+  const { user, loading: authLoading, labSettings, impersonatingLab } = useAuth();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
   const [storageUnits, setStorageUnits] = useState<StorageUnit[]>([]);
   const [selectedLab, setSelectedLab] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Fetch labs list (super_admin only)
+  // Fetch labs list (super_admin only, not when impersonating)
   const refreshLabs = useCallback(async () => {
-    if (user?.role !== "super_admin") return;
+    if (user?.role !== "super_admin" || impersonatingLab) return;
     const res = await api.get<Lab[]>("/labs/");
     setLabs(res.data);
-  }, [user?.role]);
+  }, [user?.role, impersonatingLab]);
+
+  // Super admin NOT impersonating — needs explicit lab_id param
+  const needsLabParam = user?.role === "super_admin" && !impersonatingLab;
 
   // Fetch fluorochromes for selected lab
   const refreshFluorochromes = useCallback(async () => {
     if (!selectedLab || !user) return;
     const params: Record<string, string> = {};
-    if (user.role === "super_admin") params.lab_id = selectedLab;
+    if (needsLabParam) params.lab_id = selectedLab;
     const res = await api.get<Fluorochrome[]>("/fluorochromes/", { params });
     setFluorochromes(res.data);
-  }, [selectedLab, user]);
+  }, [selectedLab, user, needsLabParam]);
 
   // Fetch storage units for selected lab
   const refreshStorageUnits = useCallback(async () => {
@@ -66,10 +69,10 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
       return;
     }
     const params: Record<string, string> = {};
-    if (user.role === "super_admin") params.lab_id = selectedLab;
+    if (needsLabParam) params.lab_id = selectedLab;
     const res = await api.get<StorageUnit[]>("/storage/units", { params });
     setStorageUnits(res.data);
-  }, [selectedLab, user, labSettings.storage_enabled]);
+  }, [selectedLab, user, needsLabParam, labSettings.storage_enabled]);
 
   // Refresh both fluorochromes and storage units
   const refreshLabData = useCallback(async () => {
@@ -86,7 +89,8 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
     }
     // Reset loading while we fetch lab data for the newly-logged-in user
     setLoading(true);
-    if (user.role === "super_admin") {
+    if (user.role === "super_admin" && !impersonatingLab) {
+      // Pure super admin — fetch all labs for the selector dropdown
       (async () => {
         try {
           const res = await api.get<Lab[]>("/labs/");
@@ -98,10 +102,12 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       })();
     } else {
+      // Regular user or impersonating super admin — lock to their lab
+      setLabs([]);
       setSelectedLab(user.lab_id || "");
       setLoading(false);
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, impersonatingLab]);
 
   // When selectedLab changes, fetch lab-scoped data (only if logged in)
   useEffect(() => {

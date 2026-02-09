@@ -10,6 +10,7 @@ import { StorageView } from "../components/storage";
 import type { StorageViewHandle } from "../components/storage";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
+import ToggleSwitch from "../components/ToggleSwitch";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
   Clock,
@@ -392,7 +393,7 @@ export default function DashboardPage() {
       />
       <div className="page-header">
         <h1>Dashboard</h1>
-        {user?.role === "super_admin" && (
+        {user?.role === "super_admin" && labs.length > 0 && (
           <div className="lab-selector">
             <ChevronDown size={14} className="lab-selector-icon" />
             <select
@@ -810,9 +811,12 @@ export default function DashboardPage() {
       {(user?.role === "lab_admin" || user?.role === "super_admin") && user?.lab_id && (
         <div ref={labSettingsRef} className={`dashboard-section reveal-on-scroll${labSettingsVisible ? " visible" : ""}`}>
           <h2>Lab Settings</h2>
-          <label className="flex-center">
-            <input
-              type="checkbox"
+          <div className="setting-row">
+            <div className="setting-label">
+              <div className="setting-title">Sealed counts only</div>
+              <div className="setting-desc">Skip opened/depleted vial tracking — only count sealed inventory</div>
+            </div>
+            <ToggleSwitch
               checked={labSettings.sealed_counts_only ?? false}
               onChange={async () => {
                 try {
@@ -825,11 +829,13 @@ export default function DashboardPage() {
                 }
               }}
             />
-            Track sealed counts only (skip opened/depleted tracking)
-          </label>
-          <label className="flex-center mt-md">
-            <input
-              type="checkbox"
+          </div>
+          <div className="setting-row">
+            <div className="setting-label">
+              <div className="setting-title">QC document required</div>
+              <div className="setting-desc">Require a QC document upload before a lot can be approved</div>
+            </div>
+            <ToggleSwitch
               checked={labSettings.qc_doc_required ?? false}
               onChange={async () => {
                 try {
@@ -842,10 +848,12 @@ export default function DashboardPage() {
                 }
               }}
             />
-            Require QC document upload before lot approval
-          </label>
-          <label className="flex-center mt-md">
-            Expiring lot warning (days):
+          </div>
+          <div className="setting-row">
+            <div className="setting-label">
+              <div className="setting-title">Expiry warning</div>
+              <div className="setting-desc">Days before expiration to flag lots as expiring soon</div>
+            </div>
             <input
               type="number"
               min={1}
@@ -865,33 +873,13 @@ export default function DashboardPage() {
                 }
               }}
             />
-          </label>
-          <label className="flex-center mt-md">
-            <input
-              type="checkbox"
-              checked={labSettings.support_access_enabled ?? false}
-              onChange={async () => {
-                try {
-                  await api.patch(`/labs/${user.lab_id}/settings`, {
-                    support_access_enabled: !(labSettings.support_access_enabled ?? false),
-                  });
-                  await refreshUser();
-                  addToast(
-                    labSettings.support_access_enabled
-                      ? "Support access disabled"
-                      : "Support access enabled",
-                    "success"
-                  );
-                } catch {
-                  addToast("Failed to update support access setting", "danger");
-                }
-              }}
-            />
-            Allow LabAid support to access your lab data for troubleshooting
-          </label>
-          <label className="flex-center mt-md">
-            <input
-              type="checkbox"
+          </div>
+          <div className="setting-row">
+            <div className="setting-label">
+              <div className="setting-title">Storage tracking</div>
+              <div className="setting-desc">Track physical storage locations with grids and containers</div>
+            </div>
+            <ToggleSwitch
               checked={labSettings.storage_enabled !== false}
               onChange={async () => {
                 try {
@@ -910,8 +898,7 @@ export default function DashboardPage() {
                 }
               }}
             />
-            Enable storage location tracking (grids, containers)
-          </label>
+          </div>
         </div>
       )}
     </div>

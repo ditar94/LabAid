@@ -3,7 +3,9 @@ import { Search, ChevronDown, BookOpen } from "lucide-react";
 import api from "../api/client";
 import type { SupportTicket, TicketStatus } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { formatDate, formatDateTime } from "../utils/format";
+import ToggleSwitch from "../components/ToggleSwitch";
 import { GUIDE_CONTENT, type RoleBadge } from "../data/guideContent";
 import EmptyState from "../components/EmptyState";
 
@@ -158,7 +160,7 @@ function renderInline(text: string): React.ReactNode {
 }
 
 export default function TicketsPage() {
-  const { user } = useAuth();
+  const { user, labSettings, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"guide" | "tickets">("guide");
 
   // Ticket state
@@ -177,6 +179,8 @@ export default function TicketsPage() {
   const [expandedArticle, setExpandedArticle] = useState<string | null>(null);
 
   const isSuperAdmin = user?.role === "super_admin";
+  const isAdmin = user?.role === "lab_admin" || isSuperAdmin;
+  const { addToast } = useToast();
 
   const load = () => api.get("/tickets/").then((r) => setTickets(r.data));
 
@@ -259,6 +263,34 @@ export default function TicketsPage() {
           </button>
         )}
       </div>
+
+      {isAdmin && user?.lab_id && (
+        <div className="setting-row" style={{ marginBottom: "var(--space-lg)" }}>
+          <div className="setting-label">
+            <div className="setting-title">Support access</div>
+            <div className="setting-desc">Allow LabAid support to access your lab data for troubleshooting</div>
+          </div>
+          <ToggleSwitch
+            checked={labSettings.support_access_enabled ?? false}
+            onChange={async () => {
+              try {
+                await api.patch(`/labs/${user.lab_id}/settings`, {
+                  support_access_enabled: !(labSettings.support_access_enabled ?? false),
+                });
+                await refreshUser();
+                addToast(
+                  labSettings.support_access_enabled
+                    ? "Support access disabled"
+                    : "Support access enabled",
+                  "success"
+                );
+              } catch {
+                addToast("Failed to update support access setting", "danger");
+              }
+            }}
+          />
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="guide-tabs" role="tablist">

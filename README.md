@@ -220,6 +220,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] Bulk vial operations (open/deplete multiple)
 - [x] Dark mode (prep work done in Phase 1 with CSS custom properties)
 - [x] Mobile-responsive layout for tablet use at the bench (covered in Phase 8)
+- [ ] Catalog number auto-lookup — auto-populate vendor/catalog fields by querying vendor databases (BD, Cytek, Sysmex, BioLegend) during antibody registration; deferred due to fragile web scraping dependencies
 
 
 ---
@@ -421,6 +422,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] Support Access Toggle: Lab-level setting to grant/revoke temporary database access for troubleshooting.
 - [x] Global Search for Support: Search for any lab_id, antibody_id, or lot_id across the entire database (Super Admin only).
 - [x] Fix superadmin tabs so that irrelevant views are removed.
+- [x] Lab admin first-login setup wizard — 4-step guided configuration (inventory mode, QC requirement, storage tracking, expiry warning) with skip option
 
 ### Role Hierarchy Rework
 > Rethink roles to match real hospital/lab structure. Current roles (super_admin, lab_admin, tech, read_only) need to be refined.

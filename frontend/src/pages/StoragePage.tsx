@@ -258,7 +258,7 @@ export default function StoragePage() {
       <div className="page-header">
         <h1>Storage Units</h1>
         <div className="filters">
-          {user?.role === "super_admin" && (
+          {user?.role === "super_admin" && labs.length > 0 && (
             <select
               value={selectedLab}
               onChange={(e) => setSelectedLab(e.target.value)}

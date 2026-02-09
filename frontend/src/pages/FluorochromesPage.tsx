@@ -81,7 +81,7 @@ export default function FluorochromesPage() {
       <div className="page-header">
         <h1>Fluorochromes</h1>
         <div className="filters">
-        {user?.role === "super_admin" && (
+        {user?.role === "super_admin" && labs.length > 0 && (
             <select
               value={selectedLab}
               onChange={(e) => setSelectedLab(e.target.value)}

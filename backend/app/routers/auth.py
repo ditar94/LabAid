@@ -303,7 +303,8 @@ def impersonate_lab(
         raise HTTPException(status_code=404, detail="Lab not found")
 
     lab_settings = lab.settings or {}
-    if not lab_settings.get("support_access_enabled"):
+    has_users = db.query(User).filter(User.lab_id == lab.id).count() > 0
+    if has_users and not lab_settings.get("support_access_enabled"):
         raise HTTPException(
             status_code=403,
             detail="Support access is not enabled for this lab",

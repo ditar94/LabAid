@@ -104,7 +104,7 @@ export default function UsersPage() {
       <div className="page-header">
         <h1>Users</h1>
         <div className="filters">
-          {currentUser?.role === "super_admin" && (
+          {currentUser?.role === "super_admin" && labs.length > 0 && (
             <select
               value={selectedLab}
               onChange={(e) => setSelectedLab(e.target.value)}
@@ -189,6 +189,7 @@ export default function UsersPage() {
           description="Create a user to give them access to this lab."
         />
       ) : (
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -220,6 +221,7 @@ export default function UsersPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

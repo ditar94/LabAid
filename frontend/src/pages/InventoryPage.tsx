@@ -1207,7 +1207,7 @@ export default function InventoryPage() {
         <h1>Inventory</h1>
         <div className="filters">
           <ViewToggle view={view} onChange={setView} />
-          {user?.role === "super_admin" && (
+          {user?.role === "super_admin" && labs.length > 0 && (
             <select
               value={selectedLab}
               onChange={(e) => setSelectedLab(e.target.value)}

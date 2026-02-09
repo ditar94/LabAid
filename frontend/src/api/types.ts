@@ -27,6 +27,7 @@ export interface LabSettings {
   qc_doc_required?: boolean;
   support_access_enabled?: boolean;
   storage_enabled?: boolean;
+  setup_complete?: boolean;
   billing_status?: BillingStatus;
   is_active?: boolean;
   trial_ends_at?: string | null;
