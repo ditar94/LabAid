@@ -2478,6 +2478,40 @@ td.mono {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
+/* ── Mobile Popout (portaled to body) ────────────────────────────────── */
+
+.cell-popout.mobile {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
+  min-width: 260px;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  opacity: 1;
+  pointer-events: auto;
+  transition: none;
+  /* Reset desktop absolute positioning */
+  right: auto;
+  bottom: auto;
+  margin: 0;
+}
+
+.cell-popout.mobile .popout-close {
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  top: 6px;
+  right: 6px;
+}
+
+.cell-popout.mobile .popout-action-btn {
+  padding: 10px 12px;
+  font-size: 0.82rem;
+}
+
 /* ── Storage List ─────────────────────────────────────────────────────── */
 
 .storage-list {
@@ -6138,22 +6172,25 @@ textarea:focus-visible {
     margin-left: auto;
   }
 
-  /* ── Cell popout: clamp to viewport on mobile ─────────────────── */
-  .cell-popout {
-    position: fixed;
-    left: 50% !important;
-    right: auto !important;
-    top: auto !important;
-    bottom: var(--space-lg) !important;
-    transform: translateX(-50%) scale(0.88) translateY(4px);
-    margin: 0 !important;
-    min-width: 240px;
-    max-width: calc(100vw - 2 * var(--space-lg));
+  /* ── Cell popout: mobile ─────────────────────────────────────────
+     On mobile, popout is portaled to document.body (not a grid child).
+     No hover popout — only expanded via tap. */
+  .grid-cell.occupied:hover,
+  .grid-cell.expanded {
+    transform: none !important;
   }
 
-  .storage-grid:not(.has-expanded) .grid-cell:hover > .cell-popout,
-  .grid-cell.expanded > .cell-popout {
-    transform: translateX(-50%) scale(1) translateY(0);
+  /* Tap feedback for grid cells */
+  .grid-cell:active {
+    opacity: 0.7;
+  }
+
+  /* Backdrop — portaled to document.body */
+  .mobile-popout-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1000;
   }
 
   /* ── Inline form: fix color input and button on mobile ─────────── */

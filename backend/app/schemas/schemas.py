@@ -60,6 +60,10 @@ class ResetPasswordResponse(BaseModel):
     temp_password: str
 
 
+class RoleUpdateRequest(BaseModel):
+    role: UserRole
+
+
 # ── Lab ────────────────────────────────────────────────────────────────────
 
 

@@ -91,6 +91,7 @@ export default function UsersPage() {
     );
   } else if (currentUser?.role === "lab_admin") {
     roleOptions.push(
+      { value: "lab_admin", label: "Lab Admin" },
       { value: "supervisor", label: "Supervisor" },
       { value: "tech", label: "Tech" },
       { value: "read_only", label: "Read Only" }
@@ -98,6 +99,18 @@ export default function UsersPage() {
   }
 
   const canManage = currentUser?.role === "super_admin" || currentUser?.role === "lab_admin";
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    setError(null);
+    try {
+      await api.patch(`/auth/users/${userId}/role`, { role: newRole });
+      const u = users.find((u) => u.id === userId);
+      addToast(`Role updated for ${u?.full_name || "user"}`, "success");
+      load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to update role");
+    }
+  };
 
   return (
     <div>
@@ -205,7 +218,22 @@ export default function UsersPage() {
               <tr key={u.id}>
                 <td>{u.full_name}</td>
                 <td>{u.email}</td>
-                <td>{u.role.replaceAll("_", " ")}</td>
+                <td>
+                  {canManage && u.id !== currentUser?.id && u.role !== "super_admin" ? (
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                    >
+                      {roleOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    u.role.replaceAll("_", " ")
+                  )}
+                </td>
                 <td>{u.is_active ? "Yes" : "No"}</td>
                 <td className="action-btns">
                   {canManage && u.id !== currentUser?.id && (

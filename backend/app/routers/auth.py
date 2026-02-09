@@ -23,6 +23,7 @@ from app.schemas.schemas import (
     ImpersonateResponse,
     LoginRequest,
     ResetPasswordResponse,
+    RoleUpdateRequest,
     SetupRequest,
     TokenResponse,
     UserCreate,
@@ -142,12 +143,15 @@ def create_user(
         require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
     ),
 ):
-    # Scope check: can't create users at or above your own role level
-    if _ROLE_RANK.get(body.role, 0) >= _ROLE_RANK[current_user.role]:
+    # Scope check: can't create users above your own role level
+    if _ROLE_RANK.get(body.role, 0) > _ROLE_RANK[current_user.role]:
         raise HTTPException(
             status_code=403,
-            detail="Cannot create a user with equal or higher role than your own",
+            detail="Cannot create a user with a higher role than your own",
         )
+    # Only super admin can create other super admins
+    if body.role == UserRole.SUPER_ADMIN and current_user.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Only super admins can create super admins")
 
     if current_user.role == UserRole.SUPER_ADMIN:
         if not lab_id:
@@ -228,11 +232,11 @@ def reset_password(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Scope check: can't reset password of users at or above your role
-    if _ROLE_RANK.get(target.role, 0) >= _ROLE_RANK[current_user.role]:
+    # Scope check: can't reset password of users above your role
+    if _ROLE_RANK.get(target.role, 0) > _ROLE_RANK[current_user.role]:
         raise HTTPException(
             status_code=403,
-            detail="Cannot reset password of a user with equal or higher role",
+            detail="Cannot reset password of a user with a higher role",
         )
 
     temp_pw = generate_temp_password()
@@ -252,6 +256,52 @@ def reset_password(
     db.commit()
 
     return ResetPasswordResponse(temp_password=temp_pw)
+
+
+@router.patch("/users/{user_id}/role", response_model=UserOut)
+def update_user_role(
+    user_id: UUID,
+    body: RoleUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
+    ),
+):
+    q = db.query(User).filter(User.id == user_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(User.lab_id == current_user.lab_id)
+    target = q.first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Can't change your own role
+    if target.id == current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot change your own role")
+
+    # Can't assign a role above your own
+    if _ROLE_RANK.get(body.role, 0) > _ROLE_RANK[current_user.role]:
+        raise HTTPException(status_code=403, detail="Cannot assign a role higher than your own")
+
+    # Only super admin can assign super admin
+    if body.role == UserRole.SUPER_ADMIN and current_user.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Only super admins can assign super admin role")
+
+    before = snapshot_user(target)
+    target.role = body.role
+    log_audit(
+        db,
+        lab_id=target.lab_id or current_user.lab_id,
+        user_id=current_user.id,
+        action="user.role_changed",
+        entity_type="user",
+        entity_id=target.id,
+        before_state=before,
+        after_state=snapshot_user(target),
+        note=f"Role changed from {before['role']} to {body.role.value} by {current_user.email}",
+    )
+    db.commit()
+    db.refresh(target)
+    return target
 
 
 @router.post("/change-password")

@@ -39,9 +39,10 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   if (user.must_change_password && location.pathname !== "/change-password") {
     return <Navigate to="/change-password" />;
   }
-  // Lab admin first-login wizard
+  // Lab admin first-login wizard (only after password change is done)
   if (
     user.role === "lab_admin" &&
+    !user.must_change_password &&
     labSettings.setup_complete !== true &&
     location.pathname !== "/lab-setup"
   ) {

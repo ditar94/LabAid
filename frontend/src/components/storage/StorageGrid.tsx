@@ -1,4 +1,5 @@
 import { Fragment, useState, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import type { StorageCell, StorageUnit, Fluorochrome } from "../../api/types";
 import { qcBadgeClass, qcLabel } from "../QcBadge";
@@ -90,6 +91,11 @@ export default function StorageGrid({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [expandedCellId]);
 
+  // Close expanded cell when entering move mode
+  useEffect(() => {
+    if (selectionMode !== "normal") setExpandedCellId(null);
+  }, [selectionMode]);
+
   const cellMap = new Map<string, StorageCell>();
   for (const cell of cells) {
     cellMap.set(`${cell.row}-${cell.col}`, cell);
@@ -99,6 +105,8 @@ export default function StorageGrid({
   for (const f of fluorochromes) {
     fluoroMap.set(f.name.toLowerCase(), f.color);
   }
+
+  const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
 
   const handleCellClick = useCallback(
     (cell: StorageCell, isClickable: boolean) => {
@@ -110,6 +118,12 @@ export default function StorageGrid({
 
       // "normal" mode
       const hasVial = !!cell.vial_id;
+
+      // On mobile: always toggle expand for occupied cells (no hover state)
+      if (isMobile && hasVial && cell.vial) {
+        setExpandedCellId(expandedCellId === cell.id ? null : cell.id);
+        return;
+      }
 
       // When popoutActions provided: occupied cell taps only toggle popout, never fire onCellClick
       if (hasVial && cell.vial && popoutActions) {
@@ -132,7 +146,7 @@ export default function StorageGrid({
 
       if (isClickable) onCellClick?.(cell);
     },
-    [expandedCellId, onCellClick, selectionMode, popoutActions]
+    [expandedCellId, onCellClick, selectionMode, popoutActions, isMobile]
   );
 
   // Collapse expanded cell when clicking outside
@@ -144,8 +158,6 @@ export default function StorageGrid({
     },
     [expandedCellId]
   );
-
-  const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
 
   const gridElement = (
     <div
@@ -248,74 +260,62 @@ export default function StorageGrid({
                     >
                       {vialInfo.antibody_short_code || vialInfo.antibody_target}
                     </span>
-                    <div
-                      className={`cell-popout${popLeft ? " pop-left" : " pop-right"}${popUp ? " pop-up" : " pop-down"}`}
-                    >
-                      {isExpanded && (
-                        <button
-                          className="popout-close"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedCellId(null);
-                          }}
-                          aria-label="Close"
-                        >
-                          ×
-                        </button>
-                      )}
-                      <div className="popout-header" style={effectiveColor ? { color: effectiveColor } : undefined}>
-                        {vialInfo.antibody_name || [vialInfo.antibody_target, vialInfo.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"}
-                      </div>
-                      <div className="popout-row">
-                        <span className="popout-label">Lot</span>
-                        <span>{vialInfo.lot_number}</span>
-                      </div>
-                      {vialInfo.expiration_date && (
-                        <div className="popout-row">
-                          <span className="popout-label">Exp</span>
-                          <span>{vialInfo.expiration_date}</span>
+                    {/* Desktop: popout inline as child for CSS hover preview */}
+                    {!isMobile && (
+                      <div
+                        className={`cell-popout${popLeft ? " pop-left" : " pop-right"}${popUp ? " pop-up" : " pop-down"}`}
+                      >
+                        {isExpanded && (
+                          <button
+                            className="popout-close"
+                            onClick={(e) => { e.stopPropagation(); setExpandedCellId(null); }}
+                            aria-label="Close"
+                          >×</button>
+                        )}
+                        <div className="popout-header" style={effectiveColor ? { color: effectiveColor } : undefined}>
+                          {vialInfo.antibody_name || [vialInfo.antibody_target, vialInfo.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"}
                         </div>
-                      )}
-                      <div className="popout-row">
-                        <span className="popout-label">Status</span>
-                        <span className={`popout-status popout-status-${vialInfo.status}`}>
-                          {vialInfo.status}
-                        </span>
-                      </div>
-                      {vialInfo.qc_status && (
                         <div className="popout-row">
-                          <span className="popout-label">QC</span>
-                          <span className={`badge badge-sm ${qcBadgeClass(vialInfo.qc_status)}`}>
-                            {qcLabel(vialInfo.qc_status)}
+                          <span className="popout-label">Lot</span>
+                          <span>{vialInfo.lot_number}</span>
+                        </div>
+                        {vialInfo.expiration_date && (
+                          <div className="popout-row">
+                            <span className="popout-label">Exp</span>
+                            <span>{vialInfo.expiration_date}</span>
+                          </div>
+                        )}
+                        <div className="popout-row">
+                          <span className="popout-label">Status</span>
+                          <span className={`popout-status popout-status-${vialInfo.status}`}>
+                            {vialInfo.status}
                           </span>
                         </div>
-                      )}
-                      <div className="popout-cell-label">{cell.label}</div>
-                      {isExpanded && popoutActions && (() => {
-                        const actions = popoutActions(cell);
-                        if (actions.length === 0) return null;
-                        return (
-                          <div className="popout-actions">
-                            {actions.map((action, i) => (
-                              <button
-                                key={i}
-                                className={`popout-action-btn${
-                                  action.variant === "primary" ? " popout-action-primary" :
-                                  action.variant === "danger" ? " popout-action-danger" : ""
-                                }`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedCellId(null);
-                                  action.onClick();
-                                }}
-                              >
-                                {action.label}
-                              </button>
-                            ))}
+                        {vialInfo.qc_status && (
+                          <div className="popout-row">
+                            <span className="popout-label">QC</span>
+                            <span className={`badge badge-sm ${qcBadgeClass(vialInfo.qc_status)}`}>
+                              {qcLabel(vialInfo.qc_status)}
+                            </span>
                           </div>
-                        );
-                      })()}
-                    </div>
+                        )}
+                        <div className="popout-cell-label">{cell.label}</div>
+                        {isExpanded && popoutActions && (() => {
+                          const actions = popoutActions(cell);
+                          if (actions.length === 0) return null;
+                          return (
+                            <div className="popout-actions">
+                              {actions.map((action, i) => (
+                                <button key={i}
+                                  className={`popout-action-btn${action.variant === "primary" ? " popout-action-primary" : action.variant === "danger" ? " popout-action-danger" : ""}`}
+                                  onClick={(e) => { e.stopPropagation(); setExpandedCellId(null); action.onClick(); }}
+                                >{action.label}</button>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <span className="cell-label">{cell.label}</span>
@@ -328,6 +328,76 @@ export default function StorageGrid({
     </div>
   );
 
+  // Mobile: portal both backdrop AND popout to document.body
+  // This avoids all containing-block issues from parent transforms/filters
+  const mobilePopoutPortal = (() => {
+    if (!isMobile || !expandedCellId) return null;
+    const expandedCell = cells.find((c) => c.id === expandedCellId);
+    if (!expandedCell?.vial) return null;
+    const vi = expandedCell.vial;
+    const fc = vi.antibody_fluorochrome
+      ? fluoroMap.get(vi.antibody_fluorochrome.toLowerCase())
+      : undefined;
+    const color = fc || (vi.color ?? undefined);
+    const actions = popoutActions ? popoutActions(expandedCell) : [];
+
+    return createPortal(
+      <>
+        <div
+          className="mobile-popout-backdrop"
+          onClick={() => setExpandedCellId(null)}
+        />
+        <div className="cell-popout mobile">
+          <button
+            className="popout-close"
+            onClick={() => setExpandedCellId(null)}
+            aria-label="Close"
+          >×</button>
+          <div className="popout-header" style={color ? { color } : undefined}>
+            {vi.antibody_name || [vi.antibody_target, vi.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"}
+          </div>
+          <div className="popout-row">
+            <span className="popout-label">Lot</span>
+            <span>{vi.lot_number}</span>
+          </div>
+          {vi.expiration_date && (
+            <div className="popout-row">
+              <span className="popout-label">Exp</span>
+              <span>{vi.expiration_date}</span>
+            </div>
+          )}
+          <div className="popout-row">
+            <span className="popout-label">Status</span>
+            <span className={`popout-status popout-status-${vi.status}`}>
+              {vi.status}
+            </span>
+          </div>
+          {vi.qc_status && (
+            <div className="popout-row">
+              <span className="popout-label">QC</span>
+              <span className={`badge badge-sm ${qcBadgeClass(vi.qc_status)}`}>
+                {qcLabel(vi.qc_status)}
+              </span>
+            </div>
+          )}
+          <div className="popout-cell-label">{expandedCell.label}</div>
+          {actions.length > 0 && (
+            <div className="popout-actions">
+              {actions.map((action, i) => (
+                <button
+                  key={i}
+                  className={`popout-action-btn${action.variant === "primary" ? " popout-action-primary" : action.variant === "danger" ? " popout-action-danger" : ""}`}
+                  onClick={() => { setExpandedCellId(null); action.onClick(); }}
+                >{action.label}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      </>,
+      document.body
+    );
+  })();
+
   // Panel mode: wrap grid with header + legend
   if (unit) {
     const totalCells = cells.length;
@@ -335,6 +405,7 @@ export default function StorageGrid({
 
     return (
       <div className="grid-container">
+        {mobilePopoutPortal}
         <div className="move-panel compact">
           <div className="move-header">
             <div className="move-header-icon">
@@ -374,5 +445,5 @@ export default function StorageGrid({
     );
   }
 
-  return gridElement;
+  return <>{mobilePopoutPortal}{gridElement}</>;
 }
