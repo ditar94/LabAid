@@ -241,6 +241,18 @@
   border-color: var(--neutral-700);
 }
 
+/* Dashboard cards: keep text high-contrast on dark surfaces */
+[data-theme="dark"] .stat-value,
+[data-theme="dark"] .stat-label,
+[data-theme="dark"] .dash-card,
+[data-theme="dark"] .dash-card-title {
+  color: var(--neutral-100);
+}
+
+[data-theme="dark"] .dash-card-row > span:first-child {
+  color: var(--neutral-300);
+}
+
 /* ── Reset & Base ─────────────────────────────────────────────────────── */
 
 *,
@@ -4179,7 +4191,6 @@ h2 .temp-badge {
 .inventory-card.expanded {
   border-color: var(--primary-300);
   box-shadow: var(--shadow-lg);
-  grid-column: 1 / -1;
   overflow: visible;
   transform: none;
   z-index: 2;

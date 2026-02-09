@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type { Antibody, Fluorochrome, Lot, StorageGrid as StorageGridData, VialCounts } from "../api/types";
@@ -161,6 +161,7 @@ export default function InventoryPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const [gridCols, setGridCols] = useState(3);
   const [showInactiveLots, setShowInactiveLots] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     lotId: string;
@@ -233,6 +234,26 @@ export default function InventoryPage() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [archivePrompt, archiveWarning, qcBlockedLot, editLot, editAbId, confirmAction, archiveAbPrompt, modalLot]);
+
+  // Compute grid column count from container width (replaces auto-fit to prevent card swap on expand)
+  const computeCols = useCallback(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const w = el.clientWidth;
+    const minCard = 260;
+    const gap = 16; // var(--space-lg)
+    const cols = Math.max(1, Math.floor((w + gap) / (minCard + gap)));
+    setGridCols(cols);
+  }, []);
+
+  useLayoutEffect(() => {
+    computeCols();
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(computeCols);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [computeCols]);
 
   // If deep-linked with a labId, switch to that lab
   useEffect(() => {
@@ -1020,6 +1041,83 @@ export default function InventoryPage() {
     );
   };
 
+  // Keep expanded cards anchored by reordering the visual sequence so the
+  // expanded card always starts a new grid row.
+  const cardRows = useMemo(() => {
+    if (!expandedId || gridCols <= 1 || gridCols > 3) return inventoryRows;
+    const expandedIdx = inventoryRows.findIndex((r) => r.antibody.id === expandedId);
+    if (expandedIdx < 0) return inventoryRows;
+
+    const colOffset = expandedIdx % gridCols;
+    if (colOffset === 0) return inventoryRows;
+
+    const before = inventoryRows.slice(0, expandedIdx);
+    const expandedRow = inventoryRows[expandedIdx];
+    const after = inventoryRows.slice(expandedIdx + 1);
+
+    const sameRowBefore = before.slice(before.length - colOffset);
+    const earlierRows = before.slice(0, before.length - colOffset);
+
+    const moveFromEarlierCount = Math.min(colOffset, earlierRows.length);
+    const earlierStay = earlierRows.slice(0, earlierRows.length - moveFromEarlierCount);
+    const movedFromEarlier = earlierRows.slice(earlierRows.length - moveFromEarlierCount);
+
+    const remainingMoveCount = colOffset - moveFromEarlierCount;
+    const movedFromSameRow = remainingMoveCount > 0 ? sameRowBefore.slice(0, remainingMoveCount) : [];
+    const sameRowStay = remainingMoveCount > 0 ? sameRowBefore.slice(remainingMoveCount) : sameRowBefore;
+
+    return [
+      ...earlierStay,
+      ...sameRowStay,
+      expandedRow,
+      ...movedFromEarlier,
+      ...movedFromSameRow,
+      ...after,
+    ];
+  }, [inventoryRows, expandedId, gridCols]);
+
+  // Helper to render a single antibody card with dynamic grid positioning
+  const renderCard = (row: typeof inventoryRows[0]) => {
+    const isExpanded = expandedId === row.antibody.id;
+    const fluoro = row.antibody.fluorochrome ? fluorochromeByName.get(
+      row.antibody.fluorochrome.toLowerCase()
+    ) : undefined;
+    const abColor = fluoro?.color || row.antibody.color || undefined;
+
+    const gridColumnStyle: React.CSSProperties =
+      isExpanded && gridCols > 1 && gridCols <= 3 ? { gridColumn: "1 / -1" } : {};
+
+    return (
+      <AntibodyCard
+        key={row.antibody.id}
+        antibody={row.antibody}
+        counts={row}
+        badges={antibodyBadges.get(row.antibody.id)}
+        fluoroColor={abColor}
+        sealedOnly={sealedOnly}
+        expanded={isExpanded}
+        onClick={() => setExpandedId(isExpanded ? null : row.antibody.id)}
+        dataAntibodyId={row.antibody.id}
+        showActiveToggle={canEdit}
+        onToggleActive={() => {
+          setArchiveAbNote("");
+          setArchiveAbPrompt({
+            id: row.antibody.id,
+            label: row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed",
+          });
+        }}
+        canEditColor={canEdit && !!row.antibody.fluorochrome}
+        onColorChange={(color) => handleUpdateFluoroColor(row.antibody.fluorochrome!, color)}
+        style={gridColumnStyle}
+      >
+        {isExpanded && renderExpandedContent(
+          row,
+          row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Lots",
+        )}
+      </AntibodyCard>
+    );
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -1088,46 +1186,16 @@ export default function InventoryPage() {
 
       {/* ── Card view ── */}
       {view === "card" && (
-      <div className="inventory-grid stagger-reveal" ref={gridRef}>
-        {inventoryRows.map((row) => {
-          const fluoro = row.antibody.fluorochrome ? fluorochromeByName.get(
-            row.antibody.fluorochrome.toLowerCase()
-          ) : undefined;
-          const abColor = fluoro?.color || row.antibody.color || undefined;
-          const expanded = expandedId === row.antibody.id;
-          return (
-            <AntibodyCard
-              key={row.antibody.id}
-              antibody={row.antibody}
-              counts={row}
-              badges={antibodyBadges.get(row.antibody.id)}
-              fluoroColor={abColor}
-              sealedOnly={sealedOnly}
-              expanded={expanded}
-              onClick={() => setExpandedId(expanded ? null : row.antibody.id)}
-              dataAntibodyId={row.antibody.id}
-              showActiveToggle={canEdit}
-              onToggleActive={() => {
-                setArchiveAbNote("");
-                setArchiveAbPrompt({
-                  id: row.antibody.id,
-                  label: row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Unnamed",
-                });
-              }}
-              canEditColor={canEdit && !!row.antibody.fluorochrome}
-              onColorChange={(color) => handleUpdateFluoroColor(row.antibody.fluorochrome!, color)}
-            >
-              {expanded && renderExpandedContent(
-                row,
-                row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Lots",
-              )}
-            </AntibodyCard>
-          );
-        })}
-        {inventoryRows.length === 0 && (
-          <p className="empty">No antibodies yet.</p>
-        )}
-      </div>
+        <div
+          className="inventory-grid stagger-reveal"
+          ref={gridRef}
+          style={{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}
+        >
+          {cardRows.map((row) => renderCard(row))}
+          {inventoryRows.length === 0 && (
+            <p className="empty">No antibodies yet.</p>
+          )}
+        </div>
       )}
 
       {/* ── List/table view ── */}
