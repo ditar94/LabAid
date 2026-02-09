@@ -41,15 +41,16 @@ const STEPS: StepConfig[] = [
 ];
 
 export default function LabSetupWizardPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, labSettings, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const isRerun = labSettings.setup_complete === true;
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
-    sealed_counts_only: false,
-    qc_doc_required: false,
-    storage_enabled: true,
-    expiry_warn_days: DEFAULT_EXPIRY_DAYS,
+    sealed_counts_only: labSettings.sealed_counts_only ?? false,
+    qc_doc_required: labSettings.qc_doc_required ?? false,
+    storage_enabled: labSettings.storage_enabled !== false,
+    expiry_warn_days: labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_DAYS,
   });
 
   const current = STEPS[step];
@@ -148,7 +149,9 @@ export default function LabSetupWizardPage() {
                   }
                 />
                 <span className="wizard-toggle-label">
-                  {settings[current.key as keyof typeof settings] ? "Enabled" : "Disabled"}
+                  {current.key === "sealed_counts_only"
+                    ? (settings.sealed_counts_only ? "Sealed counts only" : "Full lifecycle tracking")
+                    : (settings[current.key as keyof typeof settings] ? "Enabled" : "Disabled")}
                 </span>
               </div>
             )}
@@ -165,8 +168,8 @@ export default function LabSetupWizardPage() {
               <ArrowLeft size={16} /> Back
             </button>
           ) : (
-            <button type="button" className="btn-link" onClick={handleSkip}>
-              Skip setup
+            <button type="button" className="btn-link" onClick={isRerun ? () => navigate("/") : handleSkip}>
+              {isRerun ? "Cancel" : "Skip setup"}
             </button>
           )}
           <button

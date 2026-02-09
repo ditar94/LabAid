@@ -59,12 +59,6 @@ export default function FluorochromesPage() {
     }
   };
 
-  const handleDelete = async (f: Fluorochrome) => {
-    await api.delete(`/fluorochromes/${f.id}`);
-    addToast(`"${f.name}" deleted`, "info");
-    load();
-    refreshFluorochromes();
-  };
 
   const handleColorChange = async (fluoro: Fluorochrome, color: string) => {
     try {
@@ -137,7 +131,6 @@ export default function FluorochromesPage() {
             <tr>
               <th>Name</th>
               <th>Color</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -151,14 +144,6 @@ export default function FluorochromesPage() {
                     onChange={(e) => handleColorChange(f, e.target.value)}
                     title={f.color}
                   />
-                </td>
-                <td className="action-btns">
-                  <button
-                    className="btn-sm btn-red"
-                    onClick={() => handleDelete(f)}
-                  >
-                    Delete
-                  </button>
                 </td>
               </tr>
             ))}

@@ -23,6 +23,7 @@ const UsersPage = lazy(() => import("./pages/UsersPage"));
 const LabsPage = lazy(() => import("./pages/LabsPage"));
 const FluorochromesPage = lazy(() => import("./pages/FluorochromesPage"));
 const TicketsPage = lazy(() => import("./pages/TicketsPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const GlobalSearchPage = lazy(() => import("./pages/GlobalSearchPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 
@@ -90,6 +91,7 @@ function AppRoutes() {
           <Route path="/labs" element={<LabsPage />} />
           <Route path="/fluorochromes" element={<FluorochromesPage />} />
           <Route path="/tickets" element={<TicketsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/global-search" element={<GlobalSearchPage />} />
         </Route>
       </Routes>

@@ -94,6 +94,7 @@ class LabSettingsUpdate(BaseModel):
     qc_doc_required: bool | None = None
     support_access_enabled: bool | None = None
     storage_enabled: bool | None = None
+    setup_complete: bool | None = None
     billing_url: str | None = None
 
 

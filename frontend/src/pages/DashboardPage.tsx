@@ -10,7 +10,6 @@ import { StorageView } from "../components/storage";
 import type { StorageViewHandle } from "../components/storage";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
-import ToggleSwitch from "../components/ToggleSwitch";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
   Clock,
@@ -22,7 +21,6 @@ import {
   PackagePlus,
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
-import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import PullToRefresh from "../components/PullToRefresh";
 import LotRequestReviewModal from "../components/LotRequestReviewModal";
@@ -36,7 +34,7 @@ const CURRENT_LOT_EXPIRY_WARN_DAYS = 7;
 const EMPTY_LOT_AGE_MAP = new Map<string, "current" | "new">();
 
 export default function DashboardPage() {
-  const { user, labSettings, refreshUser } = useAuth();
+  const { user, labSettings } = useAuth();
   const { labs, fluorochromes, selectedLab, setSelectedLab, loading: sharedLoading } = useSharedData();
   const navigate = useNavigate();
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
@@ -54,6 +52,7 @@ export default function DashboardPage() {
   const [tempGrid, setTempGrid] = useState<StorageGridData | null>(null);
   const [tempGridLoading, setTempGridLoading] = useState(false);
   const [tempMessage, setTempMessage] = useState<string | null>(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [tempError, setTempError] = useState<string | null>(null);
   const tempViewRef = useRef<StorageViewHandle>(null);
 
@@ -61,7 +60,6 @@ export default function DashboardPage() {
   // Dynamic lot list component — LotCardList on mobile, LotTable on desktop
   const LotList = isMobile ? LotCardList : LotTable;
   const { addToast } = useToast();
-  const [labSettingsRef, labSettingsVisible] = useIntersectionObserver();
 
   const loadData = useCallback(async () => {
     if (!selectedLab) return;
@@ -119,6 +117,7 @@ export default function DashboardPage() {
           new Date(b.expiration_date!).getTime()
       );
     setExpiringLots([...expired, ...expiring]);
+    setDataLoaded(true);
   }, [selectedLab, labSettings.expiry_warn_days, user?.role]);
 
   useEffect(() => {
@@ -378,7 +377,7 @@ export default function DashboardPage() {
     }
   }, [tempGrid, tempSelectedItem]);
 
-  const allClear = cards.every((c) => c.count === 0);
+  const allClear = dataLoaded && cards.every((c) => c.count === 0);
 
   if (sharedLoading) return <div className="loading">Loading...</div>;
 
@@ -808,99 +807,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {(user?.role === "lab_admin" || user?.role === "super_admin") && user?.lab_id && (
-        <div ref={labSettingsRef} className={`dashboard-section reveal-on-scroll${labSettingsVisible ? " visible" : ""}`}>
-          <h2>Lab Settings</h2>
-          <div className="setting-row">
-            <div className="setting-label">
-              <div className="setting-title">Sealed counts only</div>
-              <div className="setting-desc">Skip opened/depleted vial tracking — only count sealed inventory</div>
-            </div>
-            <ToggleSwitch
-              checked={labSettings.sealed_counts_only ?? false}
-              onChange={async () => {
-                try {
-                  await api.patch(`/labs/${user.lab_id}/settings`, {
-                    sealed_counts_only: !(labSettings.sealed_counts_only ?? false),
-                  });
-                  await refreshUser();
-                } catch {
-                  addToast("Failed to update setting", "danger");
-                }
-              }}
-            />
-          </div>
-          <div className="setting-row">
-            <div className="setting-label">
-              <div className="setting-title">QC document required</div>
-              <div className="setting-desc">Require a QC document upload before a lot can be approved</div>
-            </div>
-            <ToggleSwitch
-              checked={labSettings.qc_doc_required ?? false}
-              onChange={async () => {
-                try {
-                  await api.patch(`/labs/${user.lab_id}/settings`, {
-                    qc_doc_required: !(labSettings.qc_doc_required ?? false),
-                  });
-                  await refreshUser();
-                } catch {
-                  addToast("Failed to update setting", "danger");
-                }
-              }}
-            />
-          </div>
-          <div className="setting-row">
-            <div className="setting-label">
-              <div className="setting-title">Expiry warning</div>
-              <div className="setting-desc">Days before expiration to flag lots as expiring soon</div>
-            </div>
-            <input
-              type="number"
-              min={1}
-              max={365}
-              className="stability-input"
-              value={labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS}
-              onChange={async (e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!Number.isFinite(val) || val < 1) return;
-                try {
-                  await api.patch(`/labs/${user.lab_id}/settings`, {
-                    expiry_warn_days: val,
-                  });
-                  await refreshUser();
-                } catch {
-                  addToast("Failed to update setting", "danger");
-                }
-              }}
-            />
-          </div>
-          <div className="setting-row">
-            <div className="setting-label">
-              <div className="setting-title">Storage tracking</div>
-              <div className="setting-desc">Track physical storage locations with grids and containers</div>
-            </div>
-            <ToggleSwitch
-              checked={labSettings.storage_enabled !== false}
-              onChange={async () => {
-                try {
-                  await api.patch(`/labs/${user.lab_id}/settings`, {
-                    storage_enabled: labSettings.storage_enabled === false,
-                  });
-                  await refreshUser();
-                  addToast(
-                    labSettings.storage_enabled === false
-                      ? "Storage tracking enabled"
-                      : "Storage tracking disabled",
-                    "success"
-                  );
-                } catch {
-                  addToast("Failed to update setting", "danger");
-                }
-              }}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

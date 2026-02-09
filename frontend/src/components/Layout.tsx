@@ -11,6 +11,7 @@ import {
   Users,
   Building2,
   LifeBuoy,
+  Settings,
   Palette,
   Search,
   LogOut,
@@ -234,6 +235,12 @@ export default function Layout() {
                 <NavLink to="/fluorochromes" onClick={handleNavClick}>
                   <Palette className="nav-icon" />
                   Fluorochromes
+                </NavLink>
+              )}
+              {hasLabContext && isAdmin && (
+                <NavLink to="/settings" onClick={handleNavClick}>
+                  <Settings className="nav-icon" />
+                  Settings
                 </NavLink>
               )}
             </>
