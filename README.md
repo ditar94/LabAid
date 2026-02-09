@@ -165,10 +165,10 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [ ] Monitoring + alerts configured for API errors and auth/storage issues
 - [ ] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
 - [x] Uptime monitoring + health checks (`/api/health` checks DB + storage connectivity)
-- [ ] Staging environment mirrors prod (including storage backend) and runs restore drills
-- [ ] Add staging `.env` + deployment notes to mirror prod config
+- [x] Staging environment mirrors prod (including storage backend) and runs restore drills
+- [x] Add staging `.env` + deployment notes to mirror prod config
 - [x] Deployment automation or documented, repeatable deploy steps
-- [ ] Migration process defined and rehearsed (staging first, then prod)
+- [x] Migration process defined and rehearsed (staging first, then prod)
 - [x] Add minimal integration tests (auth + document upload/download) with pytest + SQLite test DB
 
 ### Post-Launch / Hardening
