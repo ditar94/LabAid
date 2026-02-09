@@ -797,6 +797,105 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 - [x] **Storage toggle**: `storage_enabled` lab setting (default `true`). When disabled: hides Storage tab, grid sections, storage assignment during receive. Data preserved but hidden.
 
+### Account Creation & Password Reset Overhaul
+> Replace the temporary-password-on-screen flow with email-based invite/reset links. Admins no longer need to manually share passwords — users receive an email and set their own password directly.
+
+**Current Flow (Being Replaced)**
+- Admin creates user → random temp password shown on screen → admin manually shares it (text, verbal, sticky note)
+- Password reset → same: new temp password shown on screen → admin shares it
+- User logs in with temp password → forced to `/change-password` → sets real password
+- Problems: temp password can be lost if admin navigates away; sharing a random string is error-prone; no audit trail on delivery
+
+**New Flow**
+- Admin creates user → backend generates a secure one-time token → email sent to user's address with a "Set Your Password" link
+- Password reset → same: token generated → email sent with "Reset Your Password" link
+- User clicks link → `/set-password?token=abc123` → sets their password directly (no temp password step)
+- `must_change_password` flag and temp password display removed from the creation/reset flows entirely
+
+**Email Service Architecture**
+- Abstracted email backend interface (`EmailBackend`) with two implementations:
+  - `ResendEmailBackend` — calls Resend API to send real emails (production)
+  - `ConsoleEmailBackend` — logs email content (including the set-password link) to stdout/Cloud Run logs (dev/beta)
+- Environment variable `EMAIL_BACKEND` controls which implementation is used (`resend` or `console`)
+- Production sends from `noreply@labaid.io` via Resend (requires DNS verification: SPF + DKIM records on `labaid.io`)
+- Resend API key stored in GCP Secret Manager, injected via `deploy.sh` like other secrets
+
+**Backend Changes**
+
+*New columns on User model:*
+- [ ] `invite_token` (String, nullable, unique) — one-time token for setting password
+- [ ] `invite_token_expires_at` (DateTime, nullable) — token expiry (24 hours from generation)
+- [ ] Alembic migration for new columns
+- [ ] Remove temp password display from `UserCreateResponse` and `ResetPasswordResponse` schemas
+
+*New/modified endpoints:*
+- [ ] `POST /auth/users` (modify) — generate token + expiry instead of temp password; call email backend to send invite email; still set `must_change_password=True`
+- [ ] `POST /auth/users/{id}/reset-password` (modify) — generate new token + expiry; call email backend to send reset email; set `must_change_password=True`
+- [ ] `POST /auth/accept-invite` (new) — accepts `{ token, password }`; validates token exists, not expired, and not already used; hashes password, clears token fields, sets `must_change_password=False`; returns JWT cookie (user is logged in immediately)
+- [ ] Rate limit `/auth/accept-invite` (5/min per IP) to prevent token brute-force
+
+*Email backend:*
+- [ ] `backend/app/services/email.py` — `EmailBackend` base class with `send_email(to, subject, html_body)` method
+- [ ] `ResendEmailBackend` — uses `resend` Python package to send via Resend API
+- [ ] `ConsoleEmailBackend` — prints to stdout: recipient, subject, and full HTML body (including clickable link)
+- [ ] `get_email_backend()` factory reads `settings.EMAIL_BACKEND` and returns the correct implementation
+- [ ] Two email templates: "Welcome to LabAid" (new user) and "Password Reset" (existing user) — both contain the tokenized link
+
+*Token security:*
+- [ ] Token generated with `secrets.token_urlsafe(32)` (256 bits — not brute-forceable)
+- [ ] Token expires after 24 hours
+- [ ] Token is single-use — cleared from DB immediately after password is set
+- [ ] Token is cleared if a new reset is requested (old token invalidated)
+
+**Frontend Changes**
+
+*New page:*
+- [ ] `SetPasswordPage.tsx` — reads `token` from URL query params; shows password + confirm password form (reuse existing ChangePasswordPage styling/validation); calls `POST /auth/accept-invite`; on success, user is logged in and redirected to dashboard
+- [ ] Handle expired/invalid token: show clear error message with "Contact your administrator" guidance
+- [ ] Route: `/set-password` (public, no auth required)
+
+*Modified pages:*
+- [ ] `UsersPage.tsx` — remove temp password yellow banner after user creation; replace with "Invite email sent to {email}" confirmation message
+- [ ] `UsersPage.tsx` — remove temp password banner after password reset; replace with "Password reset email sent to {email}" confirmation
+- [ ] `LoginPage.tsx` — add "Forgot password? Contact your administrator" hint text (no self-service reset — admins trigger it)
+
+*Console backend UX (dev/beta):*
+- [ ] When `EMAIL_BACKEND=console`, also return the set-password link in the API response so the frontend can display it directly (avoids having to check Cloud Run logs during development)
+- [ ] `UsersPage.tsx` — when response includes a link (console mode only), show it in the yellow banner as a clickable URL
+
+**Configuration & Deployment**
+
+*Environment variables:*
+- [ ] `EMAIL_BACKEND` — `resend` (production) or `console` (dev/beta)
+- [ ] `RESEND_API_KEY` — Resend API key (production only, stored in GCP Secret Manager)
+- [ ] `APP_URL` — base URL for email links (e.g., `https://labaid-prod.web.app` or `https://labaid-beta.web.app`)
+- [ ] Update `backend/.env.example` with new variables
+- [ ] Update `deploy.sh` to inject `RESEND_API_KEY` from Secret Manager and set `EMAIL_BACKEND=resend` for production
+
+*DNS setup (one-time):*
+- [ ] Add SPF record for `labaid.io` allowing Resend
+- [ ] Add DKIM record for `labaid.io` from Resend dashboard
+- [ ] Verify domain in Resend dashboard
+
+*Resend account:*
+- [ ] Create Resend account and verify `labaid.io` domain
+- [ ] Generate API key and store in GCP Secret Manager as `RESEND_API_KEY`
+- [ ] Free tier: 3,000 emails/month (more than sufficient for user invites/resets)
+
+**Migration Path**
+- [ ] Existing users with `must_change_password=True` (never completed setup): admin can trigger a password reset which sends them an email
+- [ ] Existing users with `must_change_password=False` (already set password): no action needed, they continue logging in normally
+- [ ] The `/change-password` page remains for users who want to voluntarily change their password (not token-based, requires being logged in)
+
+**Testing**
+- [ ] Integration test: create user → token stored → accept-invite with token → password set, token cleared, user logged in
+- [ ] Integration test: expired token → reject with 400
+- [ ] Integration test: used token → reject with 400
+- [ ] Integration test: reset password → old token invalidated, new token works
+- [ ] Integration test: console email backend logs email content to stdout
+- [ ] Manual test: full flow on beta with console backend (create user → check logs → click link → set password)
+- [ ] Manual test: full flow on production with Resend (create user → check inbox → click link → set password)
+
 ### Code Reusability & UI Consistency Refactor
 
 Shared feature modules — each its own file, callable with page-specific configuration. Ensures consistent UI across all pages while keeping context-appropriate customization. Improves code readability, editability, and maintainability.
