@@ -150,11 +150,11 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 ### Must-Do Before Real Users (Blocking)
 
-- [ ] HTTPS enforced in production (Cloud Run / load balancer TLS termination)
+- [x] HTTPS enforced in production (Cloud Run / load balancer TLS termination)
 - [x] CORS lockdown — configurable via `CORS_ORIGINS` env var; documented in `.env.example`
 - [x] Add `VITE_API_BASE_URL` and use it in `frontend/src/api/client.ts`
 - [x] Secrets management — `.env` gitignored, `.env.example` templates with placeholder values
-- [ ] Database backups enabled — at minimum daily snapshots with tested restore process
+- [x] Database backups enabled — at minimum daily snapshots with tested restore process
 - [x] bcrypt password hashing (passlib + bcrypt scheme)
 - [x] JWT expiration set to reasonable window (8 hours)
 
@@ -167,7 +167,7 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [x] Uptime monitoring + health checks (`/api/health` checks DB + storage connectivity)
 - [ ] Staging environment mirrors prod (including storage backend) and runs restore drills
 - [ ] Add staging `.env` + deployment notes to mirror prod config
-- [ ] Deployment automation or documented, repeatable deploy steps
+- [x] Deployment automation or documented, repeatable deploy steps
 - [ ] Migration process defined and rehearsed (staging first, then prod)
 - [x] Add minimal integration tests (auth + document upload/download) with pytest + SQLite test DB
 
