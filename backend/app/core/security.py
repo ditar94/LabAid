@@ -1,4 +1,4 @@
-import random
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
@@ -27,7 +27,13 @@ def create_access_token(data: dict) -> str:
 
 
 def generate_temp_password() -> str:
-    return f"temp{random.randint(100, 999)}"
+    """Generate a cryptographically secure temporary password."""
+    return secrets.token_urlsafe(12)
+
+
+def generate_csrf_token() -> str:
+    """Generate a cryptographically secure CSRF token."""
+    return secrets.token_urlsafe(32)
 
 
 def decode_access_token(token: str) -> dict | None:

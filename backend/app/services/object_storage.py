@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 
 import boto3
 from botocore.config import Config as BotoConfig
+from botocore.exceptions import ClientError, BotoCoreError
 
 from app.core.config import settings
 
@@ -34,12 +35,18 @@ class ObjectStorageService:
         """Create bucket if it doesn't exist (MinIO dev convenience)."""
         try:
             self._client.head_bucket(Bucket=self._bucket)
-        except Exception:
-            try:
-                self._client.create_bucket(Bucket=self._bucket)
-                logger.info("Created bucket: %s", self._bucket)
-            except Exception as e:
-                logger.warning("Could not create bucket %s: %s", self._bucket, e)
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchBucket"):
+                try:
+                    self._client.create_bucket(Bucket=self._bucket)
+                    logger.info("Created bucket: %s", self._bucket)
+                except (ClientError, BotoCoreError) as create_err:
+                    logger.warning("Could not create bucket %s: %s", self._bucket, create_err)
+            else:
+                logger.warning("Could not check bucket %s: %s", self._bucket, e)
+        except BotoCoreError as e:
+            logger.warning("Could not connect to object storage: %s", e)
 
     @property
     def enabled(self) -> bool:

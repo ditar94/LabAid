@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -13,6 +13,7 @@ from app.schemas.schemas import (
     TicketReplyOut,
     TicketUpdateStatus,
 )
+from app.services.email import notify_new_ticket, notify_ticket_reply
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
 
@@ -46,6 +47,7 @@ def _ticket_to_out(ticket: SupportTicket) -> TicketOut:
 @router.post("/", response_model=TicketOut)
 def create_ticket(
     body: TicketCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)
@@ -67,6 +69,16 @@ def create_ticket(
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        background_tasks.add_task(
+            notify_new_ticket,
+            ticket.lab.name,
+            current_user.full_name,
+            ticket.subject,
+            ticket.message,
+        )
+
     return _ticket_to_out(ticket)
 
 
@@ -111,6 +123,7 @@ def get_ticket(
 def add_reply(
     ticket_id: UUID,
     body: TicketReplyCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(
         require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)
@@ -131,6 +144,16 @@ def add_reply(
     db.add(reply)
     db.commit()
     db.refresh(reply)
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        background_tasks.add_task(
+            notify_ticket_reply,
+            ticket.lab.name,
+            current_user.full_name,
+            ticket.subject,
+            reply.message,
+        )
+
     return TicketReplyOut(
         id=reply.id,
         ticket_id=reply.ticket_id,

@@ -13,6 +13,7 @@ from starlette.responses import FileResponse
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import Lot, LotDocument, User, UserRole
+from app.core.config import settings
 from app.schemas.schemas import LotDocumentOut
 from app.services.audit import log_audit
 from app.services.object_storage import object_storage
@@ -22,6 +23,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 UPLOAD_DIR = "uploads"
+
+MAX_UPLOAD_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "text/csv",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
 
 @router.post("/lots/{lot_id}", response_model=LotDocumentOut)
@@ -33,6 +49,17 @@ def upload_lot_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
+    # Validate MIME type
+    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"File type '{file.content_type}' is not allowed")
+
+    # Validate file size
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
+    if size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail=f"File exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit")
+
     q = db.query(Lot).filter(Lot.id == lot_id)
     if current_user.role != UserRole.SUPER_ADMIN:
         q = q.filter(Lot.lab_id == current_user.lab_id)
@@ -45,12 +72,16 @@ def upload_lot_document(
     if object_storage.enabled:
         key = f"{lot.lab_id}/{lot.id}/{doc_id}_{file.filename}"
         file_data = io.BytesIO(file.file.read())
-        object_storage.upload(
-            key,
-            file_data,
-            content_type=file.content_type or "application/octet-stream",
-            tags={"storage-class": "hot", "lab-active": "true"},
-        )
+        try:
+            object_storage.upload(
+                key,
+                file_data,
+                content_type=file.content_type or "application/octet-stream",
+                tags={"storage-class": "hot", "lab-active": "true"},
+            )
+        except Exception:
+            logger.exception("Failed to upload document to object storage: %s", key)
+            raise HTTPException(status_code=502, detail="File upload failed. Please try again.")
         stored_path = key
     else:
         logger.warning("S3 not configured — writing to local filesystem (not suitable for production)")

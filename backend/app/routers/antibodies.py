@@ -29,6 +29,8 @@ def list_antibodies(
     lab_id: UUID | None = None,
     include_inactive: bool = False,
     designation: str | None = None,
+    limit: int = 500,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -44,7 +46,7 @@ def list_antibodies(
     if designation:
         q = q.filter(Antibody.designation == designation)
 
-    return q.order_by(func.coalesce(Antibody.target, Antibody.name), Antibody.fluorochrome).all()
+    return q.order_by(func.coalesce(Antibody.target, Antibody.name), Antibody.fluorochrome).offset(offset).limit(min(limit, 1000)).all()
 
 
 @router.post("/", response_model=AntibodyOut)

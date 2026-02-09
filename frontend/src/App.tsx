@@ -4,6 +4,7 @@ import { SharedDataProvider } from "./context/SharedDataContext";
 import { ToastProvider } from "./context/ToastContext";
 import Layout from "./components/Layout";
 import { lazy, Suspense, type ReactNode } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
 // Lazy-loaded pages — each becomes a separate chunk
@@ -79,14 +80,16 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <SharedDataProvider>
-          <ToastProvider>
-            <AppRoutes />
-          </ToastProvider>
-        </SharedDataProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <SharedDataProvider>
+            <ToastProvider>
+              <AppRoutes />
+            </ToastProvider>
+          </SharedDataProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

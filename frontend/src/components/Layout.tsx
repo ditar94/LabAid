@@ -230,7 +230,7 @@ export default function Layout() {
                   Support
                 </NavLink>
               )}
-              {hasLabContext && isAdmin && (
+              {hasLabContext && isSupervisor && (
                 <NavLink to="/fluorochromes" onClick={handleNavClick}>
                   <Palette className="nav-icon" />
                   Fluorochromes

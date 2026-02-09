@@ -15,11 +15,10 @@ interface ImpersonatingLab {
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   labSettings: LabSettings;
   impersonatingLab: ImpersonatingLab | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   startImpersonation: (labId: string) => Promise<void>;
   endImpersonation: () => Promise<void>;
@@ -30,9 +29,6 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem("token")
-  );
   const [labSettings, setLabSettings] = useState<LabSettings>({});
   const [impersonatingLab, setImpersonatingLab] = useState<ImpersonatingLab | null>(() => {
     const stored = localStorage.getItem("impersonatingLab");
@@ -40,13 +36,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
   const [loading, setLoading] = useState(true);
 
-  const fetchUser = async (t?: string) => {
-    const headers = t ? { Authorization: `Bearer ${t}` } : undefined;
-    const res = await api.get("/auth/me", { headers });
+  const fetchUser = async () => {
+    const res = await api.get("/auth/me");
     setUser(res.data);
-    // Fetch lab settings after user
     try {
-      const settingsRes = await api.get("/labs/my-settings", { headers });
+      const settingsRes = await api.get("/labs/my-settings");
       setLabSettings(settingsRes.data || {});
     } catch {
       setLabSettings({});
@@ -54,34 +48,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (token) {
-      fetchUser()
-        .catch(() => {
-          localStorage.removeItem("token");
-          localStorage.removeItem("impersonatingLab");
-          setToken(null);
-          setImpersonatingLab(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
-  }, [token]);
+    // Try to fetch user using the HttpOnly cookie
+    fetchUser()
+      .catch(() => {
+        localStorage.removeItem("impersonatingLab");
+        setImpersonatingLab(null);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const login = async (email: string, password: string) => {
-    const res = await api.post("/auth/login", { email, password });
-    const t = res.data.access_token;
-    localStorage.setItem("token", t);
+    await api.post("/auth/login", { email, password });
     localStorage.removeItem("impersonatingLab");
     setImpersonatingLab(null);
-    setToken(t);
-    await fetchUser(t);
+    await fetchUser();
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
+  const logout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // Even if the call fails, clear local state
+    }
     localStorage.removeItem("impersonatingLab");
-    setToken(null);
     setUser(null);
     setLabSettings({});
     setImpersonatingLab(null);
@@ -93,28 +82,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const startImpersonation = async (labId: string) => {
     const res = await api.post("/auth/impersonate", { lab_id: labId });
-    const { token: newToken, lab_name } = res.data;
-    localStorage.setItem("token", newToken);
+    const { lab_name } = res.data;
     const labInfo = { id: labId, name: lab_name };
     localStorage.setItem("impersonatingLab", JSON.stringify(labInfo));
     setImpersonatingLab(labInfo);
-    setToken(newToken);
-    await fetchUser(newToken);
+    await fetchUser();
   };
 
   const endImpersonation = async () => {
-    const res = await api.post("/auth/end-impersonate");
-    const { token: newToken } = res.data;
-    localStorage.setItem("token", newToken);
+    await api.post("/auth/end-impersonate");
     localStorage.removeItem("impersonatingLab");
     setImpersonatingLab(null);
-    setToken(newToken);
-    await fetchUser(newToken);
+    await fetchUser();
   };
 
   return (
     <AuthContext.Provider value={{
-      user, token, labSettings, impersonatingLab,
+      user, labSettings, impersonatingLab,
       login, logout, refreshUser, startImpersonation, endImpersonation, loading,
     }}>
       {children}

@@ -21,6 +21,8 @@ def list_lots(
     antibody_id: UUID | None = None,
     lab_id: UUID | None = None,
     include_archived: bool = False,
+    limit: int = 500,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -35,7 +37,7 @@ def list_lots(
 
     if not include_archived:
         q = q.filter(Lot.is_archived.is_(False))
-    lots = q.options(subqueryload(Lot.documents)).order_by(Lot.created_at.desc()).all()
+    lots = q.options(subqueryload(Lot.documents)).order_by(Lot.created_at.desc()).offset(offset).limit(min(limit, 1000)).all()
 
     if not lots:
         return []

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -8,13 +8,33 @@ from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.models import User, UserRole
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# auto_error=False so we can fall back to cookie auth
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+COOKIE_NAME = "labaid_token"
+CSRF_COOKIE_NAME = "labaid_csrf"
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    bearer_token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    token = None
+
+    # 1. Try Authorization header first (API clients, backward compat)
+    if bearer_token:
+        token = bearer_token
+    else:
+        # 2. Fall back to HttpOnly cookie
+        token = request.cookies.get(COOKIE_NAME)
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+
     payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(

@@ -37,6 +37,8 @@ def list_vials(
     status: VialStatus | None = None,
     storage_unit_id: UUID | None = None,
     lab_id: UUID | None = None,
+    limit: int = 500,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -59,7 +61,7 @@ def list_vials(
             .subquery()
         )
         q = q.filter(Vial.location_cell_id.in_(cell_ids))
-    return q.order_by(Vial.received_at.desc()).all()
+    return q.order_by(Vial.received_at.desc()).offset(offset).limit(min(limit, 1000)).all()
 
 
 @router.post("/receive", response_model=list[VialOut])

@@ -1,19 +1,21 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
     create_access_token,
+    generate_csrf_token,
     generate_temp_password,
     hash_password,
     verify_password,
 )
-from app.middleware.auth import get_current_user, require_role
+from app.middleware.auth import COOKIE_NAME, CSRF_COOKIE_NAME, get_current_user, require_role
 from app.models.models import Lab, User, UserRole
 from app.services.audit import log_audit, snapshot_user
 from app.schemas.schemas import (
@@ -42,10 +44,43 @@ _ROLE_RANK = {
     UserRole.SUPER_ADMIN: 4,
 }
 
+MIN_PASSWORD_LENGTH = 8
+
+
+def _set_auth_cookies(response: Response, token: str) -> None:
+    """Set HttpOnly JWT cookie and readable CSRF cookie on the response."""
+    max_age = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
+        max_age=max_age,
+        path="/",
+    )
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=generate_csrf_token(),
+        httponly=False,  # JS must be able to read this
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
+        max_age=max_age,
+        path="/",
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    """Clear auth cookies."""
+    response.delete_cookie(key=COOKIE_NAME, path="/", domain=settings.COOKIE_DOMAIN)
+    response.delete_cookie(key=CSRF_COOKIE_NAME, path="/", domain=settings.COOKIE_DOMAIN)
+
 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
-def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
+def login(request: Request, response: Response, body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(func.lower(User.email) == body.email.lower(), User.is_active.is_(True)).first()
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(
@@ -55,7 +90,16 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     token = create_access_token(
         {"sub": str(user.id), "lab_id": str(user.lab_id) if user.lab_id else None, "role": user.role.value}
     )
+    _set_auth_cookies(response, token)
+    # Still return token in body for backward compatibility (mobile clients, etc.)
     return TokenResponse(access_token=token)
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """Clear auth cookies."""
+    _clear_auth_cookies(response)
+    return {"detail": "Logged out"}
 
 
 @router.get("/me", response_model=UserOut)
@@ -64,11 +108,17 @@ def get_me(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/setup", response_model=UserOut)
-def initial_setup(body: SetupRequest, db: Session = Depends(get_db)):
+def initial_setup(body: SetupRequest, response: Response, db: Session = Depends(get_db)):
     """One-time setup: create the platform super admin. Only works if no super admin exists."""
     existing = db.query(User).filter(User.role == UserRole.SUPER_ADMIN).first()
     if existing:
         raise HTTPException(status_code=400, detail="Setup already completed")
+
+    if len(body.password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
+        )
 
     user = User(
         lab_id=None,
@@ -81,6 +131,13 @@ def initial_setup(body: SetupRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Auto-login after setup
+    token = create_access_token(
+        {"sub": str(user.id), "lab_id": None, "role": user.role.value}
+    )
+    _set_auth_cookies(response, token)
+
     return user
 
 
@@ -208,11 +265,15 @@ def reset_password(
 @router.post("/change-password")
 def change_password(
     body: ChangePasswordRequest,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if len(body.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(body.new_password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
+        )
 
     current_user.hashed_password = hash_password(body.new_password)
     current_user.must_change_password = False
@@ -228,12 +289,19 @@ def change_password(
 
     db.commit()
 
+    # Issue new cookie with fresh token
+    token = create_access_token(
+        {"sub": str(current_user.id), "lab_id": str(current_user.lab_id) if current_user.lab_id else None, "role": current_user.role.value}
+    )
+    _set_auth_cookies(response, token)
+
     return {"detail": "Password changed successfully"}
 
 
 @router.post("/impersonate", response_model=ImpersonateResponse)
 def impersonate_lab(
     body: ImpersonateRequest,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
 ):
@@ -242,8 +310,8 @@ def impersonate_lab(
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
-    settings = lab.settings or {}
-    if not settings.get("support_access_enabled"):
+    lab_settings = lab.settings or {}
+    if not lab_settings.get("support_access_enabled"):
         raise HTTPException(
             status_code=403,
             detail="Support access is not enabled for this lab",
@@ -256,6 +324,8 @@ def impersonate_lab(
         "role": UserRole.SUPER_ADMIN.value,
         "impersonating": True,
     })
+
+    _set_auth_cookies(response, token)
 
     log_audit(
         db,
@@ -273,6 +343,7 @@ def impersonate_lab(
 
 @router.post("/end-impersonate")
 def end_impersonate(
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
 ):
@@ -296,5 +367,7 @@ def end_impersonate(
         "lab_id": None,
         "role": UserRole.SUPER_ADMIN.value,
     })
+
+    _set_auth_cookies(response, token)
 
     return {"token": token}
