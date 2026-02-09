@@ -689,7 +689,7 @@ export default function DashboardPage() {
                     <div className="dash-card-row"><span>Approved</span><span>{stats?.approved ?? 0}{ab.approved_low_threshold != null ? ` / ${ab.approved_low_threshold}` : ""}</span></div>
                     <div className="dash-card-row"><span>Pending</span><span>{stats?.pending ?? 0}</span></div>
                     <div className="dash-card-row"><span>Total</span><span>{stats?.total ?? 0}{ab.low_stock_threshold != null ? ` / ${ab.low_stock_threshold}` : ""}</span></div>
-                    <div className="dash-card-row"><span>Catalog #</span><span>{ab.catalog_number ? <>{ab.catalog_number} <CopyButton value={ab.catalog_number} /></> : "—"}</span></div>
+                    <div className="dash-card-row"><span>Catalog #</span><span>{ab.catalog_number ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>{ab.catalog_number}<CopyButton value={ab.catalog_number} /></span> : "—"}</span></div>
                   </div>
                 );
               })}
@@ -734,7 +734,7 @@ export default function DashboardPage() {
                           <span className="text-muted text-xs" style={{ marginLeft: 4 }}>/ {ab.low_stock_threshold}</span>
                         )}
                       </td>
-                      <td>{ab.catalog_number ? <>{ab.catalog_number} <CopyButton value={ab.catalog_number} /></> : "—"}</td>
+                      <td>{ab.catalog_number ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', whiteSpace: 'nowrap' }}>{ab.catalog_number}<CopyButton value={ab.catalog_number} /></span> : "—"}</td>
                       <td>
                         {badge && <span className={`badge ${badge.color}`}>{badge.label}</span>}
                       </td>
@@ -774,7 +774,7 @@ export default function DashboardPage() {
                   header: "Catalog #",
                   render: (lot) => {
                     const catNum = antibodyMap.get(lot.antibody_id)?.catalog_number;
-                    return catNum ? <>{catNum} <CopyButton value={catNum} /></> : <>&#8212;</>;
+                    return catNum ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', whiteSpace: 'nowrap' }}>{catNum}<CopyButton value={catNum} /></span> : <>&#8212;</>;
                   },
                 },
                 {

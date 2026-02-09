@@ -2625,6 +2625,14 @@ h2 .temp-badge {
   color: var(--on-surface-danger);
 }
 
+/* ── Audit Table ──────────────────────────────────────────────────── */
+
+/* Prevent wrapping in User and Action columns */
+table tbody td:nth-child(2),  /* User column */
+table tbody td:nth-child(3) { /* Action column */
+  white-space: nowrap;
+}
+
 /* ── Audit Filters ──────────────────────────────────────────────────── */
 
 .audit-filters {
@@ -4255,6 +4263,10 @@ h2 .temp-badge {
   font-size: var(--text-xs);
 }
 
+.inventory-submeta > span {
+  white-space: nowrap;
+}
+
 .inventory-counts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
@@ -5191,12 +5203,21 @@ tr.lot-row-depleted > td:first-child {
 .dash-card-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: var(--text-sm);
   padding: 0.15rem 0;
+  gap: var(--space-sm);
 }
 
 .dash-card-row > span:first-child {
   color: var(--text-muted);
+}
+
+.dash-card-row > span:last-child {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
 }
 
 /* ── Dashboard Sections ───────────────────────────────────────────────── */

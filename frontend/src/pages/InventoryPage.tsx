@@ -1083,8 +1083,10 @@ export default function InventoryPage() {
   // Keep expansion motion one-directional: expanded card takes the row and
   // all siblings from that row flow to the next row.
   const cardRows = useMemo(() => {
-    if (!expandedId || gridCols <= 1 || gridCols > 3) return inventoryRows;
-    const expandedIdx = inventoryRows.findIndex((r) => r.antibody.id === expandedId);
+    // Keep reordered layout during both expansion AND collapse
+    const activeId = expandedId || closingId;
+    if (!activeId || gridCols <= 1 || gridCols > 3) return inventoryRows;
+    const expandedIdx = inventoryRows.findIndex((r) => r.antibody.id === activeId);
     if (expandedIdx < 0) return inventoryRows;
 
     const rowStart = expandedIdx - (expandedIdx % gridCols);
@@ -1093,14 +1095,14 @@ export default function InventoryPage() {
     const expandedRow = rowItems.find((r) => r.antibody.id === expandedId);
     if (!expandedRow) return inventoryRows;
 
-    const rowSiblings = rowItems.filter((r) => r.antibody.id !== expandedId);
+    const rowSiblings = rowItems.filter((r) => r.antibody.id !== activeId);
     return [
       ...inventoryRows.slice(0, rowStart),
       expandedRow,
       ...rowSiblings,
       ...inventoryRows.slice(rowEnd),
     ];
-  }, [inventoryRows, expandedId, gridCols]);
+  }, [inventoryRows, expandedId, closingId, gridCols]);
 
   // Smoothly animate card movement when row reordering changes.
   useLayoutEffect(() => {
@@ -1152,8 +1154,9 @@ export default function InventoryPage() {
     ) : undefined;
     const abColor = fluoro?.color || row.antibody.color || undefined;
 
+    // Keep full-width grid span during both expansion AND collapse
     const gridColumnStyle: React.CSSProperties =
-      isExpanded && gridCols > 1 && gridCols <= 3 ? { gridColumn: "1 / -1" } : {};
+      (isExpanded || isCollapsing) && gridCols > 1 && gridCols <= 3 ? { gridColumn: "1 / -1" } : {};
 
     return (
       <div
