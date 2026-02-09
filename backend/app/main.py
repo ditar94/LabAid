@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import create_access_token, decode_access_token
-from app.middleware.auth import COOKIE_NAME, CSRF_COOKIE_NAME
+from app.middleware.auth import COOKIE_NAME
 from app.models.models import Lab, UserRole
 from app.routers.auth import _set_auth_cookies
 
@@ -82,28 +82,6 @@ def _is_cookie_auth(request: Request) -> bool:
 
 
 # ── Middleware ────────────────────────────────────────────────────────────
-
-
-class CSRFMiddleware(BaseHTTPMiddleware):
-    """Validate CSRF token on state-changing requests using cookie auth."""
-
-    async def dispatch(self, request: Request, call_next):
-        if request.method in ("GET", "HEAD", "OPTIONS"):
-            return await call_next(request)
-
-        if not _is_cookie_auth(request):
-            return await call_next(request)
-
-        csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME)
-        csrf_header = request.headers.get("x-csrf-token")
-
-        if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "CSRF validation failed"},
-            )
-
-        return await call_next(request)
 
 
 class SlidingWindowMiddleware(BaseHTTPMiddleware):
@@ -237,10 +215,11 @@ if settings.GCP_PROJECT:
         logger.warning("google-cloud-error-reporting not installed; GCP_PROJECT is set but reporting is disabled")
 
 # Middleware order: outermost runs first
-# SecurityHeaders → SlidingWindow → CSRF → Suspension → CORS
+# SecurityHeaders → SlidingWindow → Suspension → CORS
+# CSRF protection relies on SameSite=lax cookies (Firebase Hosting strips
+# all cookies except __session, so double-submit CSRF cookies won't work).
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SlidingWindowMiddleware)
-app.add_middleware(CSRFMiddleware)
 app.add_middleware(LabSuspensionMiddleware)
 app.add_middleware(
     CORSMiddleware,

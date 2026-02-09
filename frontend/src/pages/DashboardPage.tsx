@@ -36,7 +36,7 @@ const EMPTY_LOT_AGE_MAP = new Map<string, "current" | "new">();
 
 export default function DashboardPage() {
   const { user, labSettings, refreshUser } = useAuth();
-  const { labs, fluorochromes, selectedLab, setSelectedLab } = useSharedData();
+  const { labs, fluorochromes, selectedLab, setSelectedLab, loading: sharedLoading } = useSharedData();
   const navigate = useNavigate();
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
   const [selectedCard, setSelectedCard] = useState<"requests" | "pending" | "low" | "expiring" | "temp" | null>(null);
@@ -378,6 +378,8 @@ export default function DashboardPage() {
   }, [tempGrid, tempSelectedItem]);
 
   const allClear = cards.every((c) => c.count === 0);
+
+  if (sharedLoading) return <div className="loading">Loading...</div>;
 
   return (
     <div ref={ptr.containerRef}>

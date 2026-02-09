@@ -84,6 +84,8 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
+    // Reset loading while we fetch lab data for the newly-logged-in user
+    setLoading(true);
     if (user.role === "super_admin") {
       (async () => {
         try {

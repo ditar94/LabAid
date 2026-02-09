@@ -5,20 +5,6 @@ const api = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  // Attach CSRF token for state-changing requests
-  if (config.method && !["get", "head", "options"].includes(config.method)) {
-    const csrf = document.cookie
-      .split("; ")
-      .find((c) => c.startsWith("labaid_csrf="))
-      ?.split("=")[1];
-    if (csrf) {
-      config.headers["X-CSRF-Token"] = csrf;
-    }
-  }
-  return config;
-});
-
 api.interceptors.response.use(
   (res) => res,
   (err) => {

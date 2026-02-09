@@ -11,8 +11,8 @@ from app.models.models import User, UserRole
 # auto_error=False so we can fall back to cookie auth
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
-COOKIE_NAME = "labaid_token"
-CSRF_COOKIE_NAME = "labaid_csrf"
+COOKIE_NAME = "__session"
+CSRF_COOKIE_NAME = "labaid_csrf"  # Kept for reference; not used with Firebase Hosting
 
 
 def get_current_user(

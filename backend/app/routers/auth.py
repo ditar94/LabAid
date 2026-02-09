@@ -10,12 +10,11 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
     create_access_token,
-    generate_csrf_token,
     generate_temp_password,
     hash_password,
     verify_password,
 )
-from app.middleware.auth import COOKIE_NAME, CSRF_COOKIE_NAME, get_current_user, require_role
+from app.middleware.auth import COOKIE_NAME, get_current_user, require_role
 from app.models.models import Lab, User, UserRole
 from app.services.audit import log_audit, snapshot_user
 from app.schemas.schemas import (
@@ -48,7 +47,11 @@ MIN_PASSWORD_LENGTH = 8
 
 
 def _set_auth_cookies(response: Response, token: str) -> None:
-    """Set HttpOnly JWT cookie and readable CSRF cookie on the response."""
+    """Set HttpOnly JWT cookie on the response.
+
+    CSRF protection is handled by SameSite=lax (Firebase Hosting strips
+    all cookies except __session, so double-submit CSRF cookies won't work).
+    """
     max_age = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     response.set_cookie(
         key=COOKIE_NAME,
@@ -60,22 +63,11 @@ def _set_auth_cookies(response: Response, token: str) -> None:
         max_age=max_age,
         path="/",
     )
-    response.set_cookie(
-        key=CSRF_COOKIE_NAME,
-        value=generate_csrf_token(),
-        httponly=False,  # JS must be able to read this
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-        domain=settings.COOKIE_DOMAIN,
-        max_age=max_age,
-        path="/",
-    )
 
 
 def _clear_auth_cookies(response: Response) -> None:
     """Clear auth cookies."""
     response.delete_cookie(key=COOKIE_NAME, path="/", domain=settings.COOKIE_DOMAIN)
-    response.delete_cookie(key=CSRF_COOKIE_NAME, path="/", domain=settings.COOKIE_DOMAIN)
 
 
 @router.post("/login", response_model=TokenResponse)
