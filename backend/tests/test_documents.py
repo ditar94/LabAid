@@ -103,7 +103,7 @@ class TestDocumentDownload:
         # Upload
         upload_res = client.post(
             f"/api/documents/lots/{lot.id}",
-            files={"file": ("test.txt", io.BytesIO(b"hello world"), "text/plain")},
+            files={"file": ("test.pdf", io.BytesIO(b"hello world"), "application/pdf")},
             headers=auth_headers,
         )
         doc_id = upload_res.json()["id"]
