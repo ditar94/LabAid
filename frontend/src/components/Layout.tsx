@@ -26,6 +26,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
+import { version } from "../../package.json";
 
 export default function Layout() {
   const { user, logout, impersonatingLab, endImpersonation, labSettings } = useAuth();
@@ -258,7 +259,15 @@ export default function Layout() {
         </button>
         <div className="sidebar-copyright">
           <div>&copy; {new Date().getFullYear()} LabAid</div>
-          <div>v1.0 Beta</div>
+          <div>
+            v{version}
+            {import.meta.env.VITE_APP_ENV && import.meta.env.VITE_APP_ENV !== "production" && (
+              <> {import.meta.env.VITE_APP_ENV}</>
+            )}
+            {import.meta.env.VITE_GIT_SHA && (
+              <> &middot; {import.meta.env.VITE_GIT_SHA.slice(0, 7)}</>
+            )}
+          </div>
           <Link to="/terms">Terms of Use</Link>
         </div>
       </nav>
