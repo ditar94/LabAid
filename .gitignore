@@ -7,3 +7,9 @@ build/
 node_modules/
 .vite/
 .firebase/
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfplan

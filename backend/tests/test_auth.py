@@ -103,7 +103,8 @@ class TestUserManagement:
         data = res.json()
         assert data["email"] == "tech@test.com"
         assert data["role"] == "tech"
-        assert "temp_password" in data
+        assert data["invite_sent"] is True
+        assert "temp_password" not in data
 
     def test_create_user_duplicate_email(self, client, auth_headers, admin_user):
         res = client.post("/api/auth/users", json={
@@ -121,6 +122,56 @@ class TestUserManagement:
             "role": "super_admin",
         }, headers=auth_headers)
         assert res.status_code == 403
+
+
+class TestAcceptInvite:
+    def test_accept_invite_success(self, client, invited_user):
+        res = client.post("/api/auth/accept-invite", json={
+            "token": "valid-test-token-abc123",
+            "password": "mynewpass123",
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+
+    def test_accept_invite_short_password(self, client, invited_user):
+        res = client.post("/api/auth/accept-invite", json={
+            "token": "valid-test-token-abc123",
+            "password": "short",
+        })
+        assert res.status_code == 400
+        assert "8 characters" in res.json()["detail"]
+
+    def test_accept_invite_expired(self, client, expired_invite_user):
+        res = client.post("/api/auth/accept-invite", json={
+            "token": "expired-test-token-xyz",
+            "password": "mynewpass123",
+        })
+        assert res.status_code == 400
+        assert "expired" in res.json()["detail"].lower()
+
+    def test_accept_invite_used_token(self, client, invited_user):
+        # First use succeeds
+        res = client.post("/api/auth/accept-invite", json={
+            "token": "valid-test-token-abc123",
+            "password": "mynewpass123",
+        })
+        assert res.status_code == 200
+
+        # Second use fails (token cleared)
+        res = client.post("/api/auth/accept-invite", json={
+            "token": "valid-test-token-abc123",
+            "password": "anotherpass123",
+        })
+        assert res.status_code == 400
+
+    def test_accept_invite_invalid_token(self, client):
+        res = client.post("/api/auth/accept-invite", json={
+            "token": "nonexistent-token",
+            "password": "mynewpass123",
+        })
+        assert res.status_code == 400
 
 
 class TestHealthCheck:

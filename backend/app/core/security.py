@@ -31,6 +31,11 @@ def generate_temp_password() -> str:
     return secrets.token_urlsafe(12)
 
 
+def generate_invite_token() -> str:
+    """Generate a cryptographically secure invite token (256-bit)."""
+    return secrets.token_urlsafe(32)
+
+
 def generate_csrf_token() -> str:
     """Generate a cryptographically secure CSRF token."""
     return secrets.token_urlsafe(32)

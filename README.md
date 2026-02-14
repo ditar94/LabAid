@@ -8,7 +8,25 @@ Full-stack web application for Flow Cytometry labs to track antibody inventory, 
 - **Database**: PostgreSQL 16
 - **Frontend**: React / TypeScript / Vite
 - **Auth**: JWT (lab_id derived from token, never trusted from frontend)
-- **Infra**: Docker Compose
+- **Infra**: GCP (Cloud Run, Cloud SQL, Firebase Hosting), Terraform, GitHub Actions CI/CD
+
+## Environments
+
+| Environment | URL | Branch Trigger | Email | Max Instances |
+|---|---|---|---|---|
+| Beta | labaid-beta.web.app | push to `beta` (auto) | console | 1 |
+| Staging | labaid-staging.web.app | push to `main` (auto) | resend | 1 |
+| Production | labaid-prod.web.app | push to `main` (manual approval) | resend | 3 |
+
+## CI/CD
+
+Deployments are automated via GitHub Actions. No manual scripts needed.
+
+- **PR opened** → `ci.yml` runs backend tests + frontend typecheck
+- **Push to `beta`** → `deploy-beta.yml` runs tests, then deploys to beta
+- **Push to `main`** → `deploy-prod.yml` runs tests, deploys to staging, then awaits manual approval for production
+
+`deploy.sh` remains as a manual fallback. See [CONTRIBUTING.md](CONTRIBUTING.md) for full workflow details.
 
 ## Getting Started
 
@@ -162,8 +180,8 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 - [x] Rate limiting on login endpoint (slowapi — 5 req/min per IP)
 - [x] Create a storage interface with env-based switch (local disk for dev, GCS for prod)
-- [ ] Monitoring + alerts configured for API errors and auth/storage issues
-- [ ] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
+- [x] Monitoring + alerts configured for API errors and auth/storage issues
+- [x] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
 - [x] Uptime monitoring + health checks (`/api/health` checks DB + storage connectivity)
 - [x] Staging environment mirrors prod (including storage backend) and runs restore drills
 - [x] Add staging `.env` + deployment notes to mirror prod config
@@ -174,11 +192,11 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 ### Post-Launch / Hardening
 
 - [ ] MFA + strong password policy for admins; account lockout/rate limiting
-- [ ] Enable GCS bucket object versioning (`gsutil versioning set on`) — deleted/overwritten files can be recovered
-- [ ] Set GCS bucket retention policy (e.g. 30 days) — prevents accidental deletion within retention window
-- [ ] Never include the storage bucket in destructive infrastructure scripts (Terraform destroy, etc.)
-- [ ] Add automatic database backup step to CI/CD pipeline — runs `gcloud sql backups create` before every migration
-- [ ] Enable Postgres PITR (WAL archiving) + daily snapshots + retention policy
+- [x] Enable GCS bucket object versioning (`gsutil versioning set on`) — deleted/overwritten files can be recovered
+- [x] Set GCS bucket retention policy (e.g. 30 days) — prevents accidental deletion within retention window
+- [x] Never include the storage bucket in destructive infrastructure scripts (Terraform destroy, etc.)
+- [x] Add automatic database backup step to CI/CD pipeline — runs `gcloud sql backups create` before every migration
+- [x] Enable Postgres PITR (WAL archiving) + daily snapshots + retention policy
 - [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
 - [ ] Store document checksums + add a periodic verification job for missing/corrupt blobs
 - [ ] Document backup/restore process and run periodic restore tests
@@ -866,11 +884,11 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 **Configuration & Deployment**
 
 *Environment variables:*
-- [ ] `EMAIL_BACKEND` — `resend` (production) or `console` (dev/beta)
-- [ ] `RESEND_API_KEY` — Resend API key (production only, stored in GCP Secret Manager)
-- [ ] `APP_URL` — base URL for email links (e.g., `https://labaid-prod.web.app` or `https://labaid-beta.web.app`)
-- [ ] Update `backend/.env.example` with new variables
-- [ ] Update `deploy.sh` to inject `RESEND_API_KEY` from Secret Manager and set `EMAIL_BACKEND=resend` for production
+- [x] `EMAIL_BACKEND` — `resend` (production) or `console` (dev/beta)
+- [x] `RESEND_API_KEY` — Resend API key (production only, stored in GCP Secret Manager)
+- [x] `APP_URL` — base URL for email links (e.g., `https://labaid-prod.web.app` or `https://labaid-beta.web.app`)
+- [x] Update `backend/.env.example` with new variables
+- [x] Update `deploy.sh` to inject `RESEND_API_KEY` from Secret Manager and set `EMAIL_BACKEND=resend` for production
 
 *DNS setup (one-time):*
 - [ ] Add SPF record for `labaid.io` allowing Resend
@@ -895,6 +913,146 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 - [ ] Integration test: console email backend logs email content to stdout
 - [ ] Manual test: full flow on beta with console backend (create user → check logs → click link → set password)
 - [ ] Manual test: full flow on production with Resend (create user → check inbox → click link → set password)
+
+### AUTH Overhaul — Pluggable Enterprise Authentication
+> Upgrade authentication to support per-lab identity providers (internal password, Microsoft SSO, Google SSO, future SAML) while keeping all authorization, lab scoping, role enforcement, and billing state enforcement internal to LabAid. Authentication becomes pluggable per lab — authorization never leaves the app.
+
+**Architectural invariants (must hold across all phases):**
+- `lab_id` scoping on every query remains unchanged — SSO does not weaken tenant isolation
+- Roles (`super_admin`, `lab_admin`, `supervisor`, `tech`, `read_only`) remain internal — SSO authenticates identity, LabAid assigns roles
+- `LabSuspensionMiddleware` enforces billing state regardless of auth provider — no bypass via SSO
+- Audit logging covers all login methods with the same granularity
+- The current User model (`user.lab_id` FK, `user.role` enum) is unchanged — SSO users are regular User records
+- Admin pre-creates users (current flow preserved) — SSO is an alternative *authentication* method, not an alternative *provisioning* method
+- Labs can run password + SSO simultaneously (transition period), then optionally go SSO-only
+
+**How it works (end-to-end):**
+1. User enters email on login page → backend checks email domain against `lab_auth_providers` → returns available login methods
+2. **Password login**: existing flow unchanged (email + password → JWT cookie)
+3. **SSO login**: frontend redirects to provider (Microsoft/Google) → provider redirects back with auth code → backend exchanges code for identity → matches identity to existing User via `external_identities` table → issues same JWT cookie with same claims (`sub`, `lab_id`, `role`)
+4. From this point forward, the session is identical regardless of how the user authenticated — all middleware, role checks, and lab scoping work exactly the same
+
+**Beta/dev considerations:**
+- No special "switch" needed — provider config is per-lab, so beta labs use dev OAuth app credentials while prod labs use prod credentials
+- `APP_URL` already differentiates environments → callback URLs are correct per environment (`http://localhost:5173/auth/callback/...` for dev, `https://labaid-beta.web.app/auth/callback/...` for beta)
+- Microsoft and Google both allow `http://localhost` redirect URIs for dev/test OAuth apps
+- Labs without any provider configured default to password-only (current behavior, zero migration risk)
+
+#### Phase 1 — Auth Provider Infrastructure
+
+*Database / Schema*
+- [ ] Create `lab_auth_providers` table: `id` (UUID PK), `lab_id` (FK to labs), `provider_type` (enum: `password`, `oidc_microsoft`, `oidc_google`, `saml`), `config` (JSON — client_id, tenant_id, etc.), `email_domain` (String, nullable — for org discovery), `is_enabled` (Boolean), `created_at`
+- [ ] Create `external_identities` table: `id` (UUID PK), `user_id` (FK to users), `provider_type` (String), `provider_subject` (String — the provider's unique user ID, e.g. Microsoft `oid` or Google `sub`), `provider_email` (String), `created_at`. Unique constraint on `(provider_type, provider_subject)`.
+- [ ] Alembic migration for both tables (down_revision: `f7a8b9c0d1e2`)
+- [ ] Every existing lab implicitly has password auth (no row needed — password is the default when no providers are configured)
+
+*Backend*
+- [ ] Add `LabAuthProvider` and `ExternalIdentity` SQLAlchemy models in `models.py`
+- [ ] Add Pydantic schemas: `AuthProviderCreate`, `AuthProviderOut`, `AuthProviderUpdate`
+- [ ] Add `GET /api/auth/providers/{lab_id}` — super admin + lab admin can view configured providers
+- [ ] Add `POST /api/auth/providers` — super admin can add a provider to a lab
+- [ ] Add `PATCH /api/auth/providers/{id}` — super admin can update/disable a provider
+- [ ] Add `POST /api/auth/discover` — public endpoint, accepts `{ email }`, returns `{ providers: ["password", "oidc_microsoft"], lab_name }` based on email domain match. Rate-limited. Does not reveal lab_id or other details.
+- [ ] Provider config validation: reject incomplete configs (e.g. OIDC without client_id/tenant_id)
+- [ ] Store OAuth `client_secret` as a GCP Secret Manager reference in config (e.g. `{ "client_secret_ref": "labaid-mayo-oidc-secret" }`) — never plaintext in DB. Add a `resolve_secret(ref)` helper in `core/config.py`.
+
+*Frontend*
+- [ ] Add auth provider management UI to Labs page (super admin only) — list, add, edit, disable providers per lab
+- [ ] Config forms per provider type: Microsoft OIDC (tenant_id, client_id, secret ref), Google OIDC (client_id, secret ref)
+
+*Testing*
+- [ ] Migration test: verify existing labs work with zero providers (password default)
+- [ ] Test `POST /api/auth/discover`: returns `["password"]` for labs without providers, returns correct providers for configured labs, returns 404 for unknown domains
+
+#### Phase 2 — OIDC Integration (Microsoft Entra ID + Google Workspace)
+
+*Backend*
+- [ ] Add `httpx` (or `authlib`) dependency for OIDC token exchange
+- [ ] Add `GET /api/auth/sso/{provider_type}/authorize` — generates OIDC authorization URL with state parameter (CSRF protection), redirect_uri based on `APP_URL`, and provider-specific scopes. Returns `{ authorize_url }`.
+- [ ] Add `POST /api/auth/sso/callback` — receives auth code + state → exchanges code for tokens at provider's token endpoint → extracts identity claims (sub, email, name) → looks up `external_identities` → finds User → issues JWT cookie → redirects to frontend
+- [ ] Identity matching logic: first check `external_identities` for exact `(provider_type, provider_subject)` match. If no external identity exists, fall back to email match against `users.email` + verify the user belongs to a lab that has this provider enabled. On first successful SSO login, auto-create the `external_identities` record (links the SSO identity to the internal user for future logins).
+- [ ] OIDC token validation: verify `id_token` signature against provider's JWKS endpoint, validate `iss`, `aud`, `exp` claims
+- [ ] Microsoft-specific: support both single-tenant and multi-tenant Entra ID apps, use `https://login.microsoftonline.com/{tenant_id}/v2.0` endpoints
+- [ ] Google-specific: use `https://accounts.google.com` OIDC endpoints, validate `hd` (hosted domain) claim
+- [ ] Session creation: SSO login produces the exact same JWT cookie as password login — same `sub` (user.id), `lab_id`, `role` claims. Downstream code cannot tell the difference.
+- [ ] Audit logging: `action="user.login_sso"` with `note="provider: oidc_microsoft"` (parallel to existing `user.password_changed` etc.)
+- [ ] Error handling: provider unreachable → clear error message; email not found in LabAid → "No account found. Contact your administrator."; user exists but is inactive → reject
+
+*Frontend*
+- [ ] Add `/auth/callback` route (public) — receives redirect from SSO provider, extracts code + state from URL params, calls `POST /api/auth/sso/callback`, on success calls `refreshUser()` and navigates to `/`
+- [ ] Add `/auth/callback` to `publicPaths` in `client.ts` (401 interceptor exclusion)
+
+*Testing*
+- [ ] Integration test: mock OIDC token exchange → user matched → JWT issued
+- [ ] Integration test: SSO login for user in inactive lab → rejected by suspension middleware on next request
+- [ ] Integration test: SSO login for unknown email → 400 with clear message
+- [ ] Integration test: SSO login auto-creates external_identity on first login
+- [ ] Manual test (beta): configure a dev Microsoft Entra ID app for a beta lab → full SSO login flow
+
+#### Phase 3 — Login Flow & Frontend Overhaul
+
+*Frontend*
+- [ ] Refactor `LoginPage.tsx` to email-first discovery flow:
+  1. Step 1: email input only → calls `POST /api/auth/discover` on submit
+  2. Step 2: if `providers` includes `password` → show password field (current UI)
+  3. Step 2: if `providers` includes `oidc_microsoft` → show "Sign in with Microsoft" button
+  4. Step 2: if `providers` includes `oidc_google` → show "Sign in with Google" button
+  5. If multiple providers available → show all applicable options (password field + SSO buttons)
+  6. If only SSO → hide password field entirely
+- [ ] SSO button click: calls `GET /api/auth/sso/{provider_type}/authorize` → redirects to `authorize_url`
+- [ ] Persist discovered email in state so callback page can show "Signing in as user@hospital.edu..."
+- [ ] Handle SSO callback errors (expired state, provider error) with clear user-facing messages
+- [ ] Hide "Reset Password" button on `UsersPage.tsx` for users in SSO-only labs (no password to reset)
+- [ ] Hide password-related UI in user creation flow for SSO-only labs (admin still creates user, but no invite email — user logs in via SSO)
+- [ ] `ChangePasswordPage.tsx`: only accessible if the user's lab allows password auth
+
+*Backend*
+- [ ] Add `password_enabled` helper: checks if a lab has password auth enabled (default true when no providers configured, explicitly set when providers exist)
+- [ ] `POST /auth/login` — reject with 403 + clear message if lab is SSO-only: "This organization uses SSO. Please sign in with your organization's identity provider."
+- [ ] `POST /auth/users/{id}/reset-password` — reject if lab is SSO-only
+- [ ] `POST /auth/accept-invite` — reject if lab is SSO-only (invite links are password-based)
+
+*Testing*
+- [ ] Test: SSO-only lab → password login rejected with 403
+- [ ] Test: SSO-only lab → password reset rejected
+- [ ] Test: mixed lab (password + SSO) → both login methods work
+- [ ] Test: lab with no providers → password login works (backward compatible)
+
+#### Phase 4 — Hardening & Security Audit
+
+*Security*
+- [ ] Verify tenant isolation: SSO user for Lab A cannot access Lab B data (lab_id in JWT matches user.lab_id, all queries scoped)
+- [ ] Verify OIDC state parameter prevents CSRF on callback
+- [ ] Verify `id_token` signature validation prevents token forgery
+- [ ] Verify rate limiting on `/auth/discover` and `/auth/sso/callback` (prevent enumeration + abuse)
+- [ ] Verify `external_identities` unique constraint prevents one SSO identity from mapping to multiple users
+- [ ] Verify audit trail: all SSO logins logged with provider type, all provider config changes logged
+- [ ] Verify suspension enforcement: SSO-authenticated user in suspended lab gets read-only (same as password user)
+- [ ] Verify impersonation: super admin impersonation works identically regardless of target lab's auth provider
+- [ ] Security review: OAuth client secrets never logged, never returned in API responses, never included in audit snapshots
+
+*Testing*
+- [ ] Full integration test suite: password-only lab, SSO-only lab, mixed lab, suspended SSO lab
+- [ ] Test: create user in SSO-only lab → user logs in via SSO → full access
+- [ ] Test: disable SSO provider on a lab → existing sessions continue until expiry, new SSO logins rejected, password login re-enabled
+- [ ] Test: provider config change audit logged
+
+#### Phase 5 — SAML Support (Future)
+> Only implement when a customer specifically requires SAML (e.g., hospital with legacy ADFS). The abstraction from Phase 1 (`lab_auth_providers` with `provider_type=saml`) means no schema changes are needed — just new backend handlers.
+
+- [ ] Add `python3-saml` or `pysaml2` dependency
+- [ ] Add SAML SP metadata generation endpoint: `GET /api/auth/saml/{provider_id}/metadata`
+- [ ] Add SAML assertion consumer endpoint: `POST /api/auth/saml/callback` — validates SAML response signature, extracts NameID/attributes, matches to User via `external_identities`, issues JWT cookie
+- [ ] SAML config schema in `lab_auth_providers.config`: IdP metadata URL, IdP entity ID, certificate
+- [ ] Frontend: SAML uses the same "SSO" button as OIDC — user doesn't see the protocol difference
+- [ ] Admin UI: SAML provider config form (IdP metadata URL upload/paste, attribute mapping)
+- [ ] Test: full SAML flow with a test IdP (e.g., `samltool.com` or local `keycloak`)
+
+#### Documentation
+- [ ] Update this README's Auth & Multi-Tenancy section to describe pluggable auth
+- [ ] Document auth invariants: what SSO can and cannot change (identity yes, roles/lab_id/billing no)
+- [ ] Document provider setup guide for lab admins: how to register an Azure AD / Google Workspace app and configure it in LabAid
+- [ ] Document the email-first login flow for end users
 
 ### Code Reusability & UI Consistency Refactor
 

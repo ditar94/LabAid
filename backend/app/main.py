@@ -61,6 +61,7 @@ _SUSPENSION_EXEMPT = {
     "/api/auth/change-password",
     "/api/auth/me",
     "/api/auth/setup",
+    "/api/auth/accept-invite",
     "/api/auth/impersonate",
     "/api/auth/end-impersonate",
     "/api/health",
