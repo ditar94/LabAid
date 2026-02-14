@@ -1,12 +1,12 @@
-name: Deploy — Staging & Production
+name: Deploy Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [beta]
 
 concurrency:
-  group: deploy-prod
-  cancel-in-progress: false
+  group: deploy-pipeline
+  cancel-in-progress: true
 
 env:
   GCP_PROJECT: labaid-prod
@@ -48,11 +48,100 @@ jobs:
       - name: TypeScript check
         run: cd frontend && npx tsc --noEmit -p tsconfig.app.json
 
-  # ── Staging Backend ──────────────────────────────────────────────────────────
-  staging-backend:
-    name: Deploy Backend (Staging)
+  # ── Beta (auto after tests pass) ────────────────────────────────────────────
+  beta-backend:
+    name: Deploy Backend (Beta)
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: backend
+          file: backend/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.REPO_NAME }}/backend:beta
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/${{ env.REPO_NAME }}/backend:beta-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy labaid-backend-beta \
+            --image ${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REPO_NAME}/backend:beta-${GITHUB_SHA} \
+            --region ${GCP_REGION} \
+            --platform managed \
+            --allow-unauthenticated \
+            --add-cloudsql-instances ${GCP_PROJECT}:${GCP_REGION}:labaid-db \
+            --set-env-vars "COOKIE_SECURE=True,COOKIE_SAMESITE=lax,S3_ENDPOINT_URL=https://storage.googleapis.com,S3_USE_PATH_STYLE=False,GCP_PROJECT=${GCP_PROJECT},EMAIL_BACKEND=console,APP_URL=https://labaid-beta.web.app" \
+            --set-secrets "SECRET_KEY=SECRET_KEY:latest,DATABASE_URL=DATABASE_URL_BETA:latest,S3_ACCESS_KEY=S3_ACCESS_KEY:latest,S3_SECRET_KEY=S3_SECRET_KEY:latest,S3_BUCKET=S3_BUCKET:latest,CORS_ORIGINS=CORS_ORIGINS:latest,COOKIE_DOMAIN=COOKIE_DOMAIN:latest" \
+            --memory 512Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 1 \
+            --port 8080 \
+            --project ${GCP_PROJECT}
+
+      - name: Health check
+        run: |
+          URL=$(gcloud run services describe labaid-backend-beta --region=${GCP_REGION} --project=${GCP_PROJECT} --format='value(status.url)')
+          curl -sf "${URL}/api/health" || echo "Health check failed (service may still be starting)"
+
+  beta-frontend:
+    name: Deploy Frontend (Beta)
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        env:
+          VITE_APP_ENV: beta
+          VITE_GIT_SHA: ${{ github.sha }}
+        run: cd frontend && npm ci && npm run build
+
+      - name: Deploy to Firebase Hosting
+        run: npx firebase-tools deploy --only hosting:labaid-beta --project ${GCP_PROJECT}
+
+  # ── Staging (requires approval) ─────────────────────────────────────────────
+  staging-backend:
+    name: Deploy Backend (Staging)
+    needs: [beta-backend, beta-frontend]
+    runs-on: ubuntu-latest
+    environment: staging
     permissions:
       contents: read
       id-token: write
@@ -92,7 +181,7 @@ jobs:
             --allow-unauthenticated \
             --add-cloudsql-instances ${GCP_PROJECT}:${GCP_REGION}:labaid-db \
             --set-env-vars "COOKIE_SECURE=True,COOKIE_SAMESITE=lax,S3_ENDPOINT_URL=https://storage.googleapis.com,S3_USE_PATH_STYLE=False,GCP_PROJECT=${GCP_PROJECT},EMAIL_BACKEND=resend,APP_URL=https://labaid-staging.web.app" \
-            --set-secrets "SECRET_KEY=SECRET_KEY:latest,DATABASE_URL=DATABASE_URL_STAGING:latest,S3_ACCESS_KEY=S3_ACCESS_KEY:latest,S3_SECRET_KEY=S3_SECRET_KEY:latest,S3_BUCKET=S3_BUCKET:latest,CORS_ORIGINS=CORS_ORIGINS:latest,COOKIE_DOMAIN=COOKIE_DOMAIN:latest,RESEND_API_KEY=RESEND_API_KEY:latest" \
+            --set-secrets "SECRET_KEY=SECRET_KEY:latest,DATABASE_URL=DATABASE_URL_BETA:latest,S3_ACCESS_KEY=S3_ACCESS_KEY:latest,S3_SECRET_KEY=S3_SECRET_KEY:latest,S3_BUCKET=S3_BUCKET:latest,CORS_ORIGINS=CORS_ORIGINS:latest,COOKIE_DOMAIN=COOKIE_DOMAIN:latest,RESEND_API_KEY=RESEND_API_KEY:latest" \
             --memory 512Mi \
             --cpu 1 \
             --min-instances 0 \
@@ -103,14 +192,13 @@ jobs:
       - name: Health check
         run: |
           URL=$(gcloud run services describe labaid-backend-staging --region=${GCP_REGION} --project=${GCP_PROJECT} --format='value(status.url)')
-          echo "Staging backend URL: ${URL}"
           curl -sf "${URL}/api/health" || echo "Health check failed (service may still be starting)"
 
-  # ── Staging Frontend ─────────────────────────────────────────────────────────
   staging-frontend:
     name: Deploy Frontend (Staging)
-    needs: test
+    needs: [beta-backend, beta-frontend]
     runs-on: ubuntu-latest
+    environment: staging
     permissions:
       contents: read
       id-token: write
@@ -138,7 +226,7 @@ jobs:
       - name: Deploy to Firebase Hosting
         run: npx firebase-tools deploy --only hosting:labaid-staging --project ${GCP_PROJECT}
 
-  # ── Production Backend ───────────────────────────────────────────────────────
+  # ── Production (requires approval) ──────────────────────────────────────────
   prod-backend:
     name: Deploy Backend (Production)
     needs: [staging-backend, staging-frontend]
@@ -201,10 +289,8 @@ jobs:
       - name: Health check
         run: |
           URL=$(gcloud run services describe labaid-backend --region=${GCP_REGION} --project=${GCP_PROJECT} --format='value(status.url)')
-          echo "Production backend URL: ${URL}"
           curl -sf "${URL}/api/health" || echo "Health check failed (service may still be starting)"
 
-  # ── Production Frontend ──────────────────────────────────────────────────────
   prod-frontend:
     name: Deploy Frontend (Production)
     needs: [staging-backend, staging-frontend]
@@ -236,3 +322,23 @@ jobs:
 
       - name: Deploy to Firebase Hosting
         run: npx firebase-tools deploy --only hosting:labaid-prod --project ${GCP_PROJECT}
+
+  # ── Sync main branch (auto after production) ────────────────────────────────
+  sync-main:
+    name: Sync main branch
+    needs: [prod-backend, prod-frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward main to beta
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout main
+          git merge --ff-only origin/beta
+          git push origin main

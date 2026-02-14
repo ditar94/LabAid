@@ -41,27 +41,36 @@ cd frontend && npx tsc --noEmit -p tsconfig.app.json
 
 ## Branch Strategy
 
-| Branch | Purpose | Deploys to |
-|--------|---------|------------|
-| `beta` | Active development | Beta (auto) |
-| `main` | Staging + Production | Staging (auto), Production (manual approval) |
+| Branch | Purpose |
+|--------|---------|
+| `beta` | Active development — all work happens here |
+| `main` | Mirror of production — auto-synced after prod deploy, never push directly |
 
 ### Daily Workflow
 
-1. Work on `beta` branch, push to trigger beta deploy
-2. Create PR `beta` -> `main`, CI runs tests + typecheck
-3. Merge PR -> staging auto-deploys with production settings
-4. Test staging, then approve production deploy in GitHub Actions
+1. Work on `beta` branch, push to trigger the deploy pipeline
+2. Beta auto-deploys — test your changes on beta.labaid.io
+3. Approve **"Staging"** in GitHub Actions — deploys to staging.labaid.io
+4. Test staging, then approve **"Production"** in GitHub Actions — deploys to labaid.io
+5. After production deploys, `main` is automatically synced to match `beta`
+
+### Versioning
+
+The app version is in `frontend/package.json`. Bump it on `beta` when you're ready for a new release. The version, environment label, and git SHA are displayed on the login page and sidebar — injected automatically by CI during the build.
 
 ## CI/CD Pipeline
 
-All deployments are triggered by `git push`. No manual scripts needed.
+Everything is triggered by `git push origin beta`. One unified pipeline with approval gates.
 
-| Trigger | What happens |
-|---------|-------------|
-| PR opened | `ci.yml` — backend tests + frontend typecheck in parallel |
-| Push to `beta` | `deploy-beta.yml` — tests, then deploy to beta |
-| Push to `main` | `deploy-prod.yml` — tests, deploy to staging, then await manual approval for production |
+| Stage | What happens | Trigger |
+|-------|-------------|---------|
+| Tests | Backend pytest + frontend typecheck | Auto |
+| Beta | Deploy to beta.labaid.io | Auto (after tests pass) |
+| Staging | Deploy to staging.labaid.io | Manual approval in GitHub Actions |
+| Production | DB backup, then deploy to labaid.io | Manual approval in GitHub Actions |
+| Sync main | Fast-forward `main` to match `beta` | Auto (after production) |
+
+PRs still run `ci.yml` (tests + typecheck) as a safety check.
 
 ### Manual Fallback
 
@@ -77,11 +86,11 @@ All deployments are triggered by `git push`. No manual scripts needed.
 
 | Environment | URL | Backend Service | Email | DB | Max Instances |
 |---|---|---|---|---|---|
-| Beta | labaid-beta.web.app | labaid-backend-beta | console | labaid_beta | 1 |
-| Staging | labaid-staging.web.app | labaid-backend-staging | resend | labaid_staging | 1 |
-| Production | labaid-prod.web.app | labaid-backend | resend | labaid | 3 |
+| Beta | beta.labaid.io | labaid-backend-beta | console | labaid_beta | 1 |
+| Staging | staging.labaid.io | labaid-backend-staging | resend | labaid_beta (shared) | 1 |
+| Production | labaid.io | labaid-backend | resend | labaid | 3 |
 
-All three databases live on the same Cloud SQL instance (`labaid-db`).
+Beta and staging share the same database for convenience. Production has its own isolated database. All databases live on the same Cloud SQL instance (`labaid-db`).
 
 ## Infrastructure Rules
 
