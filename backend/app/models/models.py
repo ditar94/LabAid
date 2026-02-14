@@ -115,6 +115,8 @@ class User(Base):
     role = Column(Enum(UserRole, values_callable=lambda e: [x.value for x in e]), nullable=False, default=UserRole.TECH)
     is_active = Column(Boolean, default=True, nullable=False)
     must_change_password = Column(Boolean, default=False, nullable=False)
+    invite_token = Column(String(64), nullable=True, unique=True, index=True)
+    invite_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lab = relationship("Lab", back_populates="users")

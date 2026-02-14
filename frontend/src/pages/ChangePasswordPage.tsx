@@ -5,21 +5,21 @@ import { useAuth } from "../context/AuthContext";
 import { ShieldCheck } from "lucide-react";
 
 export default function ChangePasswordPage() {
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
-  const passwordLongEnough = newPassword.length >= 6;
+  const passwordLongEnough = newPassword.length >= 8;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
 
     if (!passwordLongEnough) {
-      setError("Password must be at least 6 characters");
+      setError("Password must be at least 8 characters");
       return;
     }
     if (!passwordsMatch) {
@@ -53,20 +53,22 @@ export default function ChangePasswordPage() {
           </div>
         </div>
 
-        <div className="onboarding-steps">
-          <div className="onboarding-step completed">
-            <div className="step-dot" />
-            <span>Account created</span>
+        {user?.must_change_password && (
+          <div className="onboarding-steps">
+            <div className="onboarding-step completed">
+              <div className="step-dot" />
+              <span>Account created</span>
+            </div>
+            <div className="onboarding-step active">
+              <div className="step-dot" />
+              <span>Set password</span>
+            </div>
+            <div className="onboarding-step">
+              <div className="step-dot" />
+              <span>Start using LabAid</span>
+            </div>
           </div>
-          <div className="onboarding-step active">
-            <div className="step-dot" />
-            <span>Set password</span>
-          </div>
-          <div className="onboarding-step">
-            <div className="step-dot" />
-            <span>Start using LabAid</span>
-          </div>
-        </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -74,16 +76,16 @@ export default function ChangePasswordPage() {
             <input
               id="new-password"
               type="password"
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
               autoFocus
             />
             {newPassword.length > 0 && (
               <span className={`field-hint ${passwordLongEnough ? "hint-success" : "hint-warn"}`}>
-                {passwordLongEnough ? "Looks good" : `${6 - newPassword.length} more character${6 - newPassword.length === 1 ? "" : "s"} needed`}
+                {passwordLongEnough ? "Looks good" : `${8 - newPassword.length} more character${8 - newPassword.length === 1 ? "" : "s"} needed`}
               </span>
             )}
           </div>
@@ -96,7 +98,7 @@ export default function ChangePasswordPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
             />
             {confirmPassword.length > 0 && (
               <span className={`field-hint ${passwordsMatch ? "hint-success" : "hint-warn"}`}>

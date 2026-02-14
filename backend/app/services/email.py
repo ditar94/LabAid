@@ -2,6 +2,7 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from urllib.parse import quote
 
 from app.core.config import settings
 
@@ -52,3 +53,82 @@ def notify_ticket_reply(
         f"<strong>Ticket:</strong> {ticket_subject}</p>"
         f"<p>{reply_message}</p>",
     )
+
+
+# ── Invite / Reset Email Backend ──────────────────────────────────────────
+
+
+def _build_link(token: str) -> str:
+    return f"{settings.APP_URL}/set-password?token={quote(token, safe='')}"
+
+
+def _invite_html(full_name: str, link: str) -> str:
+    return (
+        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">'
+        f"<h2>Welcome to LabAid, {full_name}!</h2>"
+        "<p>Your administrator has created an account for you. "
+        "Click the button below to set your password and get started.</p>"
+        f'<p style="text-align:center;margin:32px 0">'
+        f'<a href="{link}" style="background:#2563eb;color:#fff;padding:12px 28px;'
+        'border-radius:6px;text-decoration:none;font-weight:600">Set Your Password</a></p>'
+        "<p style=\"color:#666;font-size:13px\">This link expires in 24 hours. "
+        "If you didn't expect this email, you can safely ignore it.</p>"
+        "</div>"
+    )
+
+
+def _reset_html(full_name: str, link: str) -> str:
+    return (
+        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">'
+        f"<h2>Reset Your Password</h2>"
+        f"<p>Hi {full_name}, your administrator has reset your password. "
+        "Click the button below to set a new one.</p>"
+        f'<p style="text-align:center;margin:32px 0">'
+        f'<a href="{link}" style="background:#2563eb;color:#fff;padding:12px 28px;'
+        'border-radius:6px;text-decoration:none;font-weight:600">Set New Password</a></p>'
+        "<p style=\"color:#666;font-size:13px\">This link expires in 24 hours. "
+        "If you didn't request this, contact your administrator.</p>"
+        "</div>"
+    )
+
+
+def _send_via_resend(to: str, subject: str, html_body: str) -> bool:
+    try:
+        import resend
+        resend.api_key = settings.RESEND_API_KEY
+        resend.Emails.send({
+            "from": "LabAid <noreply@labaid.io>",
+            "to": [to],
+            "subject": subject,
+            "html": html_body,
+        })
+        return True
+    except Exception:
+        logger.exception("Failed to send email via Resend to %s", to)
+        return False
+
+
+def _send_via_console(to: str, subject: str, html_body: str) -> bool:
+    logger.info("=== EMAIL (console backend) ===")
+    logger.info("To: %s | Subject: %s", to, subject)
+    return True
+
+
+def _send_invite_or_reset(to: str, subject: str, html_body: str) -> bool:
+    if settings.EMAIL_BACKEND == "resend":
+        return _send_via_resend(to, subject, html_body)
+    return _send_via_console(to, subject, html_body)
+
+
+def send_invite_email(to: str, full_name: str, token: str) -> tuple[bool, str]:
+    link = _build_link(token)
+    html = _invite_html(full_name, link)
+    success = _send_invite_or_reset(to, "Welcome to LabAid — Set Your Password", html)
+    return success, link
+
+
+def send_reset_email(to: str, full_name: str, token: str) -> tuple[bool, str]:
+    link = _build_link(token)
+    html = _reset_html(full_name, link)
+    success = _send_invite_or_reset(to, "LabAid — Reset Your Password", html)
+    return success, link

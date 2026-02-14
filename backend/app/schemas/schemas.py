@@ -49,7 +49,8 @@ class UserCreate(BaseModel):
 
 
 class UserCreateResponse(UserOut):
-    temp_password: str
+    invite_sent: bool
+    set_password_link: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -57,7 +58,13 @@ class ChangePasswordRequest(BaseModel):
 
 
 class ResetPasswordResponse(BaseModel):
-    temp_password: str
+    email_sent: bool
+    set_password_link: str | None = None
+
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+    password: str
 
 
 class RoleUpdateRequest(BaseModel):

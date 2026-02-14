@@ -6,20 +6,20 @@ set -euo pipefail
 
 GCP_PROJECT="${GCP_PROJECT:-labaid-prod}"
 GCP_REGION="${GCP_REGION:-us-central1}"
-SERVICE_NAME="${SERVICE_NAME:-labaid-backend}"
 REPO_NAME="${REPO_NAME:-labaid}"
 CLOUD_SQL_INSTANCE="${CLOUD_SQL_INSTANCE:-${GCP_PROJECT}:${GCP_REGION}:labaid-db}"
-IMAGE="us-central1-docker.pkg.dev/${GCP_PROJECT}/${REPO_NAME}/backend:latest"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[0;33m'
 NC='\033[0m'
 
 info()  { echo -e "${BLUE}[INFO]${NC} $*"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 fail()  { echo -e "${RED}[FAIL]${NC} $*"; exit 1; }
 
 usage() {
@@ -27,15 +27,27 @@ usage() {
 Usage: ./deploy.sh [COMMAND]
 
 Commands:
-  all         Deploy backend + frontend (default)
-  backend     Build & deploy backend to Cloud Run
-  frontend    Build & deploy frontend to Firebase Hosting
-  setup       One-time GCP project setup (APIs, Artifact Registry)
+  all                Deploy backend + frontend to PRODUCTION (default)
+  backend            Build & deploy backend to Cloud Run (production)
+  frontend           Build & deploy frontend to Firebase Hosting (production)
+  staging            Deploy backend + frontend to STAGING environment
+  staging-backend    Deploy only backend to staging
+  staging-frontend   Deploy only frontend to staging
+  beta               Build & deploy backend + frontend to BETA environment
+  beta-backend       Deploy only backend to beta
+  beta-frontend      Deploy only frontend to beta
+  setup              One-time GCP project setup (APIs, Artifact Registry)
+
+Environments:
+  Production:  labaid-backend         → labaid-prod.web.app     (EMAIL_BACKEND=resend)
+  Staging:     labaid-backend-staging → labaid-staging.web.app  (EMAIL_BACKEND=resend)
+  Beta:        labaid-backend-beta    → labaid-beta.web.app     (EMAIL_BACKEND=console)
+
+CI/CD deploys automatically via GitHub Actions. This script is a manual fallback.
 
 Environment variables:
   GCP_PROJECT          GCP project ID (default: labaid-prod)
   GCP_REGION           GCP region (default: us-central1)
-  SERVICE_NAME         Cloud Run service name (default: labaid-backend)
   CLOUD_SQL_INSTANCE   Cloud SQL instance connection name
 EOF
   exit 0
@@ -68,50 +80,72 @@ setup() {
 }
 
 deploy_backend() {
-  info "Building backend Docker image..."
+  local service_name="${1:-labaid-backend}"
+  local db_secret="${2:-DATABASE_URL}"
+  local image_tag="${3:-latest}"
+  local max_instances="${4:-3}"
+  local email_backend="${5:-console}"
+  local app_url="${6:-http://localhost:5173}"
+  local image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REPO_NAME}/backend:${image_tag}"
+
+  info "Building backend Docker image (tag: ${image_tag})..."
   docker build \
     --platform linux/amd64 \
     -f backend/Dockerfile.prod \
-    -t "${IMAGE}" \
+    -t "${image}" \
     backend/
 
   info "Pushing image to Artifact Registry..."
-  docker push "${IMAGE}"
+  docker push "${image}"
 
-  info "Deploying to Cloud Run..."
-  gcloud run deploy "${SERVICE_NAME}" \
-    --image "${IMAGE}" \
+  # Build env vars — email backend + app URL are environment-specific
+  local env_vars="COOKIE_SECURE=True,COOKIE_SAMESITE=lax,S3_ENDPOINT_URL=https://storage.googleapis.com,S3_USE_PATH_STYLE=False,GCP_PROJECT=${GCP_PROJECT},EMAIL_BACKEND=${email_backend},APP_URL=${app_url}"
+
+  # Build secrets — only include RESEND_API_KEY for production (resend backend)
+  local secrets="SECRET_KEY=SECRET_KEY:latest,DATABASE_URL=${db_secret}:latest,S3_ACCESS_KEY=S3_ACCESS_KEY:latest,S3_SECRET_KEY=S3_SECRET_KEY:latest,S3_BUCKET=S3_BUCKET:latest,CORS_ORIGINS=CORS_ORIGINS:latest,COOKIE_DOMAIN=COOKIE_DOMAIN:latest"
+  if [ "${email_backend}" = "resend" ]; then
+    secrets="${secrets},RESEND_API_KEY=RESEND_API_KEY:latest"
+  fi
+
+  info "Deploying to Cloud Run (${service_name})..."
+  info "  EMAIL_BACKEND=${email_backend}"
+  info "  APP_URL=${app_url}"
+  gcloud run deploy "${service_name}" \
+    --image "${image}" \
     --region "${GCP_REGION}" \
     --platform managed \
     --allow-unauthenticated \
     --add-cloudsql-instances "${CLOUD_SQL_INSTANCE}" \
-    --set-env-vars "COOKIE_SECURE=True,COOKIE_SAMESITE=lax,S3_ENDPOINT_URL=https://storage.googleapis.com,S3_USE_PATH_STYLE=False,GCP_PROJECT=${GCP_PROJECT}" \
-    --set-secrets "SECRET_KEY=SECRET_KEY:latest,DATABASE_URL=DATABASE_URL:latest,S3_ACCESS_KEY=S3_ACCESS_KEY:latest,S3_SECRET_KEY=S3_SECRET_KEY:latest,S3_BUCKET=S3_BUCKET:latest,CORS_ORIGINS=CORS_ORIGINS:latest,COOKIE_DOMAIN=COOKIE_DOMAIN:latest" \
+    --set-env-vars "${env_vars}" \
+    --set-secrets "${secrets}" \
     --memory 512Mi \
     --cpu 1 \
     --min-instances 0 \
-    --max-instances 3 \
+    --max-instances "${max_instances}" \
     --port 8080 \
     --project="${GCP_PROJECT}"
 
-  ok "Backend deployed to Cloud Run"
+  ok "Backend deployed to Cloud Run (${service_name})"
 
-  BACKEND_URL=$(gcloud run services describe "${SERVICE_NAME}" \
+  local backend_url
+  backend_url=$(gcloud run services describe "${service_name}" \
     --region="${GCP_REGION}" \
     --project="${GCP_PROJECT}" \
     --format='value(status.url)')
-  info "Backend URL: ${BACKEND_URL}"
-  info "Health check: curl ${BACKEND_URL}/api/health"
+  info "Backend URL: ${backend_url}"
+  info "Health check: curl ${backend_url}/api/health"
 }
 
 deploy_frontend() {
+  local site="${1:-labaid-prod}"
+
   info "Building frontend..."
   (cd frontend && npm ci && npm run build)
 
-  info "Deploying to Firebase Hosting..."
-  firebase deploy --only hosting --project="${GCP_PROJECT}"
+  info "Deploying to Firebase Hosting (${site})..."
+  firebase deploy --only "hosting:${site}" --project="${GCP_PROJECT}"
 
-  ok "Frontend deployed to Firebase Hosting"
+  ok "Frontend deployed to ${site}.web.app"
 }
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -120,9 +154,24 @@ COMMAND="${1:-all}"
 
 case "${COMMAND}" in
   -h|--help|help) usage ;;
-  setup)    setup ;;
-  backend)  deploy_backend ;;
-  frontend) deploy_frontend ;;
-  all)      deploy_backend; deploy_frontend ;;
-  *)        fail "Unknown command: ${COMMAND}. Run './deploy.sh help' for usage." ;;
+  setup)          setup ;;
+  backend)        deploy_backend "labaid-backend" "DATABASE_URL" "latest" "3" "resend" "https://labaid-prod.web.app" ;;
+  frontend)       deploy_frontend "labaid-prod" ;;
+  all)            deploy_backend "labaid-backend" "DATABASE_URL" "latest" "3" "resend" "https://labaid-prod.web.app"
+                  deploy_frontend "labaid-prod" ;;
+  staging)        warn "Deploying to STAGING environment"
+                  deploy_backend "labaid-backend-staging" "DATABASE_URL_STAGING" "staging" "1" "resend" "https://labaid-staging.web.app"
+                  deploy_frontend "labaid-staging" ;;
+  staging-backend) warn "Deploying backend to STAGING"
+                  deploy_backend "labaid-backend-staging" "DATABASE_URL_STAGING" "staging" "1" "resend" "https://labaid-staging.web.app" ;;
+  staging-frontend) warn "Deploying frontend to STAGING"
+                  deploy_frontend "labaid-staging" ;;
+  beta)           warn "Deploying to BETA environment"
+                  deploy_backend "labaid-backend-beta" "DATABASE_URL_BETA" "beta" "1" "console" "https://labaid-beta.web.app"
+                  deploy_frontend "labaid-beta" ;;
+  beta-backend)   warn "Deploying backend to BETA"
+                  deploy_backend "labaid-backend-beta" "DATABASE_URL_BETA" "beta" "1" "console" "https://labaid-beta.web.app" ;;
+  beta-frontend)  warn "Deploying frontend to BETA"
+                  deploy_frontend "labaid-beta" ;;
+  *)              fail "Unknown command: ${COMMAND}. Run './deploy.sh help' for usage." ;;
 esac

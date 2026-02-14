@@ -14,6 +14,7 @@ import SetupPage from "./pages/SetupPage";
 // Lazy-loaded pages — each becomes a separate chunk
 const LabSetupWizardPage = lazy(() => import("./pages/LabSetupWizardPage"));
 const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage"));
+const SetPasswordPage = lazy(() => import("./pages/SetPasswordPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const InventoryPage = lazy(() => import("./pages/InventoryPage"));
 const ScanSearchPage = lazy(() => import("./pages/ScanSearchPage"));
@@ -56,6 +57,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/setup" element={<SetupPage />} />
+        <Route path="/set-password" element={<SetPasswordPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route
           path="/change-password"

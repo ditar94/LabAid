@@ -6,10 +6,11 @@ against the real database via Docker instead.
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import String, create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -17,6 +18,16 @@ from app.core.database import Base, get_db
 from app.core.security import hash_password, create_access_token
 from app.main import app
 from app.models.models import Lab, User, UserRole
+
+
+# ── SQLite UUID compatibility ─────────────────────────────────────────────
+
+# Register PostgreSQL UUID type as String(36) for SQLite so tests can run
+# without a real PostgreSQL database.
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+
+if not hasattr(SQLiteTypeCompiler, "visit_UUID"):
+    SQLiteTypeCompiler.visit_UUID = lambda self, type_, **kw: "VARCHAR(36)"
 
 
 # ── SQLite test database ────────────────────────────────────────────────────
@@ -57,8 +68,24 @@ def client(db):
             pass
 
     app.dependency_overrides[get_db] = _override_get_db
+
+    # Patch SessionLocal so middleware (e.g. LabSuspensionMiddleware) also
+    # uses the test SQLite session instead of the real PostgreSQL engine.
+    import app.core.database as db_module
+    import app.main as main_module
+    original_session_local = db_module.SessionLocal
+    db_module.SessionLocal = lambda: db
+    main_module.SessionLocal = lambda: db
+
+    # Reset rate limiter state so tests don't interfere with each other
+    from app.routers.auth import limiter
+    limiter.reset()
+
     with TestClient(app) as c:
         yield c
+
+    db_module.SessionLocal = original_session_local
+    main_module.SessionLocal = original_session_local
     app.dependency_overrides.clear()
 
 
@@ -136,3 +163,45 @@ def super_token(super_admin):
         "lab_id": None,
         "role": super_admin.role.value,
     })
+
+
+@pytest.fixture()
+def invited_user(db, lab):
+    """Create a user with a valid invite token."""
+    user = User(
+        id=uuid.uuid4(),
+        lab_id=lab.id,
+        email="invited@test.com",
+        hashed_password=hash_password("placeholder"),
+        full_name="Invited User",
+        role=UserRole.TECH,
+        is_active=True,
+        must_change_password=True,
+        invite_token="valid-test-token-abc123",
+        invite_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture()
+def expired_invite_user(db, lab):
+    """Create a user with an expired invite token."""
+    user = User(
+        id=uuid.uuid4(),
+        lab_id=lab.id,
+        email="expired@test.com",
+        hashed_password=hash_password("placeholder"),
+        full_name="Expired Invite",
+        role=UserRole.TECH,
+        is_active=True,
+        must_change_password=True,
+        invite_token="expired-test-token-xyz",
+        invite_token_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

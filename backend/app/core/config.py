@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
     DB_POOL_TIMEOUT: int = 30
-    DB_POOL_RECYCLE: int = 900
+    DB_POOL_RECYCLE: int = 1800
 
     # Object Storage (S3-compatible)
     S3_ENDPOINT_URL: str | None = None
@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str | None = None
     SMTP_FROM: str | None = None
     ADMIN_EMAIL: str | None = None
+
+    # Email-based account invitations (Resend)
+    EMAIL_BACKEND: str = "console"  # "console" or "resend"
+    RESEND_API_KEY: str | None = None
+    APP_URL: str = "http://localhost:5173"
 
     class Config:
         env_file = ".env"

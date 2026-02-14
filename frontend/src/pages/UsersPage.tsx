@@ -18,10 +18,13 @@ export default function UsersPage() {
     full_name: "",
     role: "tech",
   });
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [inviteResult, setInviteResult] = useState<{
+    email: string;
+    link?: string;
+  } | null>(null);
   const [resetResult, setResetResult] = useState<{
-    userId: string;
-    tempPassword: string;
+    email: string;
+    link?: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
@@ -48,14 +51,17 @@ export default function UsersPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    setTempPassword(null);
+    setInviteResult(null);
     try {
       const params: Record<string, string> = {};
       if (currentUser?.role === "super_admin" && selectedLab) {
         params.lab_id = selectedLab;
       }
       const res = await api.post("/auth/users", form, { params });
-      setTempPassword(res.data.temp_password);
+      setInviteResult({
+        email: form.email,
+        link: res.data.set_password_link || undefined,
+      });
       addToast(`User "${form.full_name}" created`, "success");
       setForm({ email: "", full_name: "", role: "tech" });
       setShowForm(false);
@@ -69,9 +75,12 @@ export default function UsersPage() {
     setError(null);
     setResetResult(null);
     try {
-      const res = await api.post(`/auth/users/${userId}/reset-password`);
-      setResetResult({ userId, tempPassword: res.data.temp_password });
       const u = users.find((u) => u.id === userId);
+      const res = await api.post(`/auth/users/${userId}/reset-password`);
+      setResetResult({
+        email: u?.email || "",
+        link: res.data.set_password_link || undefined,
+      });
       addToast(`Password reset for ${u?.full_name || "user"}`, "info");
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to reset password");
@@ -137,23 +146,31 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {tempPassword && (
+      {inviteResult && (
         <div className="temp-password-banner">
-          User created. Temporary password:{" "}
-          <strong className="mono">{tempPassword}</strong>
-          <br />
-          Share this with the user — they will be prompted to change it on first
-          login.
+          Invite email sent to <strong>{inviteResult.email}</strong>.
+          {inviteResult.link && (
+            <>
+              {" "}Dev link:{" "}
+              <a href={inviteResult.link} target="_blank" rel="noopener noreferrer" className="mono">
+                {inviteResult.link}
+              </a>
+            </>
+          )}
         </div>
       )}
 
       {resetResult && (
         <div className="temp-password-banner">
-          Password reset for{" "}
-          {users.find((u) => u.id === resetResult.userId)?.full_name ||
-            "user"}
-          . New temporary password:{" "}
-          <strong className="mono">{resetResult.tempPassword}</strong>
+          Password reset email sent to <strong>{resetResult.email}</strong>.
+          {resetResult.link && (
+            <>
+              {" "}Dev link:{" "}
+              <a href={resetResult.link} target="_blank" rel="noopener noreferrer" className="mono">
+                {resetResult.link}
+              </a>
+            </>
+          )}
         </div>
       )}
 

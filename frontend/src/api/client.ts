@@ -11,7 +11,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       const url = err.config?.url || "";
       const isAuthCheck = url.includes("/auth/me") || url.includes("/auth/login");
-      const publicPaths = ["/login", "/setup", "/terms"];
+      const publicPaths = ["/login", "/setup", "/set-password", "/terms"];
       if (!isAuthCheck && !publicPaths.includes(window.location.pathname)) {
         window.location.href = "/login";
       }
