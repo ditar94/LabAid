@@ -214,6 +214,8 @@ if settings.GCP_PROJECT:
         logger.info("Google Cloud Error Reporting enabled for project: %s", settings.GCP_PROJECT)
     except ImportError:
         logger.warning("google-cloud-error-reporting not installed; GCP_PROJECT is set but reporting is disabled")
+    except Exception:
+        logger.warning("Google Cloud Error Reporting could not be initialized (missing credentials?)")
 
 # Middleware order: outermost runs first
 # SecurityHeaders → SlidingWindow → Suspension → CORS
