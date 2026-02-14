@@ -335,10 +335,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fast-forward main to beta
+      - name: Update main to match beta
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout main
-          git merge --ff-only origin/beta
-          git push origin main
+          git push origin origin/beta:refs/heads/main --force
