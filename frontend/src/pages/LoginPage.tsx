@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate, Link } from "react-router-dom";
 import { FlaskConical } from "lucide-react";
+import { version } from "../../package.json";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -75,6 +76,15 @@ export default function LoginPage() {
         </form>
         <p className="login-footer">
           Laboratory inventory management &middot; <Link to="/terms">Terms of Use</Link>
+        </p>
+        <p className="login-version">
+          v{version}
+          {import.meta.env.VITE_APP_ENV && import.meta.env.VITE_APP_ENV !== "production" && (
+            <> {import.meta.env.VITE_APP_ENV}</>
+          )}
+          {import.meta.env.VITE_GIT_SHA && (
+            <> &middot; {import.meta.env.VITE_GIT_SHA.slice(0, 7)}</>
+          )}
         </p>
       </div>
     </div>

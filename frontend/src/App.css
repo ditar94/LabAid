@@ -639,6 +639,14 @@ body {
   text-decoration: underline;
 }
 
+.login-version {
+  text-align: center;
+  margin-top: var(--space-xs);
+  color: var(--neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0.03em;
+}
+
 /* ── Terms of Use ────────────────────────────────────────────────────── */
 
 .login-card--terms {
