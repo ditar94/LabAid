@@ -150,10 +150,22 @@ def _batch_resolve(db: Session, logs: list) -> tuple[dict[UUID, str], dict[UUID,
         if doc_lot_ids:
             extra = db.query(Lot).filter(Lot.id.in_(doc_lot_ids)).all()
             lot_map.update({l.id: l for l in extra})
+        # Load antibodies for doc lots so we can build lot-style labels
+        doc_ab_ids = {lot_map[d.lot_id].antibody_id for d in docs if d.lot_id in lot_map and lot_map[d.lot_id].antibody_id} - set(ab_map.keys())
+        if doc_ab_ids:
+            extra = db.query(Antibody).filter(Antibody.id.in_(doc_ab_ids)).all()
+            ab_map.update({a.id: a for a in extra})
+
         found_doc_ids = set()
         for d in docs:
-            labels[d.id] = d.file_name
             lot = lot_map.get(d.lot_id)
+            ab = ab_map.get(lot.antibody_id) if lot and lot.antibody_id else None
+            if ab and lot:
+                labels[d.id] = f"{ab.target} {ab.fluorochrome} — Lot {lot.lot_number}"
+            elif lot:
+                labels[d.id] = f"Lot {lot.lot_number}"
+            else:
+                labels[d.id] = d.file_name
             lineage[d.id] = {"lot_id": d.lot_id, "antibody_id": lot.antibody_id if lot else None}
             found_doc_ids.add(d.id)
 
@@ -166,29 +178,34 @@ def _batch_resolve(db: Session, logs: list) -> tuple[dict[UUID, str], dict[UUID,
                     continue
                 if log.entity_id in labels:
                     continue
-                # Try to extract file_name and lot_id from before_state or after_state
-                file_name = None
                 state_lot_id = None
                 for state_json in (log.before_state, log.after_state):
                     if not state_json:
                         continue
                     try:
                         state = json.loads(state_json) if isinstance(state_json, str) else state_json
-                        if not file_name and state.get("file_name"):
-                            file_name = state["file_name"]
                         if not state_lot_id and state.get("lot_id"):
                             state_lot_id = UUID(state["lot_id"]) if isinstance(state["lot_id"], str) else state["lot_id"]
                     except (json.JSONDecodeError, ValueError, TypeError):
                         continue
-                if file_name:
-                    labels[log.entity_id] = file_name
                 if state_lot_id:
-                    # Load lot if needed for lineage
                     if state_lot_id not in lot_map:
                         lot_obj = db.query(Lot).filter(Lot.id == state_lot_id).first()
                         if lot_obj:
                             lot_map[state_lot_id] = lot_obj
                     lot = lot_map.get(state_lot_id)
+                    if lot and lot.antibody_id:
+                        if lot.antibody_id not in ab_map:
+                            ab_obj = db.query(Antibody).filter(Antibody.id == lot.antibody_id).first()
+                            if ab_obj:
+                                ab_map[lot.antibody_id] = ab_obj
+                        ab = ab_map.get(lot.antibody_id)
+                        if ab:
+                            labels[log.entity_id] = f"{ab.target} {ab.fluorochrome} — Lot {lot.lot_number}"
+                        else:
+                            labels[log.entity_id] = f"Lot {lot.lot_number}"
+                    elif lot:
+                        labels[log.entity_id] = f"Lot {lot.lot_number}"
                     lineage[log.entity_id] = {"lot_id": state_lot_id, "antibody_id": lot.antibody_id if lot else None}
                 else:
                     lineage[log.entity_id] = {"lot_id": None, "antibody_id": None}
