@@ -158,10 +158,10 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 
 > Backend and frontend implementation is complete. Email-based invite/reset flow is live. These are the remaining ops and testing tasks.
 
-- [ ] Add SPF record for `labaid.io` allowing Resend
-- [ ] Add DKIM record for `labaid.io` from Resend dashboard
-- [ ] Verify domain in Resend dashboard
-- [ ] Create Resend account and generate API key -> store in GCP Secret Manager
+- [x] Add SPF record for `labaid.io` allowing Resend
+- [x] Add DKIM record for `labaid.io` from Resend dashboard
+- [x] Verify domain in Resend dashboard
+- [x] Create Resend account and generate API key -> store in GCP Secret Manager
 - [x] Integration test: create user -> token stored -> accept-invite -> password set, token cleared, user logged in
 - [x] Integration test: expired token -> reject with 400
 - [x] Integration test: used token -> reject with 400
