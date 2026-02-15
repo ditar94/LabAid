@@ -10,23 +10,17 @@ Full-stack web application for Flow Cytometry labs to track antibody inventory, 
 - **Auth**: JWT (lab_id derived from token, never trusted from frontend)
 - **Infra**: GCP (Cloud Run, Cloud SQL, Firebase Hosting), Terraform, GitHub Actions CI/CD
 
-## Environments
+## Environments & CI/CD
 
-| Environment | URL | Branch Trigger | Email | Max Instances |
+All deployment details, branch strategy, and workflow instructions are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+| Environment | URL | Email | DB | Max Instances |
 |---|---|---|---|---|
-| Beta | labaid-beta.web.app | push to `beta` (auto) | console | 1 |
-| Staging | labaid-staging.web.app | push to `main` (auto) | resend | 1 |
-| Production | labaid-prod.web.app | push to `main` (manual approval) | resend | 3 |
+| Beta | beta.labaid.io | console | labaid_beta | 1 |
+| Staging | staging.labaid.io | resend | labaid_beta (shared) | 1 |
+| Production | labaid.io | resend | labaid | 3 |
 
-## CI/CD
-
-Deployments are automated via GitHub Actions. No manual scripts needed.
-
-- **PR opened** → `ci.yml` runs backend tests + frontend typecheck
-- **Push to `beta`** → `deploy-beta.yml` runs tests, then deploys to beta
-- **Push to `main`** → `deploy-prod.yml` runs tests, deploys to staging, then awaits manual approval for production
-
-`deploy.sh` remains as a manual fallback. See [CONTRIBUTING.md](CONTRIBUTING.md) for full workflow details.
+**Deploy flow**: Push to `beta` -> tests (auto) -> beta deploy (auto) -> staging deploy (approval) -> production deploy (approval) -> main synced.
 
 ## Getting Started
 
@@ -86,24 +80,13 @@ docker compose logs backend | grep -i error
 docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 ```
 
-### Database Backup (IMPORTANT)
-
-Before any debugging or troubleshooting, always backup the database first:
-```bash
-# Create backup
-docker compose exec db pg_dump -U labaid labaid > backup_$(date +%Y%m%d_%H%M%S).sql
-
-# Restore from backup (if needed)
-cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
-```
-
 ## Testing the App
 
 | What | URL |
 |------|-----|
 | **Desktop browser** | https://localhost:5173 |
 | **Mobile / other device** (same Wi-Fi) | https://\<your-mac-ip\>:5173 |
-| **API docs (Swagger)** | http://local host:8000/docs |
+| **API docs (Swagger)** | http://localhost:8000/docs |
 
 **First-time setup:** Visit `/setup` to create your first lab and admin account, then log in at `/login`.
 
@@ -114,26 +97,22 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 ---
 
-## Hosting & Data Durability
+## Hosting & Data Architecture
 
 - **Model**: Site-managed SaaS — LabAid hosts and manages the platform on behalf of labs
-- **Database**: PostgreSQL with full audit trail; every mutation is logged with before/after state
-- **Data retention**: Lab data is never deleted — suspension revokes write access but preserves all records (inventory, audit logs, uploaded documents)
-- **File storage**: QC documents and lot verification PDFs stored on server filesystem alongside the database
-- **Future**: Cloud object storage + retention policies — see Recommended GCP Stack
-- **Recommended GCP Stack (Simple + Scalable)**
-    >   Cloud Run — host API + frontend containers; autoscale as labs grow
-    >   Cloud SQL for PostgreSQL — managed DB with automatic backups + PITR
-    >   Cloud Storage (GCS) — store documents with versioning + soft delete
-    >   Secret Manager — secrets (JWT, DB creds, storage keys)
-    >   Cloud Logging + Monitoring — logs, metrics, alerts
+- **Compute**: Cloud Run (autoscaling containers, 0-3 instances per environment)
+- **Database**: Cloud SQL for PostgreSQL with automated daily backups, 7-day PITR, WAL archiving
+- **File storage**: GCS via `ObjectStorageService` (S3-compatible interface, local filesystem fallback for dev). Bucket versioning enabled, 30-day retention policy.
+- **Secrets**: GCP Secret Manager (JWT key, DB creds, API keys, storage keys)
+- **Monitoring**: Cloud Logging + Cloud Monitoring + Error Reporting
+- **Auth**: JWT in HttpOnly cookies, rate-limited login, bcrypt password hashing
 
-- **Data Retention (Practical Default)**
-    >   Active labs: keep documents in Hot tier for 12–24 months
-    >   Older docs: move to Cool tier to reduce cost
-    >   Inactive labs: move to Cool/Archive after a defined grace period
-    >   Deletion: only after the legal retention window (e.g., 5 years) and written policy
+### Data Retention
 
+- Active labs: documents in Hot tier
+- Older docs: lifecycle rules move to Nearline after 365 days
+- Inactive labs: data preserved (read-only access on suspension), never deleted
+- Audit logs: append-only, immutable (PostgreSQL trigger prevents UPDATE/DELETE)
 
 ---
 
@@ -154,969 +133,113 @@ cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T db psql -U labaid labaid
 
 ## Development Checklist
 
-### Code Efficiency (Completed)
-
-- [x] Fix N+1 queries in storage grid endpoints (batch `build_grid_cells`)
-- [x] Fix N+1 queries in scan lookup endpoint (batch grid building + older lot queries)
-- [x] Fix N+1 queries in audit log endpoint (batch `_batch_resolve`)
-- [x] Fix N+1 queries in `move_vials` (batch lot/cell/unit loading)
-- [x] Remove redundant `db.refresh()` loops in vial_service.py (10 locations)
-- [x] Add database indexes on audit_log (lab_id+created_at, entity_type+entity_id, action)
-- [x] React.lazy code splitting for all page components
-- [x] SharedDataContext — eliminate redundant API fetches across page navigations
-- [x] Stabilize inline `new Set()` / `[]` props on expensive components (StorageGrid, MoveDestination)
-
-### Must-Do Before Real Users (Blocking)
-
-- [x] HTTPS enforced in production (Cloud Run / load balancer TLS termination)
-- [x] CORS lockdown — configurable via `CORS_ORIGINS` env var; documented in `.env.example`
-- [x] Add `VITE_API_BASE_URL` and use it in `frontend/src/api/client.ts`
-- [x] Secrets management — `.env` gitignored, `.env.example` templates with placeholder values
-- [x] Database backups enabled — at minimum daily snapshots with tested restore process
-- [x] bcrypt password hashing (passlib + bcrypt scheme)
-- [x] JWT expiration set to reasonable window (8 hours)
-
-### Should-Do Before Launch
-
-- [x] Rate limiting on login endpoint (slowapi — 5 req/min per IP)
-- [x] Create a storage interface with env-based switch (local disk for dev, GCS for prod)
-- [x] Monitoring + alerts configured for API errors and auth/storage issues
-- [x] Centralized logging + alerting for API errors, auth failures, and storage/DB issues
-- [x] Uptime monitoring + health checks (`/api/health` checks DB + storage connectivity)
-- [x] Staging environment mirrors prod (including storage backend) and runs restore drills
-- [x] Add staging `.env` + deployment notes to mirror prod config
-- [x] Deployment automation or documented, repeatable deploy steps
-- [x] Migration process defined and rehearsed (staging first, then prod)
-- [x] Add minimal integration tests (auth + document upload/download) with pytest + SQLite test DB
-
-### Post-Launch / Hardening
+### Pending: Ops Hardening
 
 - [ ] MFA + strong password policy for admins; account lockout/rate limiting
-- [x] Enable GCS bucket object versioning (`gsutil versioning set on`) — deleted/overwritten files can be recovered
-- [x] Set GCS bucket retention policy (e.g. 30 days) — prevents accidental deletion within retention window
-- [x] Never include the storage bucket in destructive infrastructure scripts (Terraform destroy, etc.)
-- [x] Add automatic database backup step to CI/CD pipeline — runs `gcloud sql backups create` before every migration
-- [x] Enable Postgres PITR (WAL archiving) + daily snapshots + retention policy
 - [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
 - [ ] Store document checksums + add a periodic verification job for missing/corrupt blobs
-- [ ] Document backup/restore process and run periodic restore tests
-- [ ] Define RPO/RTO targets (e.g., 15 min / 4 hrs) and align backup cadence to them
-- [ ] Ensure automatic backups cover all labs in the multi-tenant database
-- [ ] Verify foreign keys and cascading rules cover antibody → fluorochrome → lot → document integrity
-- [ ] Write and rehearse a restore playbook (DB restore + blob restore + validation queries)
-- [ ] Run scheduled restore tests and record results
+- [ ] Configure object storage lifecycle rules to move inactive files to cold storage
+- [ ] Request size limits + rate limiting for uploads and public endpoints
+- [ ] Tag releases and keep a mapping of schema version to app version for restores/rollbacks
 - [ ] Use backward-compatible migrations for relationship changes (add new columns first, backfill, then cut over)
 - [ ] Add automated integrity checks that validate the full graph after migrations/restores
-- [ ] Tag releases and keep a mapping of schema version to app version for restores/rollbacks
-- [ ] Request size limits + rate limiting for uploads and public endpoints
+- [ ] Verify foreign keys and cascading rules cover antibody -> fluorochrome -> lot -> document integrity
+
+### Pending: Documentation & Compliance
+
+- [ ] Document backup/restore process and run periodic restore tests
+- [ ] Define RPO/RTO targets (e.g., 15 min / 4 hrs) and align backup cadence to them
+- [ ] Write and rehearse a restore playbook (DB restore + blob restore + validation queries)
+- [ ] Run scheduled restore tests and record results
 - [ ] Incident response plan + basic status/communication plan
 - [ ] Legal baseline: Terms of Service, Privacy Policy, data retention policy
 
-### Open Tasks / Backlog
+### Pending: Account Creation & Password Reset — Remaining Items
 
-- [x] Audit log entries must include the associated user
-- [x] Redirect `/antibodies` and `/lots` to `/inventory` and remove old views entirely
-- [x] Add "Receive via barcode" flow on the Receive page to match the new scan buttons (ReceivePage redirects to ScanSearchPage which handles barcode-based receiving)
--
-- [x] Add lab setting (e.g., `qc_doc_required`) to keep lots in "Pending QC" until a QC document is uploaded (approval alone is not enough)
-- [x] Add a QC document flag/type on lot documents (or doc category) and expose it in the upload UI
-- [x] Update QC approval flow to enforce the QC doc requirement when enabled (block approval or keep lot pending with a clear reason)
-- [x] Update Dashboard + Inventory QC pending badges/counts to be reason-aware (approval pending, doc upload pending, or both)
-- [x] Expose QC pending reason in the API (computed on lot or via summary endpoint) so UI can render dynamic badges consistently
-- [x] Lot documents must be accessible from the audit log, and lot documents should be filterable
-- [x] Audit log should show the referenced antibody/fluorochrome/lot (entity id alone is not useful)
-- [x] Hovering over the archived badge should show the archive note if one exists
-- [x] Bug: left sidebar items should remain fixed and not be affected by right content scrolling/layout
-- [x] GS1 DataMatrix parsing on unknown barcode (post `/scan/lookup` 404 only)
-- [x] AccessGUDID lookup by GTIN, with picker list for multiple matches
-- [x] Auto-populate lot fields on registration (lot number, expiration date, vendor barcode)
-- [x] Auto-populate antibody fields on registration (vendor/company name, catalog number) and allow edits
-- [x] Store all parsed GS1 AIs per lot (JSON column or normalized table)
-- [x] Normalize scanner input (strip CR/LF, handle GS separator for variable-length AIs)
-- [x] Storage page: unknown barcode should show error with "Go register" link to Scan/Search
-- [x] Export audit log to CSV
-- [x] Bulk vial operations (open/deplete multiple)
-- [x] Dark mode (prep work done in Phase 1 with CSS custom properties)
-- [x] Mobile-responsive layout for tablet use at the bench (covered in Phase 8)
-- [ ] Catalog number auto-lookup — auto-populate vendor/catalog fields by querying vendor databases (BD, Cytek, Sysmex, BioLegend) during antibody registration; deferred due to fragile web scraping dependencies
+> Backend and frontend implementation is complete. Email-based invite/reset flow is live. These are the remaining ops and testing tasks.
 
-
----
-
-## Barcode Scanner + GS1/UDI (AccessGUDID) Plan
-
-### Goals
-- Scan GS1 DataMatrix barcodes (mobile camera + hardware scanners).
-- If barcode is unknown, parse GS1 AIs and enrich via FDA AccessGUDID.
-- Auto-populate lot + antibody fields during registration.
-- Store full AI data per lot without losing the raw barcode string.
-
-### Scope (Where it applies)
-- Scan/Search page registration: `frontend/src/pages/ScanSearchPage.tsx`
-- Inventory "New Lot" inline form: `frontend/src/pages/InventoryPage.tsx`
-- Storage stocking scan: `frontend/src/pages/StoragePage.tsx` (unknown barcode = link to register)
-
-### UX Behavior
-- Always attempt `/scan/lookup` first.
-- Only if `/scan/lookup` returns 404:
-  - Parse GS1 AIs from the scanned string.
-  - If GTIN is present, query AccessGUDID.
-  - Show a picker list if multiple AccessGUDID matches exist.
-  - Overwrite registration fields with parsed/enriched values, but keep them editable.
-- Storage page: unknown barcode shows error + "Go register" link to `/scan-search?barcode=...`.
-
-### Supported GS1 AIs (initial)
-- Required: (01) GTIN
-- Common: (17) Expiration (YYMMDD), (10) Lot, (21) Serial
-- Store all parsed AIs (not just the common subset) to avoid data loss.
-
-### Input Normalization
-- Trim whitespace and trailing CR/LF from hardware scanner input.
-- Preserve the raw barcode string in `lots.vendor_barcode`.
-- Support GS separator (ASCII 29) between variable-length AIs.
-- If scanners send non-ASCII placeholders for GS, map them to ASCII 29 before parsing.
-- Mobile camera scan is real-time: `BarcodeScannerButton` uses `BarcodeDetector` and closes on `rawValue`.
-- Optional: show a "Scan successful" toast and auto-trigger lookup after camera detection.
-- Desktop wedge scanners often send trailing Enter (CR/LF); Scan/Search and Storage handle Enter.
-- Some scanners add prefix/suffix chars; strip them in a small normalizer.
-
-### Data Storage (Per Lot)
-- Keep `lots.vendor_barcode` as-is (raw scan).
-- Store full AI map per lot.
-  - Preferred: `lots.gs1_ai` JSON/JSONB map of `AI -> value` (Postgres friendly).
-  - Alternative: normalized `gs1_identifiers` table (ai, value, raw_segment) for querying.
-- Decide on JSON vs normalized based on reporting needs.
-
-### Backend Additions
-- Parsing + lookup helper (server-side to avoid CORS/external API exposure).
-- Endpoint proposal:
-  - `POST /api/scan/parse`
-    - Input: `{ barcode: string }`
-    - Output: `{ ai: Record<string,string>, gtin?: string, lot?: string, exp?: string, serial?: string }`
-  - `GET /api/scan/gudid?gtin=...`
-    - Output: list of AccessGUDID matches (company name, catalog number, device description, primary DI)
-  - Alternatively: one combined endpoint `POST /api/scan/enrich` to return parse + GUDID in one call.
-- Rate limit and cache AccessGUDID lookups (GTIN -> response).
-
-### Frontend Changes
-- Shared parse/enrich helper (or new API call) used by:
-  - `ScanSearchPage` (unknown barcode path)
-  - `InventoryPage` (new lot scan button)
-  - `StoragePage` (unknown barcode path)
-- Registration field population rules:
-  - `lot_number` <- AI (10)
-  - `expiration_date` <- AI (17) mapped to ISO date
-  - `vendor_barcode` <- raw barcode
-  - `vendor` <- AccessGUDID company name
-  - `catalog_number` <- AccessGUDID catalog number (if present)
-- Picker UI:
-  - Inline list below Vendor/Catalog fields.
-  - Selecting a match overwrites fields but keeps them editable.
-
-### Error Handling
-- If parse fails: fall back to manual entry; show non-blocking warning.
-- If no GTIN: skip AccessGUDID, continue manual entry with any parsed data.
-- If AccessGUDID returns no matches: show "No match found" hint.
-
-### Testing / Verification
-- Unit tests for GS1 parser (AI parsing, GS separator handling, date parsing).
-- Integration tests for `/scan/lookup` 404 -> parse -> enrich -> registration flow.
-- UI tests for picker selection + editable overwrite behavior.
-- Manual test matrix:
-  - Mobile camera scan (DataMatrix)
-  - Desktop scanner with CR/LF
-  - Desktop scanner with GS separator
-
-
-### Core: Scanning & Identification
-- [x] Barcode/QR scan input — auto-focused field catches keyboard wedge input, Enter triggers lookup
-- [x] Scan tells you: is this lot registered? Is it QC'd? How many sealed vials remain?
-- [x] If lot is NOT registered, offer inline registration from the scan screen (create lot + receive vials + assign storage in one flow)
-- [x] "Open" a vial from the scan screen — user clicks grid cell, inventory updates
-
-### Inventory Tracking
-- [x] Track vials on hand (sealed), vials opened, vials per lot
-- [x] Each vial is an individual record with full lifecycle (sealed → opened → depleted)
-- [x] Lot age tracking — lots have creation dates, vials have received_at timestamps for newer/older comparison
-- [x] Lot QC status — Pending / Approved / Failed, with approval timestamp and approver
-- [x] QC enforcement — soft gate with "opened for QC" tracking; vials opened from unapproved lots are flagged, confirmed on return-to-storage
-- [x] Vials per lot summary view — at-a-glance counts (sealed/opened/depleted) per lot
-- [x] Lot age comparison — "Use First" / "Newer" badges on lots with 2+ lots per antibody
-- [x] Lots screen: allow filtering/searching to view all lots for a specific antibody
-- [x] Lots screen: total column excludes depleted vials (renamed to "Active")
-
-### Data Permanence & Safety
-- [x] All data stored in PostgreSQL — no risk of disappearing
-- [x] No hard deletes anywhere — status columns only (Active/Depleted/Archived); fluorochrome delete converted to soft delete
-- [x] Full audit trail — every mutation logged with who, what, when, before/after state (user creation, password ops, document upload, fluorochrome archive, lab creation all covered)
-- [x] Correction feature — revert accidental opens/depletes while preserving audit history
-- [x] Alembic migrations — schema changes tracked and versioned
-- [x] Lab data (including audit logs and uploaded PDFs) must never be deleted due to non-payment or suspension — enforced by soft deletes and suspension middleware
-- [x] Suspended labs should retain read-only access; restore full access on reactivation — middleware blocks non-GET requests for inactive labs
-- [x] Enforce append-only audit logs and prohibit destructive deletes — PostgreSQL trigger prevents UPDATE/DELETE on audit_log
-- [ ] Configure object storage lifecycle rules to move inactive files to cold storage
-
-### Storage Racks & Vial Location
-- [x] Lab admins create storage units (e.g., "Freezer Box A1", 10x10 grid, -20C)
-- [x] CSS Grid visual layout — cells show position labels (A1, B3, etc.)
-- [x] Occupied cells show antibody target name, hover for full details (antibody + fluorochrome + lot)
-- [x] 1-by-1 stocking workflow — "Stock Vials" mode highlights next open slot, scan barcode to fill it, auto-advances
-- [x] Multiple vials per lot stored individually — each vial gets its own cell
-- [x] Scan lookup shows the storage grid with matching vials highlighted (pulsing blue)
-- [x] User clicks specific cell to confirm which vial they're pulling — no auto-selection
-- [x] Opening a vial frees its cell for future use
-- [x] Cell de-allocation on Deplete — logically clear grid coordinate when a vial is depleted (not just opened)
-- [x] Allow opening vials anywhere a storage grid is shown (storage screen, search results, etc.)
-- [x] Opened vials clickable on storage grid — shows Deplete / View Lot / Cancel dialog
-- [x] Stock button fix on storage page (was passing MouseEvent as barcode)
-- [x] Backend stocking supports opened vials (fallback after sealed vials exhausted)
-- [x] "View Storage" intent on scan screen — reveals rack with full open/deplete actions
-- [x] "Store Open Vial" intent on scan screen — pick vial, pick unit, click empty cell
-
-### Temporary Storage & Vial Movement
-> Automatic temporary storage for vials not yet assigned to a rack, plus the ability to move vials between storage locations.
-
-**Temporary Storage**
-- [x] Each lab has a special "Temporary Storage" unit auto-created (non-deletable, `is_temporary` flag)
-- [x] Vials received without a storage_unit_id automatically go to Temporary Storage
-- [x] Dynamic grid sizing: `ceil(sqrt(vialCount))` for dimensions (1→1×1, 2-4→2×2, 5-9→3×3, etc.)
-- [x] Visual distinction on Storage page (different styling)
-- [x] Always shown first on Storage page (ordering by `is_temporary`)
-- [x] "In Temp Storage" badge on lots that have vials in temporary storage
-- [x] Dashboard priority card: "Vials in Temporary Storage" with count, click to see grouped by lot
-
-**Move Vials (Storage Page)**
-- [x] "Move Vials" mode button on Storage page (like "Stock Vials" mode)
-- [x] Click-to-toggle cell selection: click cells to select/deselect, selected cells highlighted
-- [x] "Select entire lot" dropdown: choose a lot to select all its vials across all containers
-- [x] Selection summary: "Selected 8 vials (3 in Freezer A, 2 in Freezer B, 3 in Temp Storage)"
-- [x] Destination picker: choose target storage unit, then either auto-fill or click starting cell
-- [x] Backend endpoint: `POST /vials/move` with `{ vial_ids[], target_unit_id, start_cell_id? }`
-- [x] Audit log entry for vial movements with before/after storage locations
-
-**Move Vials (Scan Screen)**
-- [x] "Move Vials" intent added to scan result action menu
-- [x] Shows all storage locations for the scanned lot with grids
-- [x] Click-to-toggle or "Select All" to pick vials from the lot
-- [x] Choose destination → move vials (same flow as Storage page)
-
-**Lot Location Summary (Inventory Page)**
-- [x] Lot row shows storage summary: "5 in Freezer A, 3 in Temp Storage"
-- [x] "Split" badge when lot vials are in multiple containers
-- [x] "Consolidate" button opens Storage page with that lot pre-selected for moving
-
-### Scan Screen UX
-- [x] Auto-focused scan input for hardware scanner convenience
-- [x] Scan result shows: antibody name, lot number, QC badge, sealed vial count
-- [x] QC warning banner when lot is not approved
-- [x] Oldest-vial recommendation (but requires human click to confirm)
-- [x] Inline lot registration when scanned barcode is unknown — prompt to create lot, enter quantity, pick storage unit
-- [x] Combine Scan + Search into a single "Scan/Search" tab with guidance text
-
-### Intent-Based Scan Actions
-> After scanning a known lot, present an action menu instead of jumping straight to "open". Supports the full vial lifecycle from one screen.
-
-- [x] Action menu after scan: **Open New**, **Return to Storage**, **Receive More**, **Deplete**
-- [x] **Open New** — highlight the oldest sealed vial in the grid; user clicks cell to confirm
-- [x] **Return to Storage** — suggest the next open slot by default (like stocking workflow), but allow user to override by clicking any empty cell in the grid
-- [x] **Receive More** — inline receive form (quantity + optional storage assignment) for the scanned lot
-- [x] **Deplete** — mark a vial as fully used up; user selects which vial from the list
-- [x] All intent-based actions logged to audit trail with lab_id and user timestamps
-- [x] Add "Deplete All" action for a lot (scan results + lots list) — includes "Deplete Opened" and "Deplete Entire Lot" options
-- [x] Optional lab setting: track only sealed counts (skip opened/depleted tracking)
-- [x] Lot archiving — archive/unarchive lots, hidden by default with toggle filter, shown with badge when visible
-
-### Auth & Multi-Tenancy
-- [x] Email/password login with JWT tokens
-- [x] Role-based access: Super Admin, Lab Admin, Supervisor, Tech, Read-only
-- [x] Every query scoped by lab_id from JWT — users cannot see other labs' data
-- [x] Initial setup flow — create first lab + admin account
-- [x] User management page for admins
-- [x] Super Admin can suspend/reactivate labs (access revoked or restored without deleting data)
-- [x] Support ticket system for Lab Admins and Supervisors
-- [x] Clarify account ownership/hosting model (site-managed on GCP) and data durability guarantees
-- [x] Super Admin Impersonation: Logic to generate temporary "Support JWTs" for troubleshooting.
-- [x] Audit Trail Attribution: Ensure the audit_log records when a Super Admin performs an action for a lab.
-- [x] Support Access Toggle: Lab-level setting to grant/revoke temporary database access for troubleshooting.
-- [x] Global Search for Support: Search for any lab_id, antibody_id, or lot_id across the entire database (Super Admin only).
-- [x] Fix superadmin tabs so that irrelevant views are removed.
-- [x] Lab admin first-login setup wizard — 4-step guided configuration (inventory mode, QC requirement, storage tracking, expiry warning) with skip option
-
-### Role Hierarchy Rework
-> Rethink roles to match real hospital/lab structure. Current roles (super_admin, lab_admin, tech, read_only) need to be refined.
-
-**Super Admin (platform-level)**
-- [x] Manage hospitals/labs — create new labs, view all labs
-- [x] Create and manage users for any lab
-- [x] Access audit logs across all labs
-- [x] Access any lab's inventory for troubleshooting/support
-
-**Lab Admin (per-lab)**
-- [x] Create and manage users within their own lab
-- [x] Full access to all lab features (antibodies, lots, storage, inventory, audit log)
-- [x] All Supervisor abilities
-
-**Supervisor (new role, per-lab)**
-- [x] Approve / Fail lots (QC decisions)
-- [x] Register new antibodies and fluorochromes
-- [x] Register new lots and receive inventory
-- [x] All Tech abilities
-
-**Tech (per-lab)**
-- [x] View inventory and storage grids
-- [x] Store vials (1-by-1 stocking workflow)
-- [x] Open vials from the scan screen
-- [x] Can receive inventory (add TECH to receive endpoint's `require_role`)
-- [x] Cannot register lots or approve QC
-- [x] If scanned barcode is unregistered or lot not QC'd, show message: "Contact your supervisor"
-
-**Password Management & User Creation**
-- [x] When creating a new user, generate a random temporary password (format: `tempXXX`, e.g., `temp482`) — display it to the admin so they can share it with the user
-- [x] Supervisors and above can reset any user's password (within their permission scope) — generates a new temp password in the same format
-- [x] Temporary password flag on User model (`must_change_password`) — set to true on creation and on reset
-- [x] Force password change on first login — if `must_change_password` is true, redirect user to a "Choose New Password" screen before they can access the app
-
-**Open question**
-- [x] Decide: should Techs be able to receive inventory, or only Supervisors? → **Yes, Techs can receive** (audit log captures who did what)
-
-### Antibody Search & Locator
-- [x] Global search bar — search by Target, Fluorochrome, Clone, or Catalog #
-- [x] Search results show matching antibodies with lot/vial summary info
-- [x] Visual locator — selecting an antibody from results displays its storage location (Freezer/Box name) and highlights its specific cell coordinates in the grid view
-
-### QC Verification & Documentation
-- [x] QC warning gate — if a user attempts to open a vial from a "Pending" lot, show confirmation: "This lot hasn't been approved yet; are you sure you wish to open this vial?"
-- [x] QC document storage — upload and store lot verifications/QC results (PDFs/images) under each Lot record
-- [x] Role gate — only Supervisors and Admins can transition a lot from "Pending" to "Approved" after reviewing documentation
-
-### Antibody-Specific Stability Logic
-- [x] Configurable secondary expiration — Supervisors can set a stability period (e.g., 90 days) at the Antibody level
-- [x] Automatic open-expiration calculation — when a vial is opened, calculate its unique expiration date based on the Antibody's stability setting
-- [x] Visual warning when an opened vial is past its stability expiration
-
-### Antibody & Lot Management
-- [x] Register antibodies (target, fluorochrome, clone, vendor, catalog number)
-- [x] Register lots (lot number, vendor barcode, expiration date, linked to antibody)
-- [x] QC approval/rejection by Lab Admin or Super Admin
-- [x] Receive inventory — enter quantity, optionally assign to storage unit
-- [x] Inventory UI: combine Antibodies + Lots into an "Inventory" tab with cards
-- [x] Inventory UI: click antibody card to view lots list for that antibody (and add new lots there)
-- [x] Inventory UI: add new antibodies inline from the same screen
-- [x] Inventory UI: select fluorochrome color inline; update all antibodies using that fluorochrome
-- [x] Fluorochromes tab auto-populates from antibodies and stores lab color selections
-- [x] Add-antibody flow: choose from existing fluorochromes or create a new one (auto-add to fluorochrome list)
-- [x] Antibody archive flow on Antibodies screen — top-right Active/Inactive switch on each card; toggle opens optional-note dialog; write to audit log
-- [x] Inactive antibodies list at bottom of Antibodies screen (shows all inactive)
-- [x] Current lot + New lot badges — default current lot is oldest lot; auto-update when lot is archived or depleted
-- [x] Lot drill-down from Inventory — clicking a lot row shows storage locations for its vials; if unstored, offer inline stocking workflow; if stored, allow opening a vial from the grid
-- [x] Smart overflow on receive — when the selected storage container lacks enough open slots, prompt the user to split across another container, move all to another container, or create a new one
-
-### Dashboard & Reporting
-- [x] Dashboard: show only priority cards (Pending QC, Low Stock, Expiring Lots); clicking a card shows the relevant antibody list with all needed info
-- [x] Dashboard with counts: antibodies, lots, sealed vials, opened vials, pending QC
-- [x] Expiring-soon alerts — lots approaching expiration date
-- [x] Per-antibody inventory breakdown (sealed/opened/depleted across all lots)
-- [x] Low-stock warnings — Supervisors+ can set a low-stock threshold per antibody (min on-hand vials across all lots); when below threshold, alert on dashboard
-- [x] Low-stock warning should trigger when <= threshold (not just <)
-- [x] Dashboard cards: when selecting an antibody, show counts specific to that antibody (sequential cards)
-- [x] Pending QC card remains global total; when an antibody is selected, show its pending QC count
-- [x] Edit antibody fields — expand card to reveal Edit button; modal form to update target, fluorochrome, clone, vendor, catalog #, stability, thresholds
-- [x] Dual thresholds per antibody: "Reorder Point" (total vials from Pending QC + Approved lots) and "Min Ready Stock" (approved lots' vials only)
-- [x] Unified badge system on Inventory cards: Reorder (red), Needs QC (yellow), Expiring/Expired Lot (yellow/red)
-- [x] Dashboard Pending QC contextual badge: "Low Approved Stock" when approving the lot is urgent
-- [x] Dashboard Expiring Lots contextual badges: "No Other Lots" or "Pending Lot(s) Available"
-- [x] Dashboard Low Stock contextual badges: "Reorder" (red, must buy more) vs "QC New Lot(s) to Resolve" (yellow, approve pending lots)
-- [x] Removed is_testing flag (obsolete)
-
-### Infrastructure
-- [x] Docker Compose — Postgres + Backend + Frontend, one command startup
-- [x] Backend hot-reload via volume mount
-- [x] Frontend Vite dev server with HMR
-- [x] CORS configured for local dev
-- [x] Payment/account automation: billing_status on Lab (trial/active/past_due/cancelled) with auto-suspend/reactivate
-- [x] Storage templates/racks: ability to remove
-
-### Unified Storage Grid — Compact + Hover Expand
-> One `StorageGrid` component used identically across the entire app (Storage page, Scan/Search scan result, Scan/Search "View Storage" intent, Search page locator). All views show the same info and interactions — the only difference is which vials are highlighted when viewing a specific lot.
-
-**Design goals:**
-- Compact default grid (cells ~28-32px) so a 10x10 rack fits on screen / mobile without scrolling
-- At-a-glance state via color + borders — no reading required at default size
-- Hover/tap to expand a cell and see full details without leaving the grid
-- Unified component, consistent everywhere
-
-**Phase 1 — Compact cells with fluorochrome tint**
-- [x] Shrink default cell size to ~28-32px square (remove `aspect-ratio: 1` in favor of fixed dimensions)
-- [x] Occupied cells: very light tint of the fluorochrome color as background (10-15% opacity)
-- [x] Cell text at default size: short antibody abbreviation (e.g. "CD3") in the fluorochrome's color — readable but small
-- [x] Empty cells: neutral light gray, show cell label (A1, B2) in muted text
-- [x] Row/column headers shrink proportionally
-
-**Phase 2 — Hover/tap expand (popout detail card)**
-- [x] On hover (desktop) or tap (mobile), the cell expands using `position: absolute` + `z-index` to float a detail card over neighbors — grid layout is NOT disturbed
-- [x] Expanded card shows: antibody target + fluorochrome, lot number, expiration date, vial status (sealed/opened), QC status badge
-- [x] Expansion is CSS-only where possible (`:hover` pseudo-class + `transform: scale()` or absolutely positioned child)
-- [x] On mobile (touch), first tap expands the card; second tap (or tap on an action) triggers the cell click handler (open/deplete dialog)
-- [x] Transition is smooth (150-200ms) with subtle shadow for depth
-
-**Phase 3 — Visual encoding (no hover needed to read state)**
-- [x] **Sealed vial** — solid fluorochrome-tinted background (the default occupied state)
-- [x] **Opened vial** — dashed border (2px dashed) around the cell; intuitively "opened/broken into"; works at small sizes
-- [x] **QC status via left-edge accent bar** (3px left border): green = approved, yellow = pending, red = failed — avoids conflict with dashed border for opened status
-- [x] **Highlighted cells** (viewing a specific lot): stronger fluorochrome saturation + subtle pulsing ring; non-relevant cells dimmed to 30% opacity
-- [x] Grid legend below the grid explaining: solid = sealed, dashed = opened, left-edge color = QC status, highlight = current lot
-
-**Phase 4 — Unified usage across the app**
-- [x] `StoragePage`: use unified grid; cell click opens `OpenVialDialog` (Open for sealed, Deplete for opened)
-- [x] `ScanSearchPage` "Open New" intent: use unified grid with lot vials highlighted; confirm dialog above grid
-- [x] `ScanSearchPage` "View Storage" intent: use unified grid with full cell click (same as Storage page)
-- [x] `ScanSearchPage` "Store Open Vial" intent: use unified grid in "empty" click mode
-- [x] `SearchPage` / `ScanSearchPage` search results: use unified grid with lot vials highlighted
-- [x] Remove all one-off grid styling and `showVialInfo` branching — the grid always shows the compact+hover view
-- [x] Pass `fluorochromes` prop consistently everywhere (already done in most places)
-
-**Implementation notes:**
-- The `StorageGrid` component props stay similar: `rows`, `cols`, `cells`, `highlightVialIds`, `onCellClick`, `clickMode`, `fluorochromes`
-- Remove `showVialInfo` prop — all grids show info via hover/tap now
-- Add a `.grid-cell-popout` absolutely-positioned child div inside each occupied cell for the hover card
-- Use `pointer-events: none` on the popout by default, `pointer-events: auto` on hover/focus
-- For mobile: use a `useState` for `expandedCellId` and toggle on tap; clear on outside tap or scroll
-- CSS custom property `--fluoro-color` set per cell via inline style for the tint + text color
-
-### Older-Lot Enforcement on Scan
-> When a user scans a lot and selects "Open New", check whether an older active lot of the same antibody exists with sealed vials. If so, prompt the user before proceeding.
-
-- [x] On "Open New" intent, check for older lots of the same antibody that still have sealed vials
-- [x] If an older lot exists, show prompt: "An older lot (Lot #XXXX) has N sealed vials in [Storage Unit] at [cell(s)]. Use the older lot first?" and if yes, show that storage container and highlight the current lot prompting user to select a vial to open (or cancel).
-- [x] Prompt includes a direct link/button to switch to the older lot's grid view
-- [x] User can dismiss and proceed with the scanned lot if they choose
-- [x] If user proceeds with the newer lot, offer an option to note "Lot verification / QC in progress" on the older lot — explains why it's being skipped (e.g., opened for lot verification) and logs the reason in the audit trail
-
-### UI/UX Overhaul — Visual & Interaction Redesign
-> Transform LabAid from a functional internal tool into a visually striking, professional, seamless-to-use product. Every change preserves existing functionality — this is a skin + interaction upgrade, not a feature rewrite.
-
-**Phase 1 — Design Foundation (do first, everything else builds on this)**
-
-- [x] **Design tokens & CSS architecture**: Replace the monolithic 3000-line `App.css` with a structured system:
-  - `tokens.css` — all CSS custom properties (colors, spacing scale, typography scale, radii, shadows, transitions)
-  - Spacing scale: `--space-xs` (4px) through `--space-3xl` (48px) — eliminate all hardcoded pixel values
-  - Border-radius scale: `--radius-sm` (4px), `--radius-md` (8px), `--radius-lg` (12px), `--radius-xl` (16px), `--radius-full` (9999px)
-  - Shadow scale: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-xl` — layered, realistic shadows
-  - Transition presets: `--ease-out`, `--ease-spring`, `--duration-fast` (150ms), `--duration-normal` (250ms), `--duration-slow` (400ms)
-- [x] **Typography overhaul**: Replace system font stack with distinctive paired fonts
-  - Display/heading font: something with character (e.g. DM Sans, Outfit, General Sans, Satoshi — NOT Inter/Roboto/Arial)
-  - Body/data font: clean readable companion (e.g. IBM Plex Sans, Source Sans 3)
-  - Monospace for barcodes/lot numbers: JetBrains Mono or IBM Plex Mono
-  - Define full type scale: `--text-xs` (0.75rem) through `--text-3xl` (1.875rem) with matching line-heights
-  - Heading weights: 700 for h1, 600 for h2/h3, 500 for labels
-- [x] **Color palette upgrade**: Richer, more layered palette with depth
-  - Primary: shift from flat #3b82f6 to a richer blue with tonal variations (50–900 scale)
-  - Page background: subtle warm gray or cool-toned off-white with depth (not flat #f5f6fa)
-  - Card surfaces: slight elevation with layered shadows instead of flat 1px borders
-  - Accent colors: tighten the semantic palette (success, warning, danger, info) with matching tints for backgrounds
-  - Neutral scale: 10 shades from near-white to near-black for text, borders, backgrounds
-  - Status colors should work on both light and dark surfaces
-
-**Phase 2 — Layout & Navigation**
-
-- [x] **Sidebar redesign**:
-  - Add icons to every nav item (use a lightweight icon set — Lucide, Phosphor, or inline SVG)
-  - Group nav items visually: "Core" (Dashboard, Scan, Inventory, Receive, Storage), "Review" (Audit), "Admin" (Users, Labs, Support, Fluorochromes)
-  - Section dividers with subtle labels between groups
-  - Branded header: LabAid logo/wordmark with subtle background treatment, not just plain text
-  - Active state: left accent bar + tinted background + icon color change (not just blue text + right border)
-  - Hover state: smooth background transition, not abrupt color swap
-  - User info section: avatar placeholder (initials circle), name, role badge styled distinctly
-  - Sidebar footer: version + copyright in refined small text
-- [x] **Page header pattern**: Every page gets a consistent header zone:
-  - Page title (h1) + optional subtitle/description
-  - Action buttons right-aligned in the header row
-  - Breadcrumb or context line where useful (e.g. "Inventory > CD3 FITC > Lot 12345")
-  - Subtle bottom border or shadow to separate header from content
-- [x] **Content area improvements**:
-  - Max-width container for readability on ultra-wide screens (e.g. `max-width: 1400px; margin: 0 auto`)
-  - Consistent page padding using spacing tokens
-  - Section spacing between major content blocks
-
-**Phase 3 — Component Redesign**
-
-- [x] **Card system overhaul**:
-  - Layered shadows instead of flat borders (cards should float above the page)
-  - Subtle hover lift effect (translateY -2px + shadow increase) on interactive cards
-  - Card header with distinct background tint or top accent bar
-  - Consistent internal spacing using spacing scale
-  - Inventory cards: fluorochrome color as a top border or left accent strip (not just a circle)
-- [x] **Button system**:
-  - Primary: solid fill with subtle gradient or shadow, satisfying hover/press states
-  - Secondary: ghost/outline style with tinted hover background
-  - Destructive: red variant with confirmation-style weight
-  - Button sizes: sm, md, lg with proportional padding/font
-  - Icon + text buttons where appropriate
-  - Loading state: spinner replaces text, button stays same width (no layout shift)
-  - Disabled: reduced opacity + pattern change (not just opacity alone)
-- [x] **Table redesign**:
-  - Alternating row tinting (very subtle, 2-3% opacity difference)
-  - Sticky header on scroll
-  - Row hover highlight
-  - Better column alignment and spacing
-  - Sortable column indicators where applicable
-  - Empty state: illustration or styled message, not blank space
-- [x] **Form inputs**:
-  - Floating labels or animated label-on-focus pattern
-  - Input focus: smooth border color transition + subtle glow (refined ring, not harsh)
-  - Select dropdowns: custom styled (not browser default)
-  - Consistent field sizing and label positioning
-  - Inline validation with smooth reveal animation
-- [x] **Badge/pill consolidation**:
-  - Reduce to 4 core semantic variants: success, warning, danger, info
-  - Consistent size and weight across all badge types
-  - Dot indicator variant for compact status (e.g. table rows)
-  - Count pill variant clearly distinct from status badges
-- [x] **Modal/dialog upgrade**:
-  - Backdrop blur effect (not just semi-transparent black)
-  - Modal enter/exit animation (scale + fade, not instant appear/disappear)
-  - Consistent header/body/footer structure
-  - Close button positioned consistently (top-right corner)
-  - Focus trap and ESC-to-close for accessibility
-
-**Phase 4 — Animations & Micro-interactions**
-
-- [x] **Page transitions**: Subtle fade + slide on route change (use React transition or CSS)
-- [x] **Staggered list/card reveals**: When data loads, cards/rows animate in with staggered delay (50-80ms per item)
-- [x] **Skeleton loading screens**: Replace blank loading states with content-shaped skeleton placeholders
-  - Dashboard stat cards: pulsing rectangles matching card layout
-  - Tables: pulsing rows matching column widths
-  - Storage grid: pulsing cell grid
-  - Inventory cards: pulsing card shapes
-- [x] **Toast/notification system**: Slide-in toast for action confirmations
-  - "Vial opened successfully" (success)
-  - "Lot received — 10 vials added" (info)
-  - "Error: could not connect" (danger)
-  - Auto-dismiss after 4s, manual dismiss, stack multiple
-- [x] **Button feedback**: Subtle press effect (scale 0.97 on active), ripple or flash on click
-- [x] **Scroll-triggered reveals**: Content sections fade in as they enter the viewport (subtle, not dramatic)
-- [x] **Storage grid cell interactions**: Smoother hover popout with spring-like easing; cell selection with satisfying snap
-
-**Phase 5 — Dashboard Redesign**
-
-- [x] **Visual hierarchy**: Hero stat cards at top (large, prominent) → priority action cards (medium) → detail lists (compact)
-  - Hero cards: large numbers with supporting label and trend indicator
-  - Use icon + number + label pattern for at-a-glance reading
-  - Priority cards (Pending QC, Low Stock, Expiring): use left color accent and count badge
-- [x] **Empty/zero state**: When no alerts, show a positive "All clear" state with illustration or icon, not just missing cards
-- [x] **Card click interaction**: Smooth expand/collapse with content reveal animation (CSS grid row animation + fadeInUp)
-- [x] **Lab selector** (super admin): Styled dropdown or segmented control, not plain `<select>`
-
-**Phase 6 — Storage Grid Polish**
-
-- [x] **Grid container**: Subtle inset shadow or recessed background to make the grid feel embedded
-- [x] **Cell refinement**: Slightly rounded corners (4px), smoother color transitions, refined popout shadow
-- [x] **Legend redesign**: Compact inline legend with actual cell examples (mini cells showing each state), not just text descriptions
-- [x] **Grid header**: Storage unit name + metadata (temp, capacity used) in a styled header bar above the grid
-- [x] **Selection state**: Checkmark icon overlay (CSS pseudo-element SVG) + snap animation on selected grid cells
-- [x] **Mobile grid**: Horizontal scroll for large grids on mobile
-
-**Phase 7 — Login & Onboarding**
-
-- [x] **Login page redesign**: Full-bleed background with atmosphere (gradient mesh, subtle pattern, or branded illustration)
-  - Login card with refined shadow and generous spacing
-  - LabAid branding prominent (logo + tagline)
-  - Input focus states with smooth animation
-  - "Remember me" checkbox styled custom
-  - Error state: shake animation + red highlight
-- [x] **First-login password change**: Styled as welcome onboarding with ShieldCheck icon, step indicator, real-time field hints
-- [x] **Setup page** (`/setup`): Two-step wizard with progress indicator, step context, success animation
-
-**Phase 8 — Mobile & Responsive Polish**
-
-- [x] **Tablet breakpoint** (1024px): Two-column layouts where appropriate, sidebar narrower
-- [x] **Mobile navigation**: Bottom tab bar for primary nav (Dashboard, Scan, Inventory, Storage, Audit) + hamburger sidebar
-- [x] **Touch targets**: Minimum 44px hit areas on all interactive elements
-- [x] **Mobile cards**: Dashboard mobile card layout, responsive inventory/lot cards
-- [x] **Scan page mobile**: Fullscreen native-feel viewfinder with corner marks, scanning line animation, frosted glass close button, safe-area insets
-- [x] **Pull-to-refresh gesture** on Dashboard (mobile): usePullToRefresh hook with rubber-band pull indicator, spinning RefreshCw icon
-
-**Phase 9 — Accessibility & Polish**
-
-- [x] **Focus indicators**: Visible, styled focus rings (not browser default) on all interactive elements
-- [x] **Keyboard navigation**: Tab order verified, Enter/Space activate buttons, ESC closes grid popouts
-- [x] **ARIA labels**: Modals (`aria-modal`, `role="dialog"`), live regions for toasts (`aria-live`), expandable sections (`aria-expanded`)
-- [x] **Color contrast**: Audited and fixed 9 text/background combos for WCAG AA (sidebar labels, cell labels, popout status, badge-blue, placeholders, login footer)
-- [x] **Reduced motion**: `prefers-reduced-motion` media query disables animations for users who need it
-- [x] **Print stylesheet**: @media print rules — hide nav/buttons, format tables/grids/badges for paper, page-break controls
-
-**Implementation notes:**
-- All changes are CSS/component-level — no backend changes needed
-- Preserve every existing feature and interaction; this is purely visual + UX
-- TypeScript check must pass after every phase: `cd frontend && npx tsc --noEmit`
-- Test each phase on both desktop (1440px+) and mobile (375px) before moving to next
-- Fonts loaded via Google Fonts or self-hosted in `/public/fonts/` for performance
-- Consider CSS modules or scoped styles if `App.css` split becomes unwieldy
-- Each phase is independently deployable — no phase depends on a later phase being complete
-
-### Reagent Designations (IVD / RUO / ASR)
-> Add regulatory designation support to distinguish IVD, RUO, and ASR reagents. Labs often stock the same antibody/fluorochrome combo under different designations (e.g., CD3-FITC as both ASR and RUO). The system must show both clearly without cluttering search results or forcing a priority model.
-
-**Phase A — Designation Enum + Name (Complete)**
-
-*Data Model*
-- [x] Add `designation` enum (`IVD`, `RUO`, `ASR`) to the Antibody model (required field, default `RUO`)
-- [x] Add optional `name` field to Antibody for IVD product names (e.g., "BD Simultest CD4 FITC/CD8 PE")
-- [x] Alembic migration for new fields (`b1c2d3e4f5a6`)
-- [x] Update Pydantic schemas (AntibodyCreate, AntibodyUpdate, AntibodyOut, GlobalSearchAntibody)
-- [x] Audit snapshot includes designation and name
-
-*Inventory & Search Display*
-- [x] Inventory cards: designation badge (RUO/ASR/IVD) with color coding; IVD products show `name` as title with target-fluorochrome as subtitle
-- [x] Designation filter dropdown on Inventory page and Scan/Search results
-- [x] Search results table: designation column with badge
-- [x] Scan result header: designation badge next to antibody name; IVD name display with subtitle
-- [x] Global search: designation column with badge in antibodies table
-- [x] Dashboard: designation badge on low stock, pending QC, and expiring lot entries
-- [x] Inactive antibodies table: designation column with badge
-- [x] Antibody name search: backend search includes `name` field for IVD product name matching
-
-*Receive & Registration*
-- [x] Antibody creation form (Inventory page): designation dropdown + conditional IVD name input
-- [x] Antibody edit modal (Inventory page): designation dropdown + conditional IVD name input
-- [x] New antibody registration (Scan/Search page): designation dropdown + conditional IVD name input
-
-*Low Stock & Alerts*
-- [x] Low stock thresholds remain per-antibody (no cross-designation priority system)
-- [x] Each designation entry has its own independent threshold — labs configure per their own procedures
-- [x] No lab-wide designation priority — the system shows all designations with stock levels; labs follow their own SOPs for which to use first
-
-**Phase B — IVD Multi-Antibody Cocktails (Complete)**
-
-*Data Model*
-- [x] `ReagentComponent` join table: links one Antibody to multiple target/fluorochrome/clone entries with ordinal ordering
-- [x] Alembic migration for `reagent_components` table (`c2d3e4f5a6b7`) with FK cascade delete + index
-- [x] Pydantic schemas: `ReagentComponentBase`, `ReagentComponentOut`; `components` field on AntibodyCreate/Update/Out/GlobalSearchAntibody
-- [x] Audit snapshot includes components array
-
-*Component Picker (Forms)*
-- [x] Inventory page create form: inline component picker when designation is IVD (add/remove rows of target + fluorochrome + clone)
-- [x] Inventory page edit modal: same component picker, pre-populated from existing components
-- [x] Scan/Search register form: same component picker for new IVD antibodies
-
-*Search & Display*
-- [x] Antibody search: subquery searches component targets/fluorochromes (e.g. search "CD4" finds IVD cocktails containing CD4)
-- [x] Global search: same component subquery + eager-loads components in response
-- [x] Inventory cards: "Contains: CD3-FITC, CD4-PE, ..." line for IVD antibodies with components
-- [x] Scan result header: "Contains: ..." line below antibody name
-- [x] Scan/Search locator panel: "Contains: ..." line below antibody name
-- [x] Global search table: component sub-line under antibody target
-
-*GS1 Enrichment Auto-Detection*
-- [x] Backend: `suggested_designation` field on `ScanEnrichResult`; set to `"ivd"` when GUDID device found (FDA-registered = likely IVD)
-- [x] Frontend: auto-sets designation dropdown to IVD when enrichment suggests it (user can override)
-
-### Lab Settings Additions
-
-- [x] **Storage toggle**: `storage_enabled` lab setting (default `true`). When disabled: hides Storage tab, grid sections, storage assignment during receive. Data preserved but hidden.
-
-### Account Creation & Password Reset Overhaul
-> Replace the temporary-password-on-screen flow with email-based invite/reset links. Admins no longer need to manually share passwords — users receive an email and set their own password directly.
-
-**Current Flow (Being Replaced)**
-- Admin creates user → random temp password shown on screen → admin manually shares it (text, verbal, sticky note)
-- Password reset → same: new temp password shown on screen → admin shares it
-- User logs in with temp password → forced to `/change-password` → sets real password
-- Problems: temp password can be lost if admin navigates away; sharing a random string is error-prone; no audit trail on delivery
-
-**New Flow**
-- Admin creates user → backend generates a secure one-time token → email sent to user's address with a "Set Your Password" link
-- Password reset → same: token generated → email sent with "Reset Your Password" link
-- User clicks link → `/set-password?token=abc123` → sets their password directly (no temp password step)
-- `must_change_password` flag and temp password display removed from the creation/reset flows entirely
-
-**Email Service Architecture**
-- Abstracted email backend interface (`EmailBackend`) with two implementations:
-  - `ResendEmailBackend` — calls Resend API to send real emails (production)
-  - `ConsoleEmailBackend` — logs email content (including the set-password link) to stdout/Cloud Run logs (dev/beta)
-- Environment variable `EMAIL_BACKEND` controls which implementation is used (`resend` or `console`)
-- Production sends from `noreply@labaid.io` via Resend (requires DNS verification: SPF + DKIM records on `labaid.io`)
-- Resend API key stored in GCP Secret Manager, injected via `deploy.sh` like other secrets
-
-**Backend Changes**
-
-*New columns on User model:*
-- [ ] `invite_token` (String, nullable, unique) — one-time token for setting password
-- [ ] `invite_token_expires_at` (DateTime, nullable) — token expiry (24 hours from generation)
-- [ ] Alembic migration for new columns
-- [ ] Remove temp password display from `UserCreateResponse` and `ResetPasswordResponse` schemas
-
-*New/modified endpoints:*
-- [ ] `POST /auth/users` (modify) — generate token + expiry instead of temp password; call email backend to send invite email; still set `must_change_password=True`
-- [ ] `POST /auth/users/{id}/reset-password` (modify) — generate new token + expiry; call email backend to send reset email; set `must_change_password=True`
-- [ ] `POST /auth/accept-invite` (new) — accepts `{ token, password }`; validates token exists, not expired, and not already used; hashes password, clears token fields, sets `must_change_password=False`; returns JWT cookie (user is logged in immediately)
-- [ ] Rate limit `/auth/accept-invite` (5/min per IP) to prevent token brute-force
-
-*Email backend:*
-- [ ] `backend/app/services/email.py` — `EmailBackend` base class with `send_email(to, subject, html_body)` method
-- [ ] `ResendEmailBackend` — uses `resend` Python package to send via Resend API
-- [ ] `ConsoleEmailBackend` — prints to stdout: recipient, subject, and full HTML body (including clickable link)
-- [ ] `get_email_backend()` factory reads `settings.EMAIL_BACKEND` and returns the correct implementation
-- [ ] Two email templates: "Welcome to LabAid" (new user) and "Password Reset" (existing user) — both contain the tokenized link
-
-*Token security:*
-- [ ] Token generated with `secrets.token_urlsafe(32)` (256 bits — not brute-forceable)
-- [ ] Token expires after 24 hours
-- [ ] Token is single-use — cleared from DB immediately after password is set
-- [ ] Token is cleared if a new reset is requested (old token invalidated)
-
-**Frontend Changes**
-
-*New page:*
-- [ ] `SetPasswordPage.tsx` — reads `token` from URL query params; shows password + confirm password form (reuse existing ChangePasswordPage styling/validation); calls `POST /auth/accept-invite`; on success, user is logged in and redirected to dashboard
-- [ ] Handle expired/invalid token: show clear error message with "Contact your administrator" guidance
-- [ ] Route: `/set-password` (public, no auth required)
-
-*Modified pages:*
-- [ ] `UsersPage.tsx` — remove temp password yellow banner after user creation; replace with "Invite email sent to {email}" confirmation message
-- [ ] `UsersPage.tsx` — remove temp password banner after password reset; replace with "Password reset email sent to {email}" confirmation
-- [ ] `LoginPage.tsx` — add "Forgot password? Contact your administrator" hint text (no self-service reset — admins trigger it)
-
-*Console backend UX (dev/beta):*
-- [ ] When `EMAIL_BACKEND=console`, also return the set-password link in the API response so the frontend can display it directly (avoids having to check Cloud Run logs during development)
-- [ ] `UsersPage.tsx` — when response includes a link (console mode only), show it in the yellow banner as a clickable URL
-
-**Configuration & Deployment**
-
-*Environment variables:*
-- [x] `EMAIL_BACKEND` — `resend` (production) or `console` (dev/beta)
-- [x] `RESEND_API_KEY` — Resend API key (production only, stored in GCP Secret Manager)
-- [x] `APP_URL` — base URL for email links (e.g., `https://labaid-prod.web.app` or `https://labaid-beta.web.app`)
-- [x] Update `backend/.env.example` with new variables
-- [x] Update `deploy.sh` to inject `RESEND_API_KEY` from Secret Manager and set `EMAIL_BACKEND=resend` for production
-
-*DNS setup (one-time):*
 - [ ] Add SPF record for `labaid.io` allowing Resend
 - [ ] Add DKIM record for `labaid.io` from Resend dashboard
 - [ ] Verify domain in Resend dashboard
-
-*Resend account:*
-- [ ] Create Resend account and verify `labaid.io` domain
-- [ ] Generate API key and store in GCP Secret Manager as `RESEND_API_KEY`
-- [ ] Free tier: 3,000 emails/month (more than sufficient for user invites/resets)
-
-**Migration Path**
-- [ ] Existing users with `must_change_password=True` (never completed setup): admin can trigger a password reset which sends them an email
-- [ ] Existing users with `must_change_password=False` (already set password): no action needed, they continue logging in normally
-- [ ] The `/change-password` page remains for users who want to voluntarily change their password (not token-based, requires being logged in)
-
-**Testing**
-- [ ] Integration test: create user → token stored → accept-invite with token → password set, token cleared, user logged in
-- [ ] Integration test: expired token → reject with 400
-- [ ] Integration test: used token → reject with 400
-- [ ] Integration test: reset password → old token invalidated, new token works
+- [ ] Create Resend account and generate API key -> store in GCP Secret Manager
+- [ ] Integration test: create user -> token stored -> accept-invite -> password set, token cleared, user logged in
+- [ ] Integration test: expired token -> reject with 400
+- [ ] Integration test: used token -> reject with 400
+- [ ] Integration test: reset password -> old token invalidated, new token works
 - [ ] Integration test: console email backend logs email content to stdout
-- [ ] Manual test: full flow on beta with console backend (create user → check logs → click link → set password)
-- [ ] Manual test: full flow on production with Resend (create user → check inbox → click link → set password)
+- [ ] Manual test: full flow on beta with console backend
+- [ ] Manual test: full flow on production with Resend
 
-### AUTH Overhaul — Pluggable Enterprise Authentication
-> Upgrade authentication to support per-lab identity providers (internal password, Microsoft SSO, Google SSO, future SAML) while keeping all authorization, lab scoping, role enforcement, and billing state enforcement internal to LabAid. Authentication becomes pluggable per lab — authorization never leaves the app.
+### Pending: AUTH Overhaul — Pluggable Enterprise Authentication
 
-**Architectural invariants (must hold across all phases):**
-- `lab_id` scoping on every query remains unchanged — SSO does not weaken tenant isolation
-- Roles (`super_admin`, `lab_admin`, `supervisor`, `tech`, `read_only`) remain internal — SSO authenticates identity, LabAid assigns roles
-- `LabSuspensionMiddleware` enforces billing state regardless of auth provider — no bypass via SSO
-- Audit logging covers all login methods with the same granularity
-- The current User model (`user.lab_id` FK, `user.role` enum) is unchanged — SSO users are regular User records
-- Admin pre-creates users (current flow preserved) — SSO is an alternative *authentication* method, not an alternative *provisioning* method
-- Labs can run password + SSO simultaneously (transition period), then optionally go SSO-only
+> Full plan in [docs/AUTH_OVERHAUL.md](docs/AUTH_OVERHAUL.md). Adds per-lab SSO (Microsoft Entra ID, Google Workspace, future SAML) while keeping all authorization internal.
 
-**How it works (end-to-end):**
-1. User enters email on login page → backend checks email domain against `lab_auth_providers` → returns available login methods
-2. **Password login**: existing flow unchanged (email + password → JWT cookie)
-3. **SSO login**: frontend redirects to provider (Microsoft/Google) → provider redirects back with auth code → backend exchanges code for identity → matches identity to existing User via `external_identities` table → issues same JWT cookie with same claims (`sub`, `lab_id`, `role`)
-4. From this point forward, the session is identical regardless of how the user authenticated — all middleware, role checks, and lab scoping work exactly the same
+- [ ] Phase 1 — Auth Provider Infrastructure (DB tables, provider management API, admin UI)
+- [ ] Phase 2 — OIDC Integration (Microsoft + Google SSO login flow)
+- [ ] Phase 3 — Login Flow Overhaul (email-first discovery, SSO buttons, password-only gating)
+- [ ] Phase 4 — Hardening & Security Audit
+- [ ] Phase 5 — SAML Support (future, only when a customer requires it)
 
-**Beta/dev considerations:**
-- No special "switch" needed — provider config is per-lab, so beta labs use dev OAuth app credentials while prod labs use prod credentials
-- `APP_URL` already differentiates environments → callback URLs are correct per environment (`http://localhost:5173/auth/callback/...` for dev, `https://labaid-beta.web.app/auth/callback/...` for beta)
-- Microsoft and Google both allow `http://localhost` redirect URIs for dev/test OAuth apps
-- Labs without any provider configured default to password-only (current behavior, zero migration risk)
+### Backlog
 
-#### Phase 1 — Auth Provider Infrastructure
+- [ ] Catalog number auto-lookup — auto-populate vendor/catalog fields by querying vendor databases (BD, Cytek, Sysmex, BioLegend) during antibody registration; deferred due to fragile web scraping dependencies
 
-*Database / Schema*
-- [ ] Create `lab_auth_providers` table: `id` (UUID PK), `lab_id` (FK to labs), `provider_type` (enum: `password`, `oidc_microsoft`, `oidc_google`, `saml`), `config` (JSON — client_id, tenant_id, etc.), `email_domain` (String, nullable — for org discovery), `is_enabled` (Boolean), `created_at`
-- [ ] Create `external_identities` table: `id` (UUID PK), `user_id` (FK to users), `provider_type` (String), `provider_subject` (String — the provider's unique user ID, e.g. Microsoft `oid` or Google `sub`), `provider_email` (String), `created_at`. Unique constraint on `(provider_type, provider_subject)`.
-- [ ] Alembic migration for both tables (down_revision: `f7a8b9c0d1e2`)
-- [ ] Every existing lab implicitly has password auth (no row needed — password is the default when no providers are configured)
+---
 
-*Backend*
-- [ ] Add `LabAuthProvider` and `ExternalIdentity` SQLAlchemy models in `models.py`
-- [ ] Add Pydantic schemas: `AuthProviderCreate`, `AuthProviderOut`, `AuthProviderUpdate`
-- [ ] Add `GET /api/auth/providers/{lab_id}` — super admin + lab admin can view configured providers
-- [ ] Add `POST /api/auth/providers` — super admin can add a provider to a lab
-- [ ] Add `PATCH /api/auth/providers/{id}` — super admin can update/disable a provider
-- [ ] Add `POST /api/auth/discover` — public endpoint, accepts `{ email }`, returns `{ providers: ["password", "oidc_microsoft"], lab_name }` based on email domain match. Rate-limited. Does not reveal lab_id or other details.
-- [ ] Provider config validation: reject incomplete configs (e.g. OIDC without client_id/tenant_id)
-- [ ] Store OAuth `client_secret` as a GCP Secret Manager reference in config (e.g. `{ "client_secret_ref": "labaid-mayo-oidc-secret" }`) — never plaintext in DB. Add a `resolve_secret(ref)` helper in `core/config.py`.
+## Completed Features
 
-*Frontend*
-- [ ] Add auth provider management UI to Labs page (super admin only) — list, add, edit, disable providers per lab
-- [ ] Config forms per provider type: Microsoft OIDC (tenant_id, client_id, secret ref), Google OIDC (client_id, secret ref)
+<details>
+<summary>Click to expand full list of completed work</summary>
 
-*Testing*
-- [ ] Migration test: verify existing labs work with zero providers (password default)
-- [ ] Test `POST /api/auth/discover`: returns `["password"]` for labs without providers, returns correct providers for configured labs, returns 404 for unknown domains
+### Code Efficiency
+- N+1 query fixes (storage grids, scan lookup, audit log, move_vials)
+- Database indexes on audit_log
+- React.lazy code splitting, SharedDataContext, stabilized props
 
-#### Phase 2 — OIDC Integration (Microsoft Entra ID + Google Workspace)
+### Production Readiness
+- HTTPS, CORS lockdown, secrets management, database backups
+- Rate limiting (login endpoint), health checks (DB + storage)
+- Staging environment, deployment automation, integration tests
+- Billing automation (trial/active/past_due/cancelled)
 
-*Backend*
-- [ ] Add `httpx` (or `authlib`) dependency for OIDC token exchange
-- [ ] Add `GET /api/auth/sso/{provider_type}/authorize` — generates OIDC authorization URL with state parameter (CSRF protection), redirect_uri based on `APP_URL`, and provider-specific scopes. Returns `{ authorize_url }`.
-- [ ] Add `POST /api/auth/sso/callback` — receives auth code + state → exchanges code for tokens at provider's token endpoint → extracts identity claims (sub, email, name) → looks up `external_identities` → finds User → issues JWT cookie → redirects to frontend
-- [ ] Identity matching logic: first check `external_identities` for exact `(provider_type, provider_subject)` match. If no external identity exists, fall back to email match against `users.email` + verify the user belongs to a lab that has this provider enabled. On first successful SSO login, auto-create the `external_identities` record (links the SSO identity to the internal user for future logins).
-- [ ] OIDC token validation: verify `id_token` signature against provider's JWKS endpoint, validate `iss`, `aud`, `exp` claims
-- [ ] Microsoft-specific: support both single-tenant and multi-tenant Entra ID apps, use `https://login.microsoftonline.com/{tenant_id}/v2.0` endpoints
-- [ ] Google-specific: use `https://accounts.google.com` OIDC endpoints, validate `hd` (hosted domain) claim
-- [ ] Session creation: SSO login produces the exact same JWT cookie as password login — same `sub` (user.id), `lab_id`, `role` claims. Downstream code cannot tell the difference.
-- [ ] Audit logging: `action="user.login_sso"` with `note="provider: oidc_microsoft"` (parallel to existing `user.password_changed` etc.)
-- [ ] Error handling: provider unreachable → clear error message; email not found in LabAid → "No account found. Contact your administrator."; user exists but is inactive → reject
+### Core Features
+- Barcode/QR scanning with GS1 DataMatrix parsing and AccessGUDID enrichment
+- Full vial lifecycle tracking (sealed -> opened -> depleted)
+- Storage racks with visual grid, hover popouts, fluorochrome tinting
+- Temporary storage with auto-sizing grid
+- Move vials between containers (Storage page + Scan screen)
+- Intent-based scan actions (Open, Return, Receive, Deplete)
+- Older-lot enforcement (FEFO prompts)
+- QC verification with document upload and configurable requirements
+- Antibody stability expiration tracking
+- Reagent designations (IVD/RUO/ASR) with multi-antibody cocktail support
+- Lot archiving, bulk operations, audit log export
 
-*Frontend*
-- [ ] Add `/auth/callback` route (public) — receives redirect from SSO provider, extracts code + state from URL params, calls `POST /api/auth/sso/callback`, on success calls `refreshUser()` and navigates to `/`
-- [ ] Add `/auth/callback` to `publicPaths` in `client.ts` (401 interceptor exclusion)
+### Auth & Multi-Tenancy
+- Role-based access (super_admin, lab_admin, supervisor, tech, read_only)
+- Super admin impersonation with audit attribution
+- Support ticket system, global search
+- Lab setup wizard, support access toggle
+- Email-based invite/password reset flow (invite tokens, Resend integration)
 
-*Testing*
-- [ ] Integration test: mock OIDC token exchange → user matched → JWT issued
-- [ ] Integration test: SSO login for user in inactive lab → rejected by suspension middleware on next request
-- [ ] Integration test: SSO login for unknown email → 400 with clear message
-- [ ] Integration test: SSO login auto-creates external_identity on first login
-- [ ] Manual test (beta): configure a dev Microsoft Entra ID app for a beta lab → full SSO login flow
+### UI/UX
+- Full visual redesign (design tokens, typography, color palette, animations)
+- Responsive layout with mobile bottom nav, tablet breakpoints
+- Dark mode, skeleton loading, toast notifications, pull-to-refresh
+- Storage grid compact cells with hover popouts and fluorochrome tinting
+- Fullscreen mobile scanner with corner marks and scanning animation
+- WCAG AA accessibility audit, print stylesheet, reduced motion support
 
-#### Phase 3 — Login Flow & Frontend Overhaul
+### Code Quality
+- Shared components (QcBadge, LotAgeBadge, CapacityBar, GridLegend, AntibodyCard, etc.)
+- Shared hooks (useVialActions, useLotBarcodeCopy, useViewPreference, useMoveVials)
+- Extracted modules (StorageGridPanel, MovePanel, AntibodyForm, LotRegistrationForm, LotStorageDrilldown)
 
-*Frontend*
-- [ ] Refactor `LoginPage.tsx` to email-first discovery flow:
-  1. Step 1: email input only → calls `POST /api/auth/discover` on submit
-  2. Step 2: if `providers` includes `password` → show password field (current UI)
-  3. Step 2: if `providers` includes `oidc_microsoft` → show "Sign in with Microsoft" button
-  4. Step 2: if `providers` includes `oidc_google` → show "Sign in with Google" button
-  5. If multiple providers available → show all applicable options (password field + SSO buttons)
-  6. If only SSO → hide password field entirely
-- [ ] SSO button click: calls `GET /api/auth/sso/{provider_type}/authorize` → redirects to `authorize_url`
-- [ ] Persist discovered email in state so callback page can show "Signing in as user@hospital.edu..."
-- [ ] Handle SSO callback errors (expired state, provider error) with clear user-facing messages
-- [ ] Hide "Reset Password" button on `UsersPage.tsx` for users in SSO-only labs (no password to reset)
-- [ ] Hide password-related UI in user creation flow for SSO-only labs (admin still creates user, but no invite email — user logs in via SSO)
-- [ ] `ChangePasswordPage.tsx`: only accessible if the user's lab allows password auth
+### Infrastructure
+- GitHub Actions CI/CD (unified pipeline with approval gates)
+- Three environments (beta/staging/production)
+- Cloud SQL with SSL, pgAudit, password policies, deletion protection
+- Dedicated Cloud Run service account with minimal permissions
+- Terraform IaC for all GCP resources
 
-*Backend*
-- [ ] Add `password_enabled` helper: checks if a lab has password auth enabled (default true when no providers configured, explicitly set when providers exist)
-- [ ] `POST /auth/login` — reject with 403 + clear message if lab is SSO-only: "This organization uses SSO. Please sign in with your organization's identity provider."
-- [ ] `POST /auth/users/{id}/reset-password` — reject if lab is SSO-only
-- [ ] `POST /auth/accept-invite` — reject if lab is SSO-only (invite links are password-based)
-
-*Testing*
-- [ ] Test: SSO-only lab → password login rejected with 403
-- [ ] Test: SSO-only lab → password reset rejected
-- [ ] Test: mixed lab (password + SSO) → both login methods work
-- [ ] Test: lab with no providers → password login works (backward compatible)
-
-#### Phase 4 — Hardening & Security Audit
-
-*Security*
-- [ ] Verify tenant isolation: SSO user for Lab A cannot access Lab B data (lab_id in JWT matches user.lab_id, all queries scoped)
-- [ ] Verify OIDC state parameter prevents CSRF on callback
-- [ ] Verify `id_token` signature validation prevents token forgery
-- [ ] Verify rate limiting on `/auth/discover` and `/auth/sso/callback` (prevent enumeration + abuse)
-- [ ] Verify `external_identities` unique constraint prevents one SSO identity from mapping to multiple users
-- [ ] Verify audit trail: all SSO logins logged with provider type, all provider config changes logged
-- [ ] Verify suspension enforcement: SSO-authenticated user in suspended lab gets read-only (same as password user)
-- [ ] Verify impersonation: super admin impersonation works identically regardless of target lab's auth provider
-- [ ] Security review: OAuth client secrets never logged, never returned in API responses, never included in audit snapshots
-
-*Testing*
-- [ ] Full integration test suite: password-only lab, SSO-only lab, mixed lab, suspended SSO lab
-- [ ] Test: create user in SSO-only lab → user logs in via SSO → full access
-- [ ] Test: disable SSO provider on a lab → existing sessions continue until expiry, new SSO logins rejected, password login re-enabled
-- [ ] Test: provider config change audit logged
-
-#### Phase 5 — SAML Support (Future)
-> Only implement when a customer specifically requires SAML (e.g., hospital with legacy ADFS). The abstraction from Phase 1 (`lab_auth_providers` with `provider_type=saml`) means no schema changes are needed — just new backend handlers.
-
-- [ ] Add `python3-saml` or `pysaml2` dependency
-- [ ] Add SAML SP metadata generation endpoint: `GET /api/auth/saml/{provider_id}/metadata`
-- [ ] Add SAML assertion consumer endpoint: `POST /api/auth/saml/callback` — validates SAML response signature, extracts NameID/attributes, matches to User via `external_identities`, issues JWT cookie
-- [ ] SAML config schema in `lab_auth_providers.config`: IdP metadata URL, IdP entity ID, certificate
-- [ ] Frontend: SAML uses the same "SSO" button as OIDC — user doesn't see the protocol difference
-- [ ] Admin UI: SAML provider config form (IdP metadata URL upload/paste, attribute mapping)
-- [ ] Test: full SAML flow with a test IdP (e.g., `samltool.com` or local `keycloak`)
-
-#### Documentation
-- [ ] Update this README's Auth & Multi-Tenancy section to describe pluggable auth
-- [ ] Document auth invariants: what SSO can and cannot change (identity yes, roles/lab_id/billing no)
-- [ ] Document provider setup guide for lab admins: how to register an Azure AD / Google Workspace app and configure it in LabAid
-- [ ] Document the email-first login flow for end users
-
-### Code Reusability & UI Consistency Refactor
-
-Shared feature modules — each its own file, callable with page-specific configuration. Ensures consistent UI across all pages while keeping context-appropriate customization. Improves code readability, editability, and maintainability.
-
-*Foundation Utilities*
-- [x] `src/utils/format.ts` — `formatDate()` replaces 15+ inline `toLocaleDateString()` calls
-- [x] `src/utils/lotActions.ts` — `buildLotActions()` replaces 2 identical functions in LotTable/LotCardList
-
-*Small Shared Components*
-- [x] `src/components/QcBadge.tsx` — QC status badge with doc-required variant (replaces 8 inline renders)
-- [x] `src/components/LotAgeBadge.tsx` — Current/New lot badge (replaces 3 inline renders)
-- [x] `src/components/CapacityBar.tsx` — Capacity bar with fill-class logic (replaces 6 computations)
-- [x] `src/components/GridLegend.tsx` — Sealed/Opened/Empty legend (replaces 5 inline renders)
-
-*Shared Hooks*
-- [x] `src/hooks/useLotBarcodeCopy.ts` — Barcode expand/copy state (replaces 2 identical blocks in LotTable/LotCardList)
-- [x] `src/hooks/useViewPreference.ts` + `src/components/ViewToggle.tsx` — Card/list view toggle, persisted per user in localStorage
-- [x] `src/hooks/useVialActions.ts` — Open/deplete state + API calls (replaces 4 identical ~40-line implementations)
-
-*Update LotTable/LotCardList*
-- [x] Use shared utilities: buildLotActions, useLotBarcodeCopy, QcBadge, LotAgeBadge, formatDate
-- [x] Add `extraActions` prop for page-specific buttons (e.g., "Scan Lot")
-- [x] Add `customBadges` prop for Dashboard sections (pendingQCBadges, expiringLotBadges)
-- [x] Add `prefixColumn`, `extraColumns`, `hideActions`, `hideDepleted`, `hideQc`, `hideReceived` props for cross-context flexibility
-
-*StorageGridPanel Module*
-- [x] `src/components/StorageGridPanel.tsx` — Grid + header (name, temp, capacity bar, actions) + legend panel
-- [x] Update StoragePage to use StorageGridPanel
-- [x] Update ScanSearchPage scan mode to use StorageGridPanel
-- [x] Update InventoryPage drilldown to use StorageGridPanel
-- [x] Update SearchPage to use StorageGridPanel
-
-*MovePanel Module*
-- [x] `src/components/MovePanel.tsx` — Full move layout: header + view toggle + source/dest + MoveDestination + footer
-- [x] Update StoragePage to use MovePanel
-- [x] Update ScanSearchPage to use MovePanel
-
-*AntibodyCard Module*
-- [x] `src/components/AntibodyCard.tsx` — Card layout: color circle, name, designation badge, counts, badges, expand/collapse
-- [x] Extract from InventoryPage (expandable cards with all options)
-- [x] Update SearchPage to use AntibodyCard grid (replaces plain table)
-- [x] Update ScanSearchPage search mode to use AntibodyCard grid (replaces custom table)
-- [x] Card/list view toggle on InventoryPage, SearchPage, ScanSearchPage search
-
-*Registration Form Modules*
-- [x] `src/components/AntibodyForm.tsx` — Antibody create/edit form (replaces ~130-line InventoryPage form + ~250-line ScanSearchPage form)
-- [x] `src/components/LotRegistrationForm.tsx` — Lot creation form with barcode scan, storage assignment, overflow handling
-- [x] Update InventoryPage to use AntibodyForm (create + edit modes) and LotRegistrationForm
-- [x] Update ScanSearchPage to use AntibodyForm (with GUDID enrichment) and LotRegistrationForm (with tech request mode)
-
-*LotStorageDrilldown Module*
-- [x] `src/components/LotStorageDrilldown.tsx` — Click lot → storage grids with highlighted vials, open/deplete, stock controls
-- [x] Extract from InventoryPage (stock controls + "Manage" link + open/deplete)
-- [x] Add to SearchPage (click lot → drilldown with open/deplete, no stock controls)
-- [x] Add to ScanSearchPage search mode (click lot → drilldown, same as SearchPage)
-
-*Dashboard Refactors*
-- [x] Replace Pending QC custom table with LotTable/LotCardList (prefixColumn + pendingQCBadges)
-- [x] Replace Expiring Lots custom table with LotTable/LotCardList (prefixColumn + extraColumns for Status/Backup)
-- [x] Refactor Temp Storage move to use `useMoveVials` hook + `MoveDestination` (removes ~80 lines of manual move logic)
-- [x] Use shared QcBadge, formatDate across all Dashboard sections
-
-*Minor Updates*
-- [x] StorageGrid.tsx: import qcLabel from shared QcBadge (removed local duplicate)
-- [x] ScanPage.tsx, GlobalSearchPage.tsx, TicketsPage.tsx: use QcBadge, formatDate
-
+</details>
