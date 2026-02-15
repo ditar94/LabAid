@@ -2,6 +2,7 @@ import enum
 import uuid
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     Date,
@@ -197,6 +198,9 @@ class LotDocument(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_name = Column(String(255), nullable=False)
+    file_size = Column(BigInteger, nullable=True)  # bytes
+    content_type = Column(String(100), nullable=True)
+    checksum_sha256 = Column(String(64), nullable=True)
     description = Column(String(500), nullable=True)
     is_qc_document = Column(Boolean, default=False, nullable=False, server_default="false")
     storage_class = Column(String(20), nullable=True, server_default="hot")

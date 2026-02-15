@@ -331,9 +331,9 @@ jobs:
       - name: Deploy to Firebase Hosting
         run: npx firebase-tools deploy --only hosting:labaid-prod --project ${GCP_PROJECT}
 
-  # ── Sync main branch (auto after production) ────────────────────────────────
+  # ── Sync main + tag release (auto after production) ─────────────────────────
   sync-main:
-    name: Sync main branch
+    name: Sync main & tag release
     needs: [prod-backend, prod-frontend]
     runs-on: ubuntu-latest
     permissions:
@@ -346,3 +346,35 @@ jobs:
       - name: Update main to match beta
         run: |
           git push origin origin/beta:refs/heads/main --force
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Alembic
+        run: pip install -r backend/requirements.txt
+
+      - name: Create release tag
+        env:
+          SECRET_KEY: unused
+          DATABASE_URL: "sqlite://"
+        run: |
+          VERSION="v$(date -u +%Y.%m.%d)"
+          MIGRATION_HEAD=$(cd backend && python -c "from alembic.config import Config; from alembic.script import ScriptDirectory; print(ScriptDirectory.from_config(Config('alembic.ini')).get_current_head())")
+          SHORT_SHA="${GITHUB_SHA::8}"
+
+          # Append a counter if tag already exists (multiple deploys same day)
+          TAG="$VERSION"
+          COUNTER=1
+          while git rev-parse "$TAG" >/dev/null 2>&1; do
+            COUNTER=$((COUNTER + 1))
+            TAG="${VERSION}.${COUNTER}"
+          done
+
+          git tag -a "$TAG" -m "Release $TAG
+
+          Commit: ${GITHUB_SHA}
+          Migration head: ${MIGRATION_HEAD}"
+          git push origin "$TAG"

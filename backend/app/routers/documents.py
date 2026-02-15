@@ -1,3 +1,4 @@
+import hashlib
 import io
 import logging
 import os
@@ -5,7 +6,7 @@ import shutil
 import uuid as uuid_mod
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from starlette.responses import FileResponse
@@ -15,6 +16,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.models.models import Lot, LotDocument, User, UserRole
 from app.core.config import settings
 from app.schemas.schemas import LotDocumentOut
+from app.routers.auth import limiter
 from app.services.audit import log_audit
 from app.services.object_storage import object_storage
 
@@ -41,7 +43,9 @@ ALLOWED_MIME_TYPES = {
 
 
 @router.post("/lots/{lot_id}", response_model=LotDocumentOut)
+@limiter.limit("10/minute")
 def upload_lot_document(
+    request: Request,
     lot_id: UUID,
     file: UploadFile = File(...),
     description: str | None = Form(None),
@@ -53,12 +57,14 @@ def upload_lot_document(
     if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail=f"File type '{file.content_type}' is not allowed")
 
-    # Validate file size
-    file.file.seek(0, 2)
-    size = file.file.tell()
-    file.file.seek(0)
+    # Read file content and validate size
+    file_bytes = file.file.read()
+    size = len(file_bytes)
     if size > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail=f"File exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit")
+
+    # Compute SHA-256 checksum
+    checksum = hashlib.sha256(file_bytes).hexdigest()
 
     q = db.query(Lot).filter(Lot.id == lot_id)
     if current_user.role != UserRole.SUPER_ADMIN:
@@ -68,15 +74,16 @@ def upload_lot_document(
         raise HTTPException(status_code=404, detail="Lot not found")
 
     doc_id = uuid_mod.uuid4()
+    mime = file.content_type or "application/octet-stream"
 
     if object_storage.enabled:
         key = f"{lot.lab_id}/{lot.id}/{doc_id}_{file.filename}"
-        file_data = io.BytesIO(file.file.read())
+        file_data = io.BytesIO(file_bytes)
         try:
             object_storage.upload(
                 key,
                 file_data,
-                content_type=file.content_type or "application/octet-stream",
+                content_type=mime,
                 tags={"storage-class": "hot", "lab-active": "true"},
             )
         except Exception:
@@ -88,7 +95,7 @@ def upload_lot_document(
         os.makedirs(UPLOAD_DIR, exist_ok=True)
         stored_path = os.path.join(UPLOAD_DIR, f"{lot.id}_{file.filename}")
         with open(stored_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(file_bytes)
 
     desc = description.strip() if description else None
     doc = LotDocument(
@@ -98,6 +105,9 @@ def upload_lot_document(
         user_id=current_user.id,
         file_path=stored_path,
         file_name=file.filename,
+        file_size=size,
+        content_type=mime,
+        checksum_sha256=checksum,
         description=desc,
         is_qc_document=is_qc_document,
     )

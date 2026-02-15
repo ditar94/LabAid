@@ -135,13 +135,13 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 
 ### Pending: Ops Hardening
 
-- [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
-- [ ] Store document checksums + add a periodic verification job for missing/corrupt blobs
-- [ ] Request size limits + rate limiting for uploads and public endpoints
-- [ ] Tag releases and keep a mapping of schema version to app version for restores/rollbacks
-- [ ] Use backward-compatible migrations for relationship changes (add new columns first, backfill, then cut over)
-- [ ] Add automated integrity checks that validate the full graph after migrations/restores
-- [ ] Verify foreign keys and cascading rules cover antibody -> fluorochrome -> lot -> document integrity
+- [x] Persist blob metadata in DB (file_size, content_type, checksum_sha256 on lot_documents)
+- [x] Store document checksums + integrity check endpoint (`GET /api/admin/integrity`)
+- [x] Request size limits (50MB, configurable) + rate limiting for uploads (10/min) and login (5/min)
+- [x] Tag releases and keep a mapping of schema version to app version for restores/rollbacks
+- [x] Use backward-compatible migrations — [docs/DATABASE_GUIDE.md](docs/DATABASE_GUIDE.md)
+- [x] Add automated integrity checks that validate the full graph after migrations/restores
+- [x] Verify foreign keys and cascading rules — audited, all correct (RESTRICT by default, soft-delete pattern)
 
 ### Pending: Documentation & Compliance
 
@@ -178,6 +178,23 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - [ ] Phase 3 — Login Flow Overhaul (email-first discovery, SSO buttons, password-only gating)
 - [ ] Phase 4 — Hardening & Security Audit
 - [ ] Phase 5 — SAML Support (future, only when a customer requires it)
+
+### Pending: Compliance Exports
+
+> Formatted reports for lab inspections and audits. Builds on the existing audit log infrastructure.
+
+- [ ] Audit trail export (CSV + PDF) — filterable by date range, entity, action
+- [ ] Lot lifecycle report — full history of a lot from receipt to depletion with all events
+- [ ] QC history export — all QC approvals/failures with documents, approvers, dates
+- [ ] Inspection export — combined report (inventory snapshot + QC status + audit trail)
+
+### Pending: Email Notifications
+
+> Scheduled alerts via Cloud Scheduler + daily digest endpoint. Uses existing Resend integration.
+
+- [ ] Low stock alerts — notify lab admins when antibody inventory drops below threshold
+- [ ] Expiring reagent alerts — daily digest of lots expiring within configurable window
+- [ ] QC pending alerts — notify supervisors of lots awaiting QC approval
 
 ### Backlog
 
