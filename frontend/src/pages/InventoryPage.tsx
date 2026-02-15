@@ -1108,7 +1108,7 @@ export default function InventoryPage() {
   const cardRows = useMemo(() => {
     // Keep reordered layout during both expansion AND collapse
     const activeId = expandedId || closingId;
-    if (!activeId || gridCols <= 1 || gridCols > 3) return inventoryRows;
+    if (!activeId || gridCols <= 1) return inventoryRows;
     const expandedIdx = inventoryRows.findIndex((r) => r.antibody.id === activeId);
     if (expandedIdx < 0) return inventoryRows;
 
@@ -1186,7 +1186,7 @@ export default function InventoryPage() {
 
     // Keep full-width grid span during both expansion AND collapse
     const gridColumnStyle: React.CSSProperties =
-      (isExpanded || isCollapsing) && gridCols > 1 && gridCols <= 3 ? { gridColumn: "1 / -1" } : {};
+      (isExpanded || isCollapsing) && gridCols > 1 ? { gridColumn: "1 / -1" } : {};
 
     return (
       <div
