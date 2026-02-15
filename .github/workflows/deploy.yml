@@ -3,6 +3,11 @@ name: Deploy Pipeline
 on:
   push:
     branches: [beta]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
 
 concurrency:
   group: deploy-pipeline

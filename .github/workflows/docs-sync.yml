@@ -1,0 +1,24 @@
+name: Sync docs to main
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+
+jobs:
+  sync:
+    name: Sync to main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward main
+        run: git push origin origin/beta:refs/heads/main --force
