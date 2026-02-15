@@ -174,6 +174,128 @@ class TestAcceptInvite:
         assert res.status_code == 400
 
 
+class TestInviteEndToEnd:
+    """Full end-to-end invite flow: create user → accept invite → login."""
+
+    def test_create_user_accept_invite_login(self, client, auth_headers, lab, db):
+        # 1. Admin creates a new user
+        res = client.post("/api/auth/users", json={
+            "email": "newtech@test.com",
+            "full_name": "New Tech",
+            "role": "tech",
+        }, headers=auth_headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["invite_sent"] is True
+        assert data["set_password_link"] is not None  # console backend returns the link
+        user_id = data["id"]
+
+        # 2. Verify invite token was stored in DB
+        from app.models.models import User
+        user = db.query(User).filter(User.id == user_id).first()
+        assert user.invite_token is not None
+        assert user.invite_token_expires_at is not None
+        assert user.must_change_password is True
+        token = user.invite_token
+
+        # 3. Accept the invite (set password)
+        res = client.post("/api/auth/accept-invite", json={
+            "token": token,
+            "password": "mysecurepass123",
+        })
+        assert res.status_code == 200
+        assert "access_token" in res.json()
+
+        # 4. Verify token is cleared and must_change_password is False
+        db.refresh(user)
+        assert user.invite_token is None
+        assert user.invite_token_expires_at is None
+        assert user.must_change_password is False
+
+        # 5. Verify user can login with the new password
+        res = client.post("/api/auth/login", json={
+            "email": "newtech@test.com",
+            "password": "mysecurepass123",
+        })
+        assert res.status_code == 200
+        assert "access_token" in res.json()
+
+
+class TestResetPasswordFlow:
+    """Reset password flow: old token invalidated, new token works."""
+
+    def test_reset_password_invalidates_old_token(self, client, auth_headers, invited_user, db):
+        # 1. Accept the original invite to establish a password
+        res = client.post("/api/auth/accept-invite", json={
+            "token": "valid-test-token-abc123",
+            "password": "originalpass123",
+        })
+        assert res.status_code == 200
+
+        # 2. Verify login works with original password
+        res = client.post("/api/auth/login", json={
+            "email": "invited@test.com",
+            "password": "originalpass123",
+        })
+        assert res.status_code == 200
+
+        # 3. Admin resets the user's password
+        res = client.post(
+            f"/api/auth/users/{invited_user.id}/reset-password",
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["email_sent"] is True
+        assert data["set_password_link"] is not None  # console backend
+
+        # 4. Old password no longer works (random password was set)
+        res = client.post("/api/auth/login", json={
+            "email": "invited@test.com",
+            "password": "originalpass123",
+        })
+        assert res.status_code == 401
+
+        # 5. Verify new token exists in DB
+        db.refresh(invited_user)
+        assert invited_user.invite_token is not None
+        assert invited_user.invite_token != "valid-test-token-abc123"  # new token
+        assert invited_user.must_change_password is True
+        new_token = invited_user.invite_token
+
+        # 6. Accept invite with new token
+        res = client.post("/api/auth/accept-invite", json={
+            "token": new_token,
+            "password": "newpassword123",
+        })
+        assert res.status_code == 200
+
+        # 7. Login works with new password
+        res = client.post("/api/auth/login", json={
+            "email": "invited@test.com",
+            "password": "newpassword123",
+        })
+        assert res.status_code == 200
+
+
+class TestEmailBackend:
+    """Console email backend returns success and link."""
+
+    def test_send_invite_email_console(self):
+        from app.services.email import send_invite_email
+        success, link = send_invite_email("user@test.com", "Test User", "test-token-123")
+        assert success is True
+        assert "set-password" in link
+        assert "test-token-123" in link
+
+    def test_send_reset_email_console(self):
+        from app.services.email import send_reset_email
+        success, link = send_reset_email("user@test.com", "Test User", "reset-token-456")
+        assert success is True
+        assert "set-password" in link
+        assert "reset-token-456" in link
+
+
 class TestHealthCheck:
     def test_health_endpoint(self, client):
         res = client.get("/api/health")

@@ -162,11 +162,11 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - [ ] Add DKIM record for `labaid.io` from Resend dashboard
 - [ ] Verify domain in Resend dashboard
 - [ ] Create Resend account and generate API key -> store in GCP Secret Manager
-- [ ] Integration test: create user -> token stored -> accept-invite -> password set, token cleared, user logged in
-- [ ] Integration test: expired token -> reject with 400
-- [ ] Integration test: used token -> reject with 400
-- [ ] Integration test: reset password -> old token invalidated, new token works
-- [ ] Integration test: console email backend logs email content to stdout
+- [x] Integration test: create user -> token stored -> accept-invite -> password set, token cleared, user logged in
+- [x] Integration test: expired token -> reject with 400
+- [x] Integration test: used token -> reject with 400
+- [x] Integration test: reset password -> old token invalidated, new token works
+- [x] Integration test: console email backend logs email content to stdout
 - [ ] Manual test: full flow on beta with console backend
 - [ ] Manual test: full flow on production with Resend
 
