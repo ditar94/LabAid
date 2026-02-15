@@ -17,10 +17,6 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Uncaught error:", error, info.componentStack);
-    // Clear potentially stale cached data that may have caused the crash
-    localStorage.removeItem("cachedUser");
-    localStorage.removeItem("cachedLabSettings");
-    localStorage.removeItem("impersonatingLab");
   }
 
   render() {

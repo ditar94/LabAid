@@ -27,60 +27,34 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function getCached<T>(key: string, validate?: (val: unknown) => boolean): T | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (validate && !validate(parsed)) {
-      localStorage.removeItem(key);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [labSettings, setLabSettings] = useState<LabSettings>({});
+  const [impersonatingLab, setImpersonatingLab] = useState<ImpersonatingLab | null>(() => {
+    try {
+      const stored = localStorage.getItem("impersonatingLab");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
       return null;
     }
-    return parsed;
-  } catch {
-    localStorage.removeItem(key);
-    return null;
-  }
-}
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const cachedUser = getCached<User>("cachedUser", (v: unknown) =>
-    typeof v === "object" && v !== null && "id" in v && "email" in v && "role" in v
-  );
-  const cachedSettings = getCached<LabSettings>("cachedLabSettings", (v: unknown) =>
-    typeof v === "object" && v !== null
-  );
-
-  const [user, setUser] = useState<User | null>(cachedUser);
-  const [labSettings, setLabSettings] = useState<LabSettings>(cachedSettings || {});
-  const [impersonatingLab, setImpersonatingLab] = useState<ImpersonatingLab | null>(() => {
-    const stored = localStorage.getItem("impersonatingLab");
-    return stored ? JSON.parse(stored) : null;
   });
-  // Skip loading screen if we have cached data — render immediately
-  const [loading, setLoading] = useState(!cachedUser);
+  const [loading, setLoading] = useState(true);
 
   const fetchUser = async () => {
     const res = await api.get("/auth/me");
     setUser(res.data);
-    localStorage.setItem("cachedUser", JSON.stringify(res.data));
     try {
       const settingsRes = await api.get("/labs/my-settings");
       setLabSettings(settingsRes.data || {});
-      localStorage.setItem("cachedLabSettings", JSON.stringify(settingsRes.data || {}));
     } catch {
       setLabSettings({});
-      localStorage.removeItem("cachedLabSettings");
     }
   };
 
   useEffect(() => {
-    // Verify auth in background (or establish it on first visit)
     fetchUser()
       .catch(() => {
         localStorage.removeItem("impersonatingLab");
-        localStorage.removeItem("cachedUser");
-        localStorage.removeItem("cachedLabSettings");
         setImpersonatingLab(null);
         setUser(null);
         setLabSettings({});
@@ -102,8 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Even if the call fails, clear local state
     }
     localStorage.removeItem("impersonatingLab");
-    localStorage.removeItem("cachedUser");
-    localStorage.removeItem("cachedLabSettings");
     setUser(null);
     setLabSettings({});
     setImpersonatingLab(null);
