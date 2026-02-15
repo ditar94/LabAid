@@ -9,10 +9,11 @@ interface Props {
 
 /** Thin wrapper around react-datepicker that works with YYYY-MM-DD strings. */
 export default function DatePicker({ value, onChange, placeholderText }: Props) {
-  const selected = value ? new Date(value + "T00:00:00") : null;
+  const parsed = value ? new Date(value + "T00:00:00") : null;
+  const selected = parsed && !isNaN(parsed.getTime()) ? parsed : null;
 
   const handleChange = (date: Date | null) => {
-    if (!date) {
+    if (!date || isNaN(date.getTime())) {
       onChange("");
       return;
     }
