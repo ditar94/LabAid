@@ -93,6 +93,7 @@ def _reset_html(full_name: str, link: str) -> str:
 
 
 def _send_via_resend(to: str, subject: str, html_body: str) -> bool:
+    import sys
     try:
         import resend
         resend.api_key = settings.RESEND_API_KEY
@@ -102,11 +103,10 @@ def _send_via_resend(to: str, subject: str, html_body: str) -> bool:
             "subject": subject,
             "html": html_body,
         })
-        print(f"[EMAIL] Resend OK to={to} id={getattr(result, 'id', result)}")
+        print(f"[EMAIL] Resend OK to={to} id={getattr(result, 'id', result)}", file=sys.stderr, flush=True)
         return True
     except Exception as exc:
-        print(f"[EMAIL] Resend FAILED to={to} error={exc}")
-        logger.exception("Failed to send email via Resend to %s", to)
+        print(f"[EMAIL] Resend FAILED to={to} error={type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
         return False
 
 
