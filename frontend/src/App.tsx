@@ -29,14 +29,10 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const GlobalSearchPage = lazy(() => import("./pages/GlobalSearchPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 
-function PageLoader() {
-  return <div className="loading">Loading...</div>;
-}
-
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, labSettings } = useAuth();
   const location = useLocation();
-  if (loading) return <div className="loading">Loading...</div>;
+  if (loading) return null;
   if (!user) return <Navigate to="/login" />;
   if (user.must_change_password && location.pathname !== "/change-password") {
     return <Navigate to="/change-password" />;
@@ -54,7 +50,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 function AppRoutes() {
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={null}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/setup" element={<SetupPage />} />
