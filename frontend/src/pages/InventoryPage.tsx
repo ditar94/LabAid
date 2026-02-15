@@ -41,10 +41,18 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
+  const MAX_FILE_SIZE_MB = 50;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setFile(e.target.files[0]);
+    const selected = e.target.files?.[0] || null;
+    if (selected && selected.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      setError(`File exceeds ${MAX_FILE_SIZE_MB}MB limit`);
+      setFile(null);
+      e.target.value = "";
+      return;
     }
+    setError(null);
+    setFile(selected);
   };
 
   const doUpload = async () => {
@@ -55,9 +63,7 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
     if (description.trim()) formData.append("description", description.trim());
     if (isQcDocument) formData.append("is_qc_document", "true");
     try {
-      await api.post(`/documents/lots/${lot.id}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await api.post(`/documents/lots/${lot.id}`, formData);
       setFile(null);
       setDescription("");
       setIsQcDocument(false);
@@ -1113,14 +1119,17 @@ export default function InventoryPage() {
     }
 
     const prevRects = previousCardRectsRef.current;
+    const activeId = expandedId || closingId;
     for (const [id, next] of nextRects.entries()) {
       const prev = prevRects.get(id);
       if (!prev) continue;
 
+      // Skip scale for the expanding/collapsing card — let CSS Grid handle its width
+      const isActive = id === activeId;
       const dx = prev.left - next.left;
       const dy = prev.top - next.top;
-      const sx = next.width > 0 ? prev.width / next.width : 1;
-      const sy = next.height > 0 ? prev.height / next.height : 1;
+      const sx = isActive ? 1 : next.width > 0 ? prev.width / next.width : 1;
+      const sy = isActive ? 1 : next.height > 0 ? prev.height / next.height : 1;
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue;
 
       const el = cardMotionRefs.current.get(id);
@@ -1128,10 +1137,14 @@ export default function InventoryPage() {
       el.style.transition = "none";
       el.style.transformOrigin = "top left";
       el.style.zIndex = "3";
-      el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+      el.style.transform = isActive
+        ? `translate(${dx}px, ${dy}px)`
+        : `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
       void el.offsetWidth;
       el.style.transition = "transform 160ms var(--ease-out)";
-      el.style.transform = "translate(0, 0) scale(1, 1)";
+      el.style.transform = isActive
+        ? "translate(0, 0)"
+        : "translate(0, 0) scale(1, 1)";
       const handleEnd = () => {
         el.style.transition = "";
         el.style.transform = "";
