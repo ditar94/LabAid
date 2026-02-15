@@ -191,9 +191,14 @@ class TestDocumentSizeLimit:
 
 
 class TestIntegrityCheck:
-    def test_integrity_check_ok(self, client, auth_headers):
+    def test_integrity_check_ok(self, client, super_admin):
         """Super admin can run integrity checks."""
-        res = client.get("/api/admin/integrity", headers=auth_headers)
+        token = create_access_token({
+            "sub": str(super_admin.id),
+            "lab_id": None,
+            "role": "super_admin",
+        })
+        res = client.get("/api/admin/integrity", headers={"Authorization": f"Bearer {token}"})
         assert res.status_code == 200
         data = res.json()
         assert data["status"] == "ok"
