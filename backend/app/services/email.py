@@ -96,14 +96,16 @@ def _send_via_resend(to: str, subject: str, html_body: str) -> bool:
     try:
         import resend
         resend.api_key = settings.RESEND_API_KEY
-        resend.Emails.send({
+        result = resend.Emails.send({
             "from": "LabAid <noreply@labaid.io>",
             "to": [to],
             "subject": subject,
             "html": html_body,
         })
+        print(f"[EMAIL] Resend OK to={to} id={getattr(result, 'id', result)}")
         return True
-    except Exception:
+    except Exception as exc:
+        print(f"[EMAIL] Resend FAILED to={to} error={exc}")
         logger.exception("Failed to send email via Resend to %s", to)
         return False
 

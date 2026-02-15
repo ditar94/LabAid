@@ -21,6 +21,7 @@ export default function UsersPage() {
   const [inviteResult, setInviteResult] = useState<{
     email: string;
     link?: string;
+    sent: boolean;
   } | null>(null);
   const [resetResult, setResetResult] = useState<{
     email: string;
@@ -63,8 +64,13 @@ export default function UsersPage() {
       setInviteResult({
         email: form.email,
         link: res.data.set_password_link || undefined,
+        sent: res.data.invite_sent,
       });
-      addToast(`User "${form.full_name}" created`, "success");
+      if (res.data.invite_sent) {
+        addToast(`User "${form.full_name}" created — invite sent`, "success");
+      } else {
+        addToast(`User created but invite email failed to send`, "warning");
+      }
       setForm({ email: "", full_name: "", role: "tech" });
       setShowForm(false);
       load();
@@ -176,7 +182,10 @@ export default function UsersPage() {
 
       {inviteResult && (
         <div className="temp-password-banner">
-          Invite email sent to <strong>{inviteResult.email}</strong>.
+          {inviteResult.sent
+            ? <>Invite email sent to <strong>{inviteResult.email}</strong>.</>
+            : <>User created but invite email failed to send to <strong>{inviteResult.email}</strong>. Use "Reset Password" to resend.</>
+          }
           {inviteResult.link && (
             <>
               {" "}Dev link:{" "}
