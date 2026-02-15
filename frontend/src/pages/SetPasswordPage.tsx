@@ -34,8 +34,14 @@ export default function SetPasswordPage() {
     setLoading(true);
     try {
       await api.post("/auth/accept-invite", { token, password });
-      await refreshUser();
-      navigate("/");
+      // Password set successfully — try to auto-login via cookie
+      try {
+        await refreshUser();
+        navigate("/");
+      } catch {
+        // Cookie may not propagate through Firebase Hosting — redirect to login
+        navigate("/login");
+      }
     } catch {
       setError(
         "This link has expired or already been used. Contact your administrator."
