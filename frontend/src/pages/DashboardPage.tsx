@@ -639,9 +639,7 @@ export default function DashboardPage() {
               {tempMessage && <p className="success">{tempMessage}</p>}
               {tempError && <p className="error">{tempError}</p>}
 
-              {tempGridLoading ? (
-                <p className="page-desc">Loading grid…</p>
-              ) : tempGrid ? (
+              {tempGridLoading ? null : tempGrid ? (
                 <>
                   <h3 style={{ margin: "0 0 0.5rem" }}>
                     {tempSelectedItem.antibody_name || [tempSelectedItem.antibody_target, tempSelectedItem.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"} — Lot {tempSelectedItem.lot_number}

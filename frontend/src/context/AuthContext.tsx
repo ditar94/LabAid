@@ -27,18 +27,29 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function getCached<T>(key: string): T | null {
+function getCached<T>(key: string, validate?: (val: unknown) => boolean): T | null {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (validate && !validate(parsed)) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return parsed;
   } catch {
+    localStorage.removeItem(key);
     return null;
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const cachedUser = getCached<User>("cachedUser");
-  const cachedSettings = getCached<LabSettings>("cachedLabSettings");
+  const cachedUser = getCached<User>("cachedUser", (v: unknown) =>
+    typeof v === "object" && v !== null && "id" in v && "email" in v && "role" in v
+  );
+  const cachedSettings = getCached<LabSettings>("cachedLabSettings", (v: unknown) =>
+    typeof v === "object" && v !== null
+  );
 
   const [user, setUser] = useState<User | null>(cachedUser);
   const [labSettings, setLabSettings] = useState<LabSettings>(cachedSettings || {});

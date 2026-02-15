@@ -18,7 +18,7 @@ export default function LotPanel({
   return (
     <>
       <h4>Storage for Lot {lotFilter.lotNumber}</h4>
-      {loading && <p className="info">Loading grids...</p>}
+      {loading && <p className="info">&nbsp;</p>}
       {!hasGrids && !loading && (
         <p className="empty">No vials in storage for this lot.</p>
       )}

@@ -25,6 +25,9 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
   const [description, setDescription] = useState("");
   const [isQcDocument, setIsQcDocument] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  // Incrementing key forces the file input to fully remount after errors
+  const [inputKey, setInputKey] = useState(0);
 
   const handleDownload = async (docId: string, _fileName: string) => {
     const res = await api.get(`/documents/${docId}`, { responseType: "blob" });
@@ -48,7 +51,7 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
     if (selected && selected.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
       setError(`File exceeds ${MAX_FILE_SIZE_MB}MB limit`);
       setFile(null);
-      e.target.value = "";
+      setInputKey((k) => k + 1);
       return;
     }
     setError(null);
@@ -58,6 +61,7 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
   const doUpload = async () => {
     if (!file) return false;
     setError(null);
+    setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
     if (description.trim()) formData.append("description", description.trim());
@@ -67,19 +71,30 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
       setFile(null);
       setDescription("");
       setIsQcDocument(false);
+      setInputKey((k) => k + 1);
       return true;
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to upload file");
       return false;
+    } finally {
+      setUploading(false);
     }
   };
 
   const handleUpload = async () => {
-    if (await doUpload()) onUpload();
+    try {
+      if (await doUpload()) onUpload();
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+    }
   };
 
   const handleUploadAndApprove = async () => {
-    if (await doUpload()) onUploadAndApprove?.();
+    try {
+      if (await doUpload()) onUploadAndApprove?.();
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+    }
   };
 
   return (
@@ -100,7 +115,7 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
         </div>
         <div className="upload-form">
           <h3>Upload New Document</h3>
-          <input type="file" onChange={handleFileChange} />
+          <input key={inputKey} type="file" onChange={handleFileChange} />
           <input
             type="text"
             placeholder="What is this document? (e.g. QC report, CoA)"
@@ -113,12 +128,12 @@ function DocumentModal({ lot, onClose, onUpload, onUploadAndApprove }: {
             This is a lot verification/QC document
           </label>
           <div className="action-btns" style={{ marginTop: "0.5rem" }}>
-            <button onClick={handleUpload} disabled={!file}>
-              Upload
+            <button onClick={handleUpload} disabled={!file || uploading}>
+              {uploading ? "Uploading..." : "Upload"}
             </button>
             {onUploadAndApprove && (
-              <button className="btn-green" onClick={handleUploadAndApprove} disabled={!file}>
-                Upload &amp; Approve
+              <button className="btn-green" onClick={handleUploadAndApprove} disabled={!file || uploading}>
+                {uploading ? "Uploading..." : "Upload & Approve"}
               </button>
             )}
           </div>
@@ -307,6 +322,8 @@ export default function InventoryPage() {
 
   const loadData = async () => {
     if (!selectedLab) return;
+    // Clear stale FLIP rects so navigation back doesn't cause bad transforms
+    previousCardRectsRef.current = new Map();
     const params: Record<string, string> = { lab_id: selectedLab };
     const abParams: Record<string, string> = { ...params };
     if (showInactive) abParams.include_inactive = "true";
