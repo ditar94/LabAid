@@ -20,8 +20,18 @@ export default function LoginPage() {
     try {
       await login(email, password);
       navigate("/");
-    } catch {
-      setError("Invalid credentials");
+    } catch (err: any) {
+      if (err?.response?.status === 429) {
+        setError("Too many login attempts. Please wait a minute and try again.");
+      } else if (err?.code === "ECONNABORTED") {
+        setError("Login request timed out. Please try again.");
+      } else if (err?.response?.status === 401) {
+        setError("Invalid credentials");
+      } else if (err?.response?.data?.detail) {
+        setError(String(err.response.data.detail));
+      } else {
+        setError("Sign-in failed. Please try again.");
+      }
       setShaking(true);
       setTimeout(() => setShaking(false), 500);
     } finally {

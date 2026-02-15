@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const [tempGridLoading, setTempGridLoading] = useState(false);
   const [tempMessage, setTempMessage] = useState<string | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
   const [tempError, setTempError] = useState<string | null>(null);
   const tempViewRef = useRef<StorageViewHandle>(null);
 
@@ -63,61 +64,70 @@ export default function DashboardPage() {
 
   const loadData = useCallback(async () => {
     if (!selectedLab) return;
+    setLoadingData(true);
     const params: Record<string, string> = { lab_id: selectedLab };
     const isSupervisorPlus = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
-    const fetches: Promise<any>[] = [
-      api.get<Antibody[]>("/antibodies/", { params }),
-      api.get<Lot[]>("/lots/", { params }),
-      api.get<Antibody[]>("/antibodies/low-stock", { params }),
-      api.get<TempStorageSummary>("/storage/temp-storage/summary", { params }),
-    ];
-    if (isSupervisorPlus) {
-      fetches.push(api.get<LotRequest[]>("/lot-requests/"));
+    try {
+      const requestsPromise = isSupervisorPlus
+        ? api.get<LotRequest[]>("/lot-requests/")
+        : Promise.resolve({ data: [] as LotRequest[] });
+
+      const [abRes, lotRes, lowStockRes, tempRes, requestsRes] = await Promise.allSettled([
+        api.get<Antibody[]>("/antibodies/", { params }),
+        api.get<Lot[]>("/lots/", { params }),
+        api.get<Antibody[]>("/antibodies/low-stock", { params }),
+        api.get<TempStorageSummary>("/storage/temp-storage/summary", { params }),
+        requestsPromise,
+      ]);
+
+      const hadAnySuccess = [abRes, lotRes, lowStockRes, tempRes, requestsRes]
+        .some((result) => result.status === "fulfilled");
+      setDataLoaded(hadAnySuccess);
+      if (!hadAnySuccess) return;
+
+      const antibodies: Antibody[] = abRes.status === "fulfilled" ? abRes.value.data : [];
+      const lots: Lot[] = lotRes.status === "fulfilled" ? lotRes.value.data : [];
+      const lowStockLots: Antibody[] = lowStockRes.status === "fulfilled" ? lowStockRes.value.data : [];
+      const tempData: TempStorageSummary | null = tempRes.status === "fulfilled" ? tempRes.value.data : null;
+      const allRequests: LotRequest[] = requestsRes.status === "fulfilled" ? requestsRes.value.data : [];
+
+      setAntibodies(antibodies);
+      setAllLots(lots);
+      setLowStock(lowStockLots);
+      setPendingLots(lots.filter((l: Lot) => l.qc_status === "pending"));
+      setTempSummary(tempData);
+      setPendingRequests(isSupervisorPlus ? allRequests.filter((r) => r.status === "pending") : []);
+
+      // Expiring lots
+      const expiryWarnDays = labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS;
+      const now = new Date();
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() + expiryWarnDays);
+      const expiring = lots
+        .filter((l) => {
+          if (!l.expiration_date) return false;
+          const exp = new Date(l.expiration_date);
+          return exp <= cutoff && exp >= now;
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.expiration_date!).getTime() -
+            new Date(b.expiration_date!).getTime()
+        );
+      const expired = lots
+        .filter((l) => {
+          if (!l.expiration_date) return false;
+          return new Date(l.expiration_date) < now;
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.expiration_date!).getTime() -
+            new Date(b.expiration_date!).getTime()
+        );
+      setExpiringLots([...expired, ...expiring]);
+    } finally {
+      setLoadingData(false);
     }
-    const results = await Promise.all(fetches);
-    const [abRes, lotRes, lowStockRes, tempRes] = results;
-    const antibodies: Antibody[] = abRes.data;
-    const lots: Lot[] = lotRes.data;
-
-    setAntibodies(antibodies);
-    setAllLots(lots);
-    setLowStock(lowStockRes.data);
-    setPendingLots(lots.filter((l: Lot) => l.qc_status === "pending"));
-    setTempSummary(tempRes.data);
-
-    if (isSupervisorPlus && results[4]) {
-      const allRequests: LotRequest[] = results[4].data;
-      setPendingRequests(allRequests.filter((r) => r.status === "pending"));
-    }
-
-    // Expiring lots
-    const expiryWarnDays = labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS;
-    const now = new Date();
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() + expiryWarnDays);
-    const expiring = lots
-      .filter((l) => {
-        if (!l.expiration_date) return false;
-        const exp = new Date(l.expiration_date);
-        return exp <= cutoff && exp >= now;
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.expiration_date!).getTime() -
-          new Date(b.expiration_date!).getTime()
-      );
-    const expired = lots
-      .filter((l) => {
-        if (!l.expiration_date) return false;
-        return new Date(l.expiration_date) < now;
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.expiration_date!).getTime() -
-          new Date(b.expiration_date!).getTime()
-      );
-    setExpiringLots([...expired, ...expiring]);
-    setDataLoaded(true);
   }, [selectedLab, labSettings.expiry_warn_days, user?.role]);
 
   useEffect(() => {
@@ -417,6 +427,10 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {!dataLoaded && loadingData && (
+        <p className="page-desc">Loading dashboard data...</p>
+      )}
+
       <div className="stats-grid stagger-reveal">
         {cards.map((card) => {
           const Icon = card.icon;
@@ -426,7 +440,7 @@ export default function DashboardPage() {
               type="button"
               className={`stat-card priority-card ${card.className} ${
                 selectedCard === card.key ? "selected" : ""
-              }${card.count === 0 ? " clear" : ""}`}
+              }${dataLoaded && card.count === 0 ? " clear" : ""}`}
               onClick={() =>
                 setSelectedCard(selectedCard === card.key ? null : card.key)
               }
@@ -434,9 +448,9 @@ export default function DashboardPage() {
               aria-controls={`dashboard-section-${card.key}`}
             >
               <div className={`stat-icon-wrap`}>
-                {card.count === 0 ? <CheckCircle2 size={20} /> : <Icon size={20} />}
+                {dataLoaded && card.count === 0 ? <CheckCircle2 size={20} /> : <Icon size={20} />}
               </div>
-              <div className="stat-value">{card.count}</div>
+              <div className="stat-value">{dataLoaded ? card.count : "\u2014"}</div>
               <div className="stat-label">{card.label}</div>
             </button>
           );

@@ -295,6 +295,11 @@ class LotDocumentOut(BaseModel):
         from_attributes = True
 
 
+class LotDocumentUpdate(BaseModel):
+    description: str | None = None
+    is_qc_document: bool | None = None
+
+
 class LotStorageLocation(BaseModel):
     unit_id: UUID
     unit_name: str

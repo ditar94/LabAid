@@ -1,21 +1,20 @@
 import hashlib
 import io
 import logging
+import mimetypes
 import os
-import shutil
 import uuid as uuid_mod
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, RedirectResponse
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import Lot, LotDocument, User, UserRole
 from app.core.config import settings
-from app.schemas.schemas import LotDocumentOut
+from app.schemas.schemas import LotDocumentOut, LotDocumentUpdate
 from app.routers.auth import limiter
 from app.services.audit import log_audit
 from app.services.object_storage import object_storage
@@ -46,6 +45,55 @@ ALLOWED_EXTENSIONS = {
     ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
     ".csv", ".xlsx", ".xls", ".doc", ".docx",
 }
+
+GENERIC_CONTENT_TYPES = {
+    "",
+    "application/octet-stream",
+    "binary/octet-stream",
+}
+
+EXTENSION_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".csv": "text/csv",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def _normalize_content_type(file_name: str | None, raw_content_type: str | None) -> str:
+    """Prefer explicit type, but repair generic MIME values using file extension."""
+    content_type = (raw_content_type or "").strip().lower()
+    if content_type and content_type not in GENERIC_CONTENT_TYPES:
+        return content_type
+
+    ext = os.path.splitext(file_name or "")[1].lower()
+    if ext in EXTENSION_CONTENT_TYPES:
+        return EXTENSION_CONTENT_TYPES[ext]
+
+    guessed = mimetypes.guess_type(file_name or "")[0]
+    if guessed:
+        return guessed
+
+    if content_type:
+        return content_type
+    return "application/octet-stream"
+
+
+def _snapshot_document(doc: LotDocument) -> dict:
+    return {
+        "id": str(doc.id),
+        "lot_id": str(doc.lot_id),
+        "file_name": doc.file_name,
+        "description": doc.description,
+        "is_qc_document": doc.is_qc_document,
+    }
 
 
 @router.post("/lots/{lot_id}", response_model=LotDocumentOut)
@@ -83,7 +131,7 @@ def upload_lot_document(
         raise HTTPException(status_code=404, detail="Lot not found")
 
     doc_id = uuid_mod.uuid4()
-    mime = file.content_type or "application/octet-stream"
+    mime = _normalize_content_type(file.filename, file.content_type)
 
     if object_storage.enabled:
         key = f"{lot.lab_id}/{lot.id}/{doc_id}_{file.filename}"
@@ -174,17 +222,121 @@ def get_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    resolved_content_type = _normalize_content_type(doc.file_name, doc.content_type)
+
     # S3 path (doesn't start with "uploads/")
     if object_storage.enabled and not doc.file_path.startswith("uploads"):
-        body, content_type = object_storage.download(doc.file_path)
-        return StreamingResponse(
-            body,
-            media_type=content_type,
-            headers={"Content-Disposition": f'inline; filename="{doc.file_name}"'},
-        )
+        try:
+            signed_url = object_storage.presign_download(
+                doc.file_path,
+                doc.file_name,
+                expires=300,
+                response_content_type=resolved_content_type,
+            )
+        except Exception:
+            logger.exception("Failed to generate presigned download URL for %s", doc.file_path)
+            raise HTTPException(status_code=502, detail="Document download is temporarily unavailable")
+        return RedirectResponse(url=signed_url, status_code=307)
 
     # Local filesystem fallback (legacy files or S3 disabled)
     if os.path.exists(doc.file_path):
-        return FileResponse(path=doc.file_path, filename=doc.file_name)
+        return FileResponse(
+            path=doc.file_path,
+            filename=doc.file_name,
+            media_type=resolved_content_type,
+            content_disposition_type="inline",
+        )
 
     raise HTTPException(status_code=404, detail="File not found")
+
+
+@router.patch("/{document_id}", response_model=LotDocumentOut)
+def update_document(
+    document_id: UUID,
+    body: LotDocumentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    q = db.query(LotDocument).filter(LotDocument.id == document_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(LotDocument.lab_id == current_user.lab_id)
+    doc = q.first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    before = _snapshot_document(doc)
+    changed_fields: list[str] = []
+
+    if "description" in body.model_fields_set:
+        raw_description = body.description or ""
+        new_description = raw_description.strip() if raw_description.strip() else None
+        if new_description != doc.description:
+            doc.description = new_description
+            changed_fields.append("description")
+
+    if "is_qc_document" in body.model_fields_set and body.is_qc_document is not None:
+        if body.is_qc_document != doc.is_qc_document:
+            doc.is_qc_document = body.is_qc_document
+            changed_fields.append("is_qc_document")
+
+    if changed_fields:
+        log_audit(
+            db,
+            lab_id=doc.lab_id,
+            user_id=current_user.id,
+            action="document.updated",
+            entity_type="document",
+            entity_id=doc.id,
+            before_state=before,
+            after_state=_snapshot_document(doc),
+            note=f"Updated fields: {', '.join(changed_fields)}",
+        )
+        db.commit()
+        db.refresh(doc)
+
+    return doc
+
+
+@router.delete("/{document_id}")
+def delete_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    q = db.query(LotDocument).filter(LotDocument.id == document_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(LotDocument.lab_id == current_user.lab_id)
+    doc = q.first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    before = _snapshot_document(doc)
+
+    if object_storage.enabled and not doc.file_path.startswith("uploads"):
+        try:
+            object_storage.delete(doc.file_path)
+        except Exception:
+            logger.exception("Failed to delete document from object storage: %s", doc.file_path)
+            raise HTTPException(status_code=502, detail="Failed to delete file from object storage")
+    else:
+        if os.path.exists(doc.file_path):
+            try:
+                os.remove(doc.file_path)
+            except OSError:
+                logger.exception("Failed to delete local document file: %s", doc.file_path)
+                raise HTTPException(status_code=500, detail="Failed to delete local file")
+
+    log_audit(
+        db,
+        lab_id=doc.lab_id,
+        user_id=current_user.id,
+        action="document.deleted",
+        entity_type="document",
+        entity_id=doc.id,
+        before_state=before,
+        note=f"Deleted: {doc.file_name}",
+    )
+
+    db.delete(doc)
+    db.commit()
+    return {"detail": "Document deleted"}

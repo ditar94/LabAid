@@ -5404,6 +5404,13 @@ tr.lot-row-depleted > td:first-child {
   color: var(--text-muted);
 }
 
+.document-item-actions {
+  margin-top: 0.35rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .upload-form {
   padding-top: var(--space-md);
   border-top: 1px solid var(--border);

@@ -4,6 +4,7 @@ import type { Antibody, AuditLogEntry, AuditLogRange, Lab, Lot } from "../api/ty
 import { useAuth } from "../context/AuthContext";
 import { ClipboardList, Download } from "lucide-react";
 import EmptyState from "../components/EmptyState";
+import { openDocumentInNewTab } from "../utils/documents";
 
 const ACTION_OPTIONS = [
   { group: "Vials", items: [
@@ -31,6 +32,8 @@ const ACTION_OPTIONS = [
   ]},
   { group: "Other", items: [
     { value: "document.uploaded", label: "Document Uploaded" },
+    { value: "document.updated", label: "Document Updated" },
+    { value: "document.deleted", label: "Document Deleted" },
     { value: "user.created", label: "User Created" },
     { value: "user.password_reset", label: "Password Reset" },
     { value: "storage_unit.created", label: "Storage Unit Created" },
@@ -276,6 +279,8 @@ export default function AuditPage() {
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Filter state
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
@@ -304,10 +309,14 @@ export default function AuditPage() {
   // Load labs for super admin (not when impersonating)
   useEffect(() => {
     if (user?.role === "super_admin" && !impersonatingLab) {
-      api.get("/labs/").then((r) => {
-        setLabs(r.data);
-        if (r.data.length > 0) setSelectedLab(r.data[0].id);
-      });
+      api.get("/labs/")
+        .then((r) => {
+          setLabs(r.data);
+          if (r.data.length > 0) setSelectedLab(r.data[0].id);
+        })
+        .catch(() => {
+          setLabs([]);
+        });
     }
   }, [user, impersonatingLab]);
 
@@ -315,7 +324,9 @@ export default function AuditPage() {
   useEffect(() => {
     const params: Record<string, string> = {};
     if (user?.role === "super_admin" && selectedLab) params.lab_id = selectedLab;
-    api.get("/antibodies/", { params }).then((r) => setAntibodies(r.data));
+    api.get("/antibodies/", { params })
+      .then((r) => setAntibodies(r.data))
+      .catch(() => setAntibodies([]));
   }, [selectedLab, user]);
 
   // Load lots when antibody changes
@@ -326,7 +337,9 @@ export default function AuditPage() {
     }
     const params: Record<string, string> = { antibody_id: filterAntibody, include_archived: "true" };
     if (user?.role === "super_admin" && selectedLab) params.lab_id = selectedLab;
-    api.get("/lots/", { params }).then((r) => setLots(r.data));
+    api.get("/lots/", { params })
+      .then((r) => setLots(r.data))
+      .catch(() => setLots([]));
   }, [filterAntibody, selectedLab]);
 
   // Build shared query params for audit fetches
@@ -349,19 +362,41 @@ export default function AuditPage() {
 
   // Load first page of audit logs when filters change
   useEffect(() => {
+    let cancelled = false;
     const params = buildAuditParams(0);
-    api.get("/audit/", { params }).then((r) => {
-      setLogs(r.data);
-      setHasMore(r.data.length === PAGE_SIZE);
-    });
+    setLoadingLogs(true);
+    setError(null);
+    api.get("/audit/", { params })
+      .then((r) => {
+        if (cancelled) return;
+        setLogs(r.data);
+        setHasMore(r.data.length === PAGE_SIZE);
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setLogs([]);
+        setHasMore(false);
+        setError(err.response?.data?.detail || "Failed to load audit log");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLogs(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [filterAntibody, filterLot, filterActions, dateRange, selectedLab]);
 
   const loadMore = () => {
     const params = buildAuditParams(logs.length);
-    api.get("/audit/", { params }).then((r) => {
-      setLogs((prev) => [...prev, ...r.data]);
-      setHasMore(r.data.length === PAGE_SIZE);
-    });
+    setError(null);
+    api.get("/audit/", { params })
+      .then((r) => {
+        setLogs((prev) => [...prev, ...r.data]);
+        setHasMore(r.data.length === PAGE_SIZE);
+      })
+      .catch((err: any) => {
+        setError(err.response?.data?.detail || "Failed to load more audit entries");
+      });
   };
 
   useEffect(() => {
@@ -594,6 +629,7 @@ export default function AuditPage() {
           onClear={() => setDateRange(null)}
         />
       </div>
+      {error && <p className="error">{error}</p>}
 
       {rangeNotice && !rangeNoticeDismissed && (
         <div className="audit-range-banner">
@@ -700,11 +736,11 @@ export default function AuditPage() {
                           href="#"
                           onClick={async (e) => {
                             e.preventDefault();
-                            const res = await api.get(`/documents/${state.document_id}`, { responseType: "blob" });
-                            const url = URL.createObjectURL(res.data);
-                            const w = window.open(url, "_blank", "noopener,noreferrer");
-                            if (!w) { const a = document.createElement("a"); a.href = url; a.target = "_blank"; a.click(); }
-                            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                            try {
+                              await openDocumentInNewTab(state.document_id);
+                            } catch (err: any) {
+                              setError(err?.message || "Failed to open document");
+                            }
                           }}
                           title="Open document"
                         >
@@ -718,7 +754,12 @@ export default function AuditPage() {
               </td>
             </tr>
           ))}
-          {logs.length === 0 && (
+          {loadingLogs && logs.length === 0 && (
+            <tr>
+              <td colSpan={5}>Loading audit entries...</td>
+            </tr>
+          )}
+          {!loadingLogs && logs.length === 0 && (
             <tr>
               <td colSpan={5}>
                 <EmptyState

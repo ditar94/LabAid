@@ -1,6 +1,6 @@
 import io
 import logging
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import boto3
 from botocore.config import Config as BotoConfig
@@ -26,6 +26,9 @@ class ObjectStorageService:
                 config=BotoConfig(
                     s3={"addressing_style": "path" if settings.S3_USE_PATH_STYLE else "virtual"},
                     signature_version="s3v4",
+                    connect_timeout=5,
+                    read_timeout=30,
+                    retries={"max_attempts": 3, "mode": "standard"},
                 ),
             )
             self._bucket = settings.S3_BUCKET
@@ -72,6 +75,31 @@ class ObjectStorageService:
         body = io.BytesIO(response["Body"].read())
         content_type = response.get("ContentType", "application/octet-stream")
         return body, content_type
+
+    def presign_download(
+        self,
+        key: str,
+        filename: str,
+        expires: int = 300,
+        response_content_type: str | None = None,
+    ) -> str:
+        """Create a temporary signed URL for direct browser download."""
+        # Keep ASCII-safe header value and include RFC5987 UTF-8 fallback.
+        safe_name = (filename or "document").replace('"', "")
+        utf8_name = quote(safe_name, safe="")
+        disposition = f'inline; filename="{safe_name}"; filename*=UTF-8\'\'{utf8_name}'
+        params: dict[str, str] = {
+            "Bucket": self._bucket,
+            "Key": key,
+            "ResponseContentDisposition": disposition,
+        }
+        if response_content_type:
+            params["ResponseContentType"] = response_content_type
+        return self._client.generate_presigned_url(
+            "get_object",
+            Params=params,
+            ExpiresIn=expires,
+        )
 
     def update_tags(self, key: str, tags: dict[str, str]) -> None:
         """Replace all tags on an object."""

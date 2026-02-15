@@ -133,6 +133,56 @@ class TestDocumentDownload:
         res = client.get(f"/api/documents/{fake_id}", headers=auth_headers)
         assert res.status_code == 404
 
+    def test_download_pdf_with_generic_uploaded_mime_returns_pdf_type(self, client, auth_headers, lot):
+        upload_res = client.post(
+            f"/api/documents/lots/{lot.id}",
+            files={"file": ("generic.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/octet-stream")},
+            headers=auth_headers,
+        )
+        assert upload_res.status_code == 200
+        assert upload_res.json()["content_type"] == "application/pdf"
+
+        doc_id = upload_res.json()["id"]
+        res = client.get(f"/api/documents/{doc_id}", headers=auth_headers)
+        assert res.status_code == 200
+        assert res.headers.get("content-type", "").startswith("application/pdf")
+
+
+class TestDocumentEditDelete:
+    def test_update_document_metadata(self, client, auth_headers, lot):
+        upload_res = client.post(
+            f"/api/documents/lots/{lot.id}",
+            files={"file": ("edit.pdf", io.BytesIO(b"content"), "application/pdf")},
+            data={"description": "Initial"},
+            headers=auth_headers,
+        )
+        doc_id = upload_res.json()["id"]
+
+        res = client.patch(
+            f"/api/documents/{doc_id}",
+            json={"description": "Updated QC note", "is_qc_document": True},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["description"] == "Updated QC note"
+        assert data["is_qc_document"] is True
+
+    def test_delete_document(self, client, auth_headers, lot):
+        upload_res = client.post(
+            f"/api/documents/lots/{lot.id}",
+            files={"file": ("delete.pdf", io.BytesIO(b"content"), "application/pdf")},
+            headers=auth_headers,
+        )
+        doc_id = upload_res.json()["id"]
+
+        del_res = client.delete(f"/api/documents/{doc_id}", headers=auth_headers)
+        assert del_res.status_code == 200
+        assert del_res.json()["detail"] == "Document deleted"
+
+        get_res = client.get(f"/api/documents/{doc_id}", headers=auth_headers)
+        assert get_res.status_code == 404
+
 
 class TestDocumentRoleAccess:
     def test_tech_cannot_upload(self, client, db, lab, lot):
