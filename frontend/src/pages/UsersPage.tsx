@@ -28,6 +28,8 @@ export default function UsersPage() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
+  const [editingEmail, setEditingEmail] = useState<string | null>(null);
+  const [editEmailValue, setEditEmailValue] = useState("");
 
   const load = () => {
     if (!selectedLab) return;
@@ -118,6 +120,32 @@ export default function UsersPage() {
       load();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update role");
+    }
+  };
+
+  const handleToggleActive = async (u: User) => {
+    setError(null);
+    const newActive = !u.is_active;
+    const action = newActive ? "reactivate" : "deactivate";
+    if (!confirm(`Are you sure you want to ${action} ${u.full_name}?`)) return;
+    try {
+      await api.patch(`/auth/users/${u.id}`, { is_active: newActive });
+      addToast(`${u.full_name} ${newActive ? "reactivated" : "deactivated"}`, "success");
+      load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || `Failed to ${action} user`);
+    }
+  };
+
+  const handleEmailSave = async (userId: string) => {
+    setError(null);
+    try {
+      await api.patch(`/auth/users/${userId}`, { email: editEmailValue });
+      addToast("Email updated", "success");
+      setEditingEmail(null);
+      load();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to update email");
     }
   };
 
@@ -231,12 +259,44 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
+            {users.map((u) => {
+              const canEdit = canManage && u.id !== currentUser?.id && u.role !== "super_admin";
+              return (
+              <tr key={u.id} className={u.is_active ? "" : "row-inactive"}>
                 <td>{u.full_name}</td>
-                <td>{u.email}</td>
                 <td>
-                  {canManage && u.id !== currentUser?.id && u.role !== "super_admin" ? (
+                  {editingEmail === u.id ? (
+                    <span className="inline-edit">
+                      <input
+                        type="email"
+                        value={editEmailValue}
+                        onChange={(e) => setEditEmailValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleEmailSave(u.id);
+                          if (e.key === "Escape") setEditingEmail(null);
+                        }}
+                        autoFocus
+                      />
+                      <button className="btn-sm" onClick={() => handleEmailSave(u.id)}>Save</button>
+                      <button className="btn-sm btn-secondary" onClick={() => setEditingEmail(null)}>Cancel</button>
+                    </span>
+                  ) : (
+                    <span>
+                      {u.email}
+                      {canEdit && (
+                        <button
+                          className="btn-link btn-edit-email"
+                          onClick={() => { setEditingEmail(u.id); setEditEmailValue(u.email); }}
+                          title="Edit email"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {canEdit ? (
                     <select
                       value={u.role}
                       onChange={(e) => handleRoleChange(u.id, e.target.value)}
@@ -253,17 +313,26 @@ export default function UsersPage() {
                 </td>
                 <td>{u.is_active ? "Yes" : "No"}</td>
                 <td className="action-btns">
-                  {canManage && u.id !== currentUser?.id && (
-                    <button
-                      className="btn-sm"
-                      onClick={() => handleResetPassword(u.id)}
-                    >
-                      Reset Password
-                    </button>
+                  {canEdit && (
+                    <>
+                      <button
+                        className="btn-sm"
+                        onClick={() => handleResetPassword(u.id)}
+                      >
+                        Reset Password
+                      </button>
+                      <button
+                        className={`btn-sm ${u.is_active ? "btn-danger" : "btn-success"}`}
+                        onClick={() => handleToggleActive(u)}
+                      >
+                        {u.is_active ? "Deactivate" : "Activate"}
+                      </button>
+                    </>
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
         </div>

@@ -34,6 +34,7 @@ from app.schemas.schemas import (
     UserCreate,
     UserCreateResponse,
     UserOut,
+    UserUpdateRequest,
 )
 
 limiter = Limiter(key_func=get_remote_address)
@@ -368,6 +369,65 @@ def update_user_role(
         before_state=before,
         after_state=snapshot_user(target),
         note=f"Role changed from {before['role']} to {body.role.value} by {current_user.email}",
+    )
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+def update_user(
+    user_id: UUID,
+    body: UserUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
+    ),
+):
+    q = db.query(User).filter(User.id == user_id)
+    if current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(User.lab_id == current_user.lab_id)
+    target = q.first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if target.id == current_user.id:
+        raise HTTPException(status_code=403, detail="Cannot modify your own account here")
+
+    if _ROLE_RANK.get(target.role, 0) >= _ROLE_RANK[current_user.role]:
+        raise HTTPException(status_code=403, detail="Cannot modify a user with equal or higher role")
+
+    before = snapshot_user(target)
+    changes: list[str] = []
+
+    if body.email is not None:
+        new_email = body.email.lower()
+        if new_email != target.email:
+            existing = db.query(User).filter(
+                func.lower(User.email) == new_email, User.id != target.id
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Email already registered")
+            target.email = new_email
+            changes.append(f"email changed from {before['email']} to {new_email}")
+
+    if body.is_active is not None and body.is_active != target.is_active:
+        target.is_active = body.is_active
+        changes.append("deactivated" if not body.is_active else "reactivated")
+
+    if not changes:
+        return target
+
+    log_audit(
+        db,
+        lab_id=target.lab_id or current_user.lab_id,
+        user_id=current_user.id,
+        action="user.updated",
+        entity_type="user",
+        entity_id=target.id,
+        before_state=before,
+        after_state=snapshot_user(target),
+        note=f"{'; '.join(changes)} by {current_user.email}",
     )
     db.commit()
     db.refresh(target)

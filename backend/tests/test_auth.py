@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 
+from app.core.security import hash_password
+from app.models.models import User, UserRole
+
 
 class TestLogin:
     def test_login_success(self, client, admin_user):
@@ -299,6 +302,157 @@ class TestEmailBackend:
         assert success is True
         assert "set-password" in link
         assert "reset-token-456" in link
+
+
+class TestUpdateUser:
+    """Admin can change email and toggle active status."""
+
+    def test_change_email(self, client, auth_headers, lab, db):
+        # Create a tech user to modify
+        res = client.post("/api/auth/users", json={
+            "email": "tech@test.com",
+            "full_name": "Tech User",
+            "role": "tech",
+        }, headers=auth_headers)
+        assert res.status_code == 200
+        user_id = res.json()["id"]
+
+        # Change email
+        res = client.patch(f"/api/auth/users/{user_id}", json={
+            "email": "newemail@test.com",
+        }, headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["email"] == "newemail@test.com"
+
+    def test_change_email_duplicate(self, client, auth_headers, admin_user, lab, db):
+        # Create a second user
+        res = client.post("/api/auth/users", json={
+            "email": "tech@test.com",
+            "full_name": "Tech User",
+            "role": "tech",
+        }, headers=auth_headers)
+        assert res.status_code == 200
+        user_id = res.json()["id"]
+
+        # Try changing to admin's email
+        res = client.patch(f"/api/auth/users/{user_id}", json={
+            "email": "admin@test.com",
+        }, headers=auth_headers)
+        assert res.status_code == 400
+        assert "already registered" in res.json()["detail"]
+
+    def test_deactivate_user(self, client, auth_headers, lab, db):
+        res = client.post("/api/auth/users", json={
+            "email": "tech@test.com",
+            "full_name": "Tech User",
+            "role": "tech",
+        }, headers=auth_headers)
+        user_id = res.json()["id"]
+
+        # Deactivate
+        res = client.patch(f"/api/auth/users/{user_id}", json={
+            "is_active": False,
+        }, headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["is_active"] is False
+
+    def test_deactivated_user_cannot_login(self, client, auth_headers, lab, db):
+        res = client.post("/api/auth/users", json={
+            "email": "deactivate@test.com",
+            "full_name": "Deactivate Me",
+            "role": "tech",
+        }, headers=auth_headers)
+        user_id = res.json()["id"]
+
+        # Get invite token and set password
+        from app.models.models import User
+        user = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
+        token = user.invite_token
+
+        res = client.post("/api/auth/accept-invite", json={
+            "token": token,
+            "password": "testpass123",
+        })
+        assert res.status_code == 200
+
+        # Verify login works
+        res = client.post("/api/auth/login", json={
+            "email": "deactivate@test.com",
+            "password": "testpass123",
+        })
+        assert res.status_code == 200
+
+        # Deactivate
+        res = client.patch(f"/api/auth/users/{user_id}", json={
+            "is_active": False,
+        }, headers=auth_headers)
+        assert res.status_code == 200
+
+        # Login should fail
+        res = client.post("/api/auth/login", json={
+            "email": "deactivate@test.com",
+            "password": "testpass123",
+        })
+        assert res.status_code == 401
+
+    def test_reactivate_user(self, client, auth_headers, lab, db):
+        res = client.post("/api/auth/users", json={
+            "email": "tech@test.com",
+            "full_name": "Tech User",
+            "role": "tech",
+        }, headers=auth_headers)
+        user_id = res.json()["id"]
+
+        # Deactivate then reactivate
+        client.patch(f"/api/auth/users/{user_id}", json={"is_active": False}, headers=auth_headers)
+        res = client.patch(f"/api/auth/users/{user_id}", json={"is_active": True}, headers=auth_headers)
+        assert res.status_code == 200
+        assert res.json()["is_active"] is True
+
+    def test_cannot_modify_self(self, client, auth_headers, admin_user):
+        res = client.patch(f"/api/auth/users/{admin_user.id}", json={
+            "is_active": False,
+        }, headers=auth_headers)
+        assert res.status_code == 403
+
+    def test_cannot_modify_higher_role(self, client, db, lab):
+        # Create a supervisor
+        from app.core.security import create_access_token
+        supervisor = User(
+            id=uuid.uuid4(),
+            lab_id=lab.id,
+            email="supervisor@test.com",
+            hashed_password=hash_password("password123"),
+            full_name="Supervisor",
+            role=UserRole.SUPERVISOR,
+            is_active=True,
+            must_change_password=False,
+        )
+        db.add(supervisor)
+
+        admin = User(
+            id=uuid.uuid4(),
+            lab_id=lab.id,
+            email="admin2@test.com",
+            hashed_password=hash_password("password123"),
+            full_name="Admin",
+            role=UserRole.LAB_ADMIN,
+            is_active=True,
+            must_change_password=False,
+        )
+        db.add(admin)
+        db.commit()
+
+        # Supervisor tries to modify admin
+        sup_token = create_access_token({
+            "sub": str(supervisor.id),
+            "lab_id": str(lab.id),
+            "role": supervisor.role.value,
+        })
+        res = client.patch(f"/api/auth/users/{admin.id}", json={
+            "is_active": False,
+        }, headers={"Authorization": f"Bearer {sup_token}"})
+        assert res.status_code in (403, 401)  # 401 if supervisor not in require_role
 
 
 class TestHealthCheck:

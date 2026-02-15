@@ -67,6 +67,11 @@ class AcceptInviteRequest(BaseModel):
     password: str
 
 
+class UserUpdateRequest(BaseModel):
+    email: EmailStr | None = None
+    is_active: bool | None = None
+
+
 class RoleUpdateRequest(BaseModel):
     role: UserRole
 

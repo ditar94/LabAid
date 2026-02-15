@@ -1421,6 +1421,47 @@ button.btn-secondary:disabled {
   border-radius: var(--radius-sm);
 }
 
+.btn-danger {
+  background: var(--danger-600);
+  color: #fff;
+  border: none;
+}
+
+.btn-danger:hover {
+  background: var(--danger-700);
+}
+
+.btn-success {
+  background: var(--success-600);
+  color: #fff;
+  border: none;
+}
+
+.btn-success:hover {
+  background: var(--success-700);
+}
+
+tr.row-inactive td {
+  opacity: 0.5;
+}
+
+.inline-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.inline-edit input {
+  width: 14rem;
+  padding: 0.2rem 0.4rem;
+  font-size: var(--text-xs);
+}
+
+.btn-edit-email {
+  font-size: var(--text-xs);
+  margin-left: 0.4rem;
+}
+
 .copy-btn {
   display: inline-flex;
   align-items: center;
