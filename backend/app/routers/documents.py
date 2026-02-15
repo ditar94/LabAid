@@ -41,6 +41,12 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
+# Fallback: allow upload if the file extension is recognized (browsers can misidentify MIME types)
+ALLOWED_EXTENSIONS = {
+    ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
+    ".csv", ".xlsx", ".xls", ".doc", ".docx",
+}
+
 
 @router.post("/lots/{lot_id}", response_model=LotDocumentOut)
 @limiter.limit("10/minute")
@@ -53,8 +59,11 @@ def upload_lot_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
-    # Validate MIME type
-    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+    # Validate MIME type (fall back to extension if browser misidentifies)
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    mime_ok = not file.content_type or file.content_type in ALLOWED_MIME_TYPES
+    ext_ok = ext in ALLOWED_EXTENSIONS
+    if not mime_ok and not ext_ok:
         raise HTTPException(status_code=400, detail=f"File type '{file.content_type}' is not allowed")
 
     # Read file content and validate size
