@@ -135,10 +135,8 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 
 ### Pending: Ops Hardening
 
-- [ ] MFA + strong password policy for admins; account lockout/rate limiting
 - [ ] Persist blob metadata in DB (storage key/URL, checksum, uploader, timestamps)
 - [ ] Store document checksums + add a periodic verification job for missing/corrupt blobs
-- [ ] Configure object storage lifecycle rules to move inactive files to cold storage
 - [ ] Request size limits + rate limiting for uploads and public endpoints
 - [ ] Tag releases and keep a mapping of schema version to app version for restores/rollbacks
 - [ ] Use backward-compatible migrations for relationship changes (add new columns first, backfill, then cut over)
