@@ -167,8 +167,8 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - [x] Integration test: used token -> reject with 400
 - [x] Integration test: reset password -> old token invalidated, new token works
 - [x] Integration test: console email backend logs email content to stdout
-- [ ] Manual test: full flow on beta with console backend
-- [ ] Manual test: full flow on production with Resend
+- [x] Manual test: full flow on beta with console backend
+- [x] Manual test: full flow on staging with Resend
 
 ### Pending: AUTH Overhaul — Pluggable Enterprise Authentication
 
