@@ -113,13 +113,7 @@ export default function FluorochromesPage() {
         </form>
       )}
 
-      {loading ? (
-        <div className="stagger-reveal">
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-        </div>
-      ) : fluorochromes.length === 0 ? (
+      {!loading && fluorochromes.length === 0 ? (
         <EmptyState
           icon={Palette}
           title="No fluorochromes defined"

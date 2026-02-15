@@ -78,14 +78,6 @@ export default function GlobalSearchPage() {
         />
       </div>
 
-      {loading && (
-        <div className="stagger-reveal">
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-        </div>
-      )}
-
       {!loading && searched && totalResults === 0 && (
         <div className="empty-state">
           <Search size={40} strokeWidth={1.5} />
@@ -94,7 +86,7 @@ export default function GlobalSearchPage() {
         </div>
       )}
 
-      {!loading && results && results.labs.length > 0 && (
+      {results && results.labs.length > 0 && (
         <div style={{ marginBottom: "var(--space-xl)" }}>
           <h3 className="section-heading">
             <Building2 size={16} style={{ marginRight: 6, verticalAlign: -2 }} />
@@ -132,7 +124,7 @@ export default function GlobalSearchPage() {
         </div>
       )}
 
-      {!loading && results && results.antibodies.length > 0 && (
+      {results && results.antibodies.length > 0 && (
         <div style={{ marginBottom: "var(--space-xl)" }}>
           <h3 className="section-heading">
             <FlaskConical size={16} style={{ marginRight: 6, verticalAlign: -2 }} />
@@ -181,7 +173,7 @@ export default function GlobalSearchPage() {
         </div>
       )}
 
-      {!loading && results && results.lots.length > 0 && (
+      {results && results.lots.length > 0 && (
         <div style={{ marginBottom: "var(--space-xl)" }}>
           <h3 className="section-heading">
             <TestTubes size={16} style={{ marginRight: 6, verticalAlign: -2 }} />

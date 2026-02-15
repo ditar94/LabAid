@@ -242,14 +242,7 @@ export default function UsersPage() {
         </form>
       )}
 
-      {loading ? (
-        <div className="stagger-reveal">
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-        </div>
-      ) : users.length === 0 ? (
+      {!loading && users.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
           title="No users found"

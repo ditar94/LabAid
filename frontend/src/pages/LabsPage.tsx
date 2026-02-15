@@ -141,13 +141,7 @@ export default function LabsPage() {
         </form>
       )}
 
-      {loading ? (
-        <div className="stagger-reveal">
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-          <div className="skeleton skeleton-row" />
-        </div>
-      ) : labs.length === 0 ? (
+      {!loading && labs.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="No labs yet"
