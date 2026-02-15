@@ -1,5 +1,7 @@
 """Integration tests for authentication endpoints."""
 
+import uuid
+
 import pytest
 
 
@@ -192,7 +194,7 @@ class TestInviteEndToEnd:
 
         # 2. Verify invite token was stored in DB
         from app.models.models import User
-        user = db.query(User).filter(User.id == user_id).first()
+        user = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
         assert user.invite_token is not None
         assert user.invite_token_expires_at is not None
         assert user.must_change_password is True
@@ -207,7 +209,8 @@ class TestInviteEndToEnd:
         assert "access_token" in res.json()
 
         # 4. Verify token is cleared and must_change_password is False
-        db.refresh(user)
+        db.expire_all()
+        user = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
         assert user.invite_token is None
         assert user.invite_token_expires_at is None
         assert user.must_change_password is False
@@ -257,11 +260,13 @@ class TestResetPasswordFlow:
         assert res.status_code == 401
 
         # 5. Verify new token exists in DB
-        db.refresh(invited_user)
-        assert invited_user.invite_token is not None
-        assert invited_user.invite_token != "valid-test-token-abc123"  # new token
-        assert invited_user.must_change_password is True
-        new_token = invited_user.invite_token
+        from app.models.models import User
+        db.expire_all()
+        user = db.query(User).filter(User.id == invited_user.id).first()
+        assert user.invite_token is not None
+        assert user.invite_token != "valid-test-token-abc123"  # new token
+        assert user.must_change_password is True
+        new_token = user.invite_token
 
         # 6. Accept invite with new token
         res = client.post("/api/auth/accept-invite", json={
