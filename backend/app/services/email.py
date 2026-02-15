@@ -134,3 +134,28 @@ def send_reset_email(to: str, full_name: str, token: str) -> tuple[bool, str]:
     html = _reset_html(full_name, link)
     success = _send_invite_or_reset(to, "LabAid — Reset Your Password", html)
     return success, link
+
+
+def _forgot_password_html(full_name: str, link: str) -> str:
+    return (
+        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">'
+        f"<h2>Reset Your Password</h2>"
+        f"<p>Hi {full_name}, you requested a password reset. "
+        "Click the button below to set a new password.</p>"
+        f'<p style="text-align:center;margin:32px 0">'
+        f'<a href="{link}" style="background:#2563eb;color:#fff;padding:12px 28px;'
+        'border-radius:6px;text-decoration:none;font-weight:600">Set New Password</a></p>'
+        "<p style=\"color:#666;font-size:13px\">This link expires in 24 hours. "
+        "If you didn't request this, you can safely ignore this email.</p>"
+        "</div>"
+    )
+
+
+def send_forgot_password_email(to: str, full_name: str, token: str) -> tuple[bool, str]:
+    link = _build_link(token)
+    html = _forgot_password_html(full_name, link)
+    success = _send_invite_or_reset(to, "LabAid — Reset Your Password", html)
+    if settings.EMAIL_BACKEND == "console":
+        import sys
+        print(f"[EMAIL] Forgot password link for {to}: {link}", file=sys.stderr, flush=True)
+    return success, link

@@ -14,6 +14,7 @@ import {
   Settings,
   Palette,
   Search,
+  KeyRound,
   LogOut,
   Menu,
   X,
@@ -252,6 +253,10 @@ export default function Layout() {
           {theme === "dark" && <Moon size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
           {theme === "system" && <Monitor size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
           {theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"}
+        </button>
+        <button className="logout-btn" onClick={() => { handleNavClick(); navigate("/change-password"); }}>
+          <KeyRound size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+          Change Password
         </button>
         <button className="logout-btn" onClick={handleLogout}>
           <LogOut size={14} style={{ marginRight: 6, verticalAlign: -2 }} />

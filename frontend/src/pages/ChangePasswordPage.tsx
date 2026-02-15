@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, KeyRound } from "lucide-react";
 
 export default function ChangePasswordPage() {
   const { user, refreshUser } = useAuth();
@@ -11,6 +11,7 @@ export default function ChangePasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
+  const isForced = !!user?.must_change_password;
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
   const passwordLongEnough = newPassword.length >= 8;
 
@@ -44,16 +45,20 @@ export default function ChangePasswordPage() {
 
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-icon login-icon-welcome">
-            <ShieldCheck size={26} />
+          <div className={`login-icon${isForced ? " login-icon-welcome" : ""}`}>
+            {isForced ? <ShieldCheck size={26} /> : <KeyRound size={26} />}
           </div>
           <div>
-            <h1>Welcome to LabAid</h1>
-            <p className="subtitle">Set your personal password to get started</p>
+            <h1>{isForced ? "Welcome to LabAid" : "Change Password"}</h1>
+            <p className="subtitle">
+              {isForced
+                ? "Set your personal password to get started"
+                : "Enter a new password for your account"}
+            </p>
           </div>
         </div>
 
-        {user?.must_change_password && (
+        {isForced && (
           <div className="onboarding-steps">
             <div className="onboarding-step completed">
               <div className="step-dot" />
@@ -112,10 +117,16 @@ export default function ChangePasswordPage() {
             className="login-submit"
             disabled={!passwordLongEnough || !passwordsMatch}
           >
-            Set Password & Continue
+            {isForced ? "Set Password & Continue" : "Update Password"}
           </button>
         </form>
-        <p className="login-footer">You can change your password later in settings</p>
+        {isForced ? (
+          <p className="login-footer">You can change your password later in settings</p>
+        ) : (
+          <p className="login-footer">
+            <Link to="/">Cancel</Link>
+          </p>
+        )}
       </div>
     </div>
   );

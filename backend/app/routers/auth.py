@@ -20,10 +20,11 @@ from app.core.security import (
 from app.middleware.auth import COOKIE_NAME, get_current_user, require_role
 from app.models.models import Lab, User, UserRole
 from app.services.audit import log_audit, snapshot_user
-from app.services.email import send_invite_email, send_reset_email
+from app.services.email import send_forgot_password_email, send_invite_email, send_reset_email
 from app.schemas.schemas import (
     AcceptInviteRequest,
     ChangePasswordRequest,
+    ForgotPasswordRequest,
     ImpersonateRequest,
     ImpersonateResponse,
     LoginRequest,
@@ -92,6 +93,36 @@ def login(request: Request, response: Response, body: LoginRequest, db: Session 
     _set_auth_cookies(response, token)
     # Still return token in body for backward compatibility (mobile clients, etc.)
     return TokenResponse(access_token=token)
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+def forgot_password(request: Request, body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Send a password-reset link if the email matches an active user."""
+    user = db.query(User).filter(
+        func.lower(User.email) == body.email.lower(),
+        User.is_active.is_(True),
+    ).first()
+
+    if user:
+        invite_token = generate_invite_token()
+        user.invite_token = invite_token
+        user.invite_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+
+        log_audit(
+            db,
+            lab_id=user.lab_id or user.id,
+            user_id=user.id,
+            action="user.forgot_password_requested",
+            entity_type="user",
+            entity_id=user.id,
+        )
+
+        db.commit()
+
+        send_forgot_password_email(user.email, user.full_name, invite_token)
+
+    return {"message": "If that email is registered, a password reset link has been sent."}
 
 
 @router.post("/logout")

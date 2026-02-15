@@ -62,6 +62,10 @@ class ResetPasswordResponse(BaseModel):
     set_password_link: str | None = None
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
 class AcceptInviteRequest(BaseModel):
     token: str
     password: str
@@ -280,6 +284,9 @@ class LotDocumentOut(BaseModel):
     id: UUID
     lot_id: UUID
     file_name: str
+    file_size: int | None = None
+    content_type: str | None = None
+    checksum_sha256: str | None = None
     description: str | None = None
     is_qc_document: bool = False
     created_at: datetime

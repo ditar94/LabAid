@@ -589,6 +589,18 @@ body {
   border: 1px solid rgba(244, 63, 94, 0.2);
 }
 
+.forgot-password-link {
+  display: block;
+  text-align: right;
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: var(--space-xs);
+  text-decoration: none;
+}
+.forgot-password-link:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
 .login-submit {
   margin-top: var(--space-xs);
   padding: 0.7rem 1.25rem;

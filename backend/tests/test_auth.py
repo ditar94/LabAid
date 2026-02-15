@@ -455,6 +455,82 @@ class TestUpdateUser:
         assert res.status_code in (403, 401)  # 401 if supervisor not in require_role
 
 
+class TestForgotPassword:
+    def test_forgot_password_sends_token(self, client, admin_user, db):
+        res = client.post("/api/auth/forgot-password", json={
+            "email": "admin@test.com",
+        })
+        assert res.status_code == 200
+        assert "password reset link" in res.json()["message"]
+
+        # Verify token was set in DB
+        db.expire_all()
+        user = db.query(User).filter(User.id == admin_user.id).first()
+        assert user.invite_token is not None
+        assert user.invite_token_expires_at is not None
+
+    def test_forgot_password_unknown_email(self, client, db):
+        res = client.post("/api/auth/forgot-password", json={
+            "email": "nobody@test.com",
+        })
+        assert res.status_code == 200
+        assert "password reset link" in res.json()["message"]
+
+    def test_forgot_password_deactivated_user(self, client, db, lab):
+        # Create a deactivated user
+        user = User(
+            id=uuid.uuid4(),
+            lab_id=lab.id,
+            email="deactivated@test.com",
+            hashed_password=hash_password("password123"),
+            full_name="Deactivated User",
+            role=UserRole.TECH,
+            is_active=False,
+            must_change_password=False,
+        )
+        db.add(user)
+        db.commit()
+
+        res = client.post("/api/auth/forgot-password", json={
+            "email": "deactivated@test.com",
+        })
+        assert res.status_code == 200
+        assert "password reset link" in res.json()["message"]
+
+        # No token should be set
+        db.expire_all()
+        user = db.query(User).filter(User.email == "deactivated@test.com").first()
+        assert user.invite_token is None
+
+    def test_forgot_password_token_works(self, client, admin_user, db):
+        # 1. Request reset
+        res = client.post("/api/auth/forgot-password", json={
+            "email": "admin@test.com",
+        })
+        assert res.status_code == 200
+
+        # 2. Get the token from DB
+        db.expire_all()
+        user = db.query(User).filter(User.id == admin_user.id).first()
+        token = user.invite_token
+        assert token is not None
+
+        # 3. Use token via accept-invite
+        res = client.post("/api/auth/accept-invite", json={
+            "token": token,
+            "password": "newpass123456",
+        })
+        assert res.status_code == 200
+        assert "access_token" in res.json()
+
+        # 4. Login with new password
+        res = client.post("/api/auth/login", json={
+            "email": "admin@test.com",
+            "password": "newpass123456",
+        })
+        assert res.status_code == 200
+
+
 class TestHealthCheck:
     def test_health_endpoint(self, client):
         res = client.get("/api/health")
