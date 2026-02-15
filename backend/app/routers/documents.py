@@ -280,16 +280,25 @@ def update_document(
             changed_fields.append("is_qc_document")
 
     if changed_fields:
+        # Build a descriptive note
+        if "is_qc_document" in changed_fields:
+            qc_verb = "Marked" if doc.is_qc_document else "Unmarked"
+            note = f"{qc_verb} as QC document: {doc.file_name}"
+        elif "description" in changed_fields:
+            note = f"Updated description: {doc.file_name}"
+        else:
+            note = f"Updated document: {doc.file_name}"
+
         log_audit(
             db,
             lab_id=doc.lab_id,
             user_id=current_user.id,
             action="document.updated",
-            entity_type="document",
-            entity_id=doc.id,
+            entity_type="lot",
+            entity_id=doc.lot_id,
             before_state=before,
             after_state=_snapshot_document(doc),
-            note=f"Updated fields: {', '.join(changed_fields)}",
+            note=note,
         )
         db.commit()
         db.refresh(doc)
@@ -331,10 +340,10 @@ def delete_document(
         lab_id=doc.lab_id,
         user_id=current_user.id,
         action="document.deleted",
-        entity_type="document",
-        entity_id=doc.id,
+        entity_type="lot",
+        entity_id=doc.lot_id,
         before_state=before,
-        note=f"Deleted: {doc.file_name}",
+        note=f"Deleted document: {doc.file_name}",
     )
 
     db.delete(doc)

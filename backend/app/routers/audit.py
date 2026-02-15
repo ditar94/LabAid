@@ -150,10 +150,48 @@ def _batch_resolve(db: Session, logs: list) -> tuple[dict[UUID, str], dict[UUID,
         if doc_lot_ids:
             extra = db.query(Lot).filter(Lot.id.in_(doc_lot_ids)).all()
             lot_map.update({l.id: l for l in extra})
+        found_doc_ids = set()
         for d in docs:
             labels[d.id] = d.file_name
             lot = lot_map.get(d.lot_id)
             lineage[d.id] = {"lot_id": d.lot_id, "antibody_id": lot.antibody_id if lot else None}
+            found_doc_ids.add(d.id)
+
+        # Fallback for deleted documents: parse state JSON from audit log entries
+        missing_doc_ids = doc_ids - found_doc_ids
+        if missing_doc_ids:
+            import json
+            for log in logs:
+                if log.entity_id not in missing_doc_ids:
+                    continue
+                if log.entity_id in labels:
+                    continue
+                # Try to extract file_name and lot_id from before_state or after_state
+                file_name = None
+                state_lot_id = None
+                for state_json in (log.before_state, log.after_state):
+                    if not state_json:
+                        continue
+                    try:
+                        state = json.loads(state_json) if isinstance(state_json, str) else state_json
+                        if not file_name and state.get("file_name"):
+                            file_name = state["file_name"]
+                        if not state_lot_id and state.get("lot_id"):
+                            state_lot_id = UUID(state["lot_id"]) if isinstance(state["lot_id"], str) else state["lot_id"]
+                    except (json.JSONDecodeError, ValueError, TypeError):
+                        continue
+                if file_name:
+                    labels[log.entity_id] = file_name
+                if state_lot_id:
+                    # Load lot if needed for lineage
+                    if state_lot_id not in lot_map:
+                        lot_obj = db.query(Lot).filter(Lot.id == state_lot_id).first()
+                        if lot_obj:
+                            lot_map[state_lot_id] = lot_obj
+                    lot = lot_map.get(state_lot_id)
+                    lineage[log.entity_id] = {"lot_id": state_lot_id, "antibody_id": lot.antibody_id if lot else None}
+                else:
+                    lineage[log.entity_id] = {"lot_id": None, "antibody_id": None}
 
     return labels, lineage
 

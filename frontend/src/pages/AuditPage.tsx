@@ -727,17 +727,18 @@ export default function AuditPage() {
                 )}
               </td>
               <td>
-                {log.action === "document.uploaded" && log.after_state ? (() => {
+                {(log.action === "document.uploaded" || log.action === "document.updated") && log.after_state ? (() => {
                   try {
                     const state = JSON.parse(log.after_state);
-                    if (state.document_id) {
+                    const docId = state.document_id || state.id;
+                    if (docId) {
                       return (
                         <a
                           href="#"
                           onClick={async (e) => {
                             e.preventDefault();
                             try {
-                              await openDocumentInNewTab(state.document_id);
+                              await openDocumentInNewTab(docId);
                             } catch (err: any) {
                               setError(err?.message || "Failed to open document");
                             }
