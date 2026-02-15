@@ -147,12 +147,13 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 
 ### Pending: Documentation & Compliance
 
-- [ ] Document backup/restore process and run periodic restore tests
-- [ ] Define RPO/RTO targets (e.g., 15 min / 4 hrs) and align backup cadence to them
-- [ ] Write and rehearse a restore playbook (DB restore + blob restore + validation queries)
-- [ ] Run scheduled restore tests and record results
-- [ ] Incident response plan + basic status/communication plan
-- [ ] Legal baseline: Terms of Service, Privacy Policy, data retention policy
+- [x] Document backup/restore process and run periodic restore tests — [docs/DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md)
+- [x] Define RPO/RTO targets (15 min RPO / 4 hr RTO) and align backup cadence
+- [x] Write and rehearse a restore playbook (DB restore + blob restore + validation queries)
+- [ ] Run first scheduled restore test and record results
+- [x] Incident response plan + basic status/communication plan — [docs/INCIDENT_RESPONSE.md](docs/INCIDENT_RESPONSE.md)
+- [x] Legal baseline: Terms of Service, Privacy Policy — [docs/TERMS_OF_SERVICE.md](docs/TERMS_OF_SERVICE.md), [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md) (DRAFT — needs legal review)
+- [x] Security vulnerability disclosure policy — [SECURITY.md](SECURITY.md)
 
 ### Pending: Account Creation & Password Reset — Remaining Items
 
