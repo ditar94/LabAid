@@ -390,7 +390,7 @@ jobs:
   stop-nonprod-db:
     name: Stop Nonprod Database
     needs: [prod-backend, prod-frontend]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
