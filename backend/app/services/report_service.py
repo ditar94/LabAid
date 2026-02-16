@@ -259,6 +259,7 @@ def get_usage_data(
             "is_archived": lot.is_archived,
             "sealed_count": sealed,
             "_first_opened_dt": first_opened,
+            "_last_opened_dt": last_opened,
             "expiration": _fmt_date(lot.expiration_date),
             "received": _fmt_date(min(received_dates)) if received_dates else "",
             "vials_received": total,
@@ -290,23 +291,29 @@ def get_usage_data(
                 elif r in eligible:
                     r["status"] = "New"
 
-    # Antibody-level weighted average: total consumed / weeks since first open
+    # Antibody-level weighted average: total consumed / weeks between
+    # earliest first_opened and latest last_opened across lots in this report
     ab_stats: dict[str, dict] = {}
     for r in result:
         ab = r["antibody"]
         if ab not in ab_stats:
-            ab_stats[ab] = {"consumed": 0, "first_opened": None}
+            ab_stats[ab] = {"consumed": 0, "first_opened": None, "last_opened": None}
         ab_stats[ab]["consumed"] += r["vials_consumed"]
         fo = r["_first_opened_dt"]
+        lo = r["_last_opened_dt"]
         if fo:
             cur = ab_stats[ab]["first_opened"]
             if cur is None or fo < cur:
                 ab_stats[ab]["first_opened"] = fo
+        if lo:
+            cur = ab_stats[ab]["last_opened"]
+            if cur is None or lo > cur:
+                ab_stats[ab]["last_opened"] = lo
 
     ab_avg: dict[str, str] = {}
     for ab, stats in ab_stats.items():
-        if stats["first_opened"] and stats["consumed"] > 0:
-            weeks = max(1, (now - stats["first_opened"]).days / 7)
+        if stats["first_opened"] and stats["last_opened"] and stats["consumed"] > 0:
+            weeks = max(1, (stats["last_opened"] - stats["first_opened"]).days / 7)
             ab_avg[ab] = f"{stats['consumed'] / weeks:.1f}"
         else:
             ab_avg[ab] = ""
@@ -321,6 +328,7 @@ def get_usage_data(
         del r["is_archived"]
         del r["sealed_count"]
         del r["_first_opened_dt"]
+        del r["_last_opened_dt"]
 
     return result
 

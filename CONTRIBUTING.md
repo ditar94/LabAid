@@ -90,12 +90,14 @@ PRs still run `ci.yml` (tests + typecheck) as a safety check.
 | Staging | staging.labaid.io | labaid-backend-staging | resend | labaid_beta (shared) | 1 |
 | Production | labaid.io | labaid-backend | resend | labaid | 3 |
 
-Beta and staging share the same database for convenience. Production has its own isolated database. All databases live on the same Cloud SQL instance (`labaid-db`).
+Beta and staging share the same database for convenience. Production has its own isolated database. All databases currently live on the same Cloud SQL instance (`labaid-db`) — see [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for the plan to separate production onto its own instance.
 
 ## Infrastructure Rules
 
 - **Never create GCP resources manually** — use Terraform. All infrastructure is defined in `terraform/`.
 - **Secret values go in Secret Manager**, never in code, env files, or Terraform state.
+- **Never share production database credentials** in chat sessions, `.env` files, or scripts. See [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md).
+- **All production data changes go through code** — Alembic migrations via the deploy pipeline. No ad-hoc SQL against production.
 - **`deploy.sh` is the manual fallback**, CI/CD is the primary deployment path.
 - **Terraform manages service config**, CI/CD manages which Docker image is deployed.
 

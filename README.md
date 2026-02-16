@@ -152,6 +152,7 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - [x] Incident response plan + basic status/communication plan — [docs/INCIDENT_RESPONSE.md](docs/INCIDENT_RESPONSE.md)
 - [x] Legal baseline: Terms of Service, Privacy Policy — [docs/TERMS_OF_SERVICE.md](docs/TERMS_OF_SERVICE.md), [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md) (DRAFT — needs legal review)
 - [x] Security vulnerability disclosure policy — [SECURITY.md](SECURITY.md)
+- [ ] Database security hardening (separate users, network restrictions, prod instance isolation) — [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md)
 
 ### Pending: Account Creation & Password Reset — Remaining Items
 
@@ -217,6 +218,7 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - Rate limiting (login endpoint), health checks (DB + storage)
 - Staging environment, deployment automation, integration tests
 - Billing automation (trial/active/past_due/cancelled)
+- Database security hardening plan — [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md)
 
 ### Core Features
 - Barcode/QR scanning with GS1 DataMatrix parsing and AccessGUDID enrichment
