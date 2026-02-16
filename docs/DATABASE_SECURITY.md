@@ -58,16 +58,18 @@ This creates the instances, databases, users (with placeholder passwords), and I
 
 ### 2. Set real passwords
 
+**Important**: Passwords must be URL-safe (no `+`, `/`, `=`) because they're embedded in PostgreSQL connection strings. Use `openssl rand -hex 24` (hex-only) instead of `openssl rand -base64`.
+
 ```bash
 # Nonprod instance (labaid-db-nonprod)
-gcloud sql users set-password labaid_app     --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
-gcloud sql users set-password labaid_migrate --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
-gcloud sql users set-password labaid_readonly --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
+gcloud sql users set-password labaid_app     --instance=labaid-db-nonprod --password="$(openssl rand -hex 24)"
+gcloud sql users set-password labaid_migrate --instance=labaid-db-nonprod --password="$(openssl rand -hex 24)"
+gcloud sql users set-password labaid_readonly --instance=labaid-db-nonprod --password="$(openssl rand -hex 24)"
 
 # Prod instance (labaid-db-prod)
-gcloud sql users set-password labaid_app     --instance=labaid-db-prod --password="$(openssl rand -base64 32)"
-gcloud sql users set-password labaid_migrate --instance=labaid-db-prod --password="$(openssl rand -base64 32)"
-gcloud sql users set-password labaid_readonly --instance=labaid-db-prod --password="$(openssl rand -base64 32)"
+gcloud sql users set-password labaid_app     --instance=labaid-db-prod --password="$(openssl rand -hex 24)"
+gcloud sql users set-password labaid_migrate --instance=labaid-db-prod --password="$(openssl rand -hex 24)"
+gcloud sql users set-password labaid_readonly --instance=labaid-db-prod --password="$(openssl rand -hex 24)"
 ```
 
 ### 3. Grant SQL privileges

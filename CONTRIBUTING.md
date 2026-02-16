@@ -84,13 +84,13 @@ PRs still run `ci.yml` (tests + typecheck) as a safety check.
 
 ## Environments
 
-| Environment | URL | Backend Service | Email | DB | Max Instances |
-|---|---|---|---|---|---|
-| Beta | beta.labaid.io | labaid-backend-beta | console | labaid_beta | 1 |
-| Staging | staging.labaid.io | labaid-backend-staging | resend | labaid_beta (shared) | 1 |
-| Production | labaid.io | labaid-backend | resend | labaid | 3 |
+| Environment | URL | Backend Service | Cloud SQL Instance | Database | Email | Max Instances |
+|---|---|---|---|---|---|---|
+| Beta | beta.labaid.io | labaid-backend-beta | `labaid-db-nonprod` | `labaid_beta` | console | 1 |
+| Staging | staging.labaid.io | labaid-backend-staging | `labaid-db-nonprod` | `labaid_beta` (shared with beta) | resend | 1 |
+| Production | labaid.io | labaid-backend | `labaid-db-prod` | `labaid` | resend | 3 |
 
-Beta and staging share the same database for convenience. Production has its own isolated instance (`labaid-db-prod`), nonprod has its own (`labaid-db-nonprod`). See [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for details.
+Beta and staging share the same database (`labaid_beta`) on `labaid-db-nonprod`. Production has its own isolated instance (`labaid-db-prod`). See [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for full security architecture.
 
 ## Infrastructure Rules
 
