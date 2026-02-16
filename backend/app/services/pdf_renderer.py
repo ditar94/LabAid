@@ -80,18 +80,16 @@ def _render_table(title: str, lab_name: str, pulled_by: str,
 
 def render_lot_activity_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
     columns = [
-        ("Lot #", 28), ("Received", 22), ("Received By", 30),
-        ("QC Doc", 14), ("QC Approved", 22), ("QC Approved By", 30),
-        ("First Opened", 22), ("Last Opened", 22),
-        ("Sealed", 16), ("Opened", 16), ("Depleted", 16),
+        ("Lot #", 30), ("Expiration", 24), ("Received", 24), ("Received By", 35),
+        ("QC Doc", 16), ("QC Approved", 24), ("QC Approved By", 35),
+        ("First Opened", 24), ("Last Opened", 24),
     ]
     return _render_table(
         "Lot Activity Report", lab_name, pulled_by, columns, data,
         lambda r: [
-            r["lot_number"], r["received"], r["received_by"],
+            r["lot_number"], r["expiration"], r["received"], r["received_by"],
             r["qc_doc"], r["qc_approved"], r["qc_approved_by"],
             r["first_opened"], r["last_opened"],
-            str(r["sealed"]), str(r["opened"]), str(r["depleted"]),
         ],
     )
 

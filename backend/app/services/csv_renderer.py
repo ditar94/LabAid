@@ -14,13 +14,12 @@ def _render(headers: list[str], rows: list[list[str]]) -> bytes:
 
 def render_lot_activity_csv(data: list[dict]) -> bytes:
     return _render(
-        ["Lot #", "Received", "Received By", "QC Doc", "QC Approved",
-         "QC Approved By", "First Opened", "Last Opened", "Sealed", "Opened", "Depleted"],
+        ["Lot #", "Expiration", "Received", "Received By", "QC Doc",
+         "QC Approved", "QC Approved By", "First Opened", "Last Opened"],
         [[
-            row["lot_number"], row["received"], row["received_by"],
+            row["lot_number"], row["expiration"], row["received"], row["received_by"],
             row["qc_doc"], row["qc_approved"], row["qc_approved_by"],
             row["first_opened"], row["last_opened"],
-            str(row["sealed"]), str(row["opened"]), str(row["depleted"]),
         ] for row in data],
     )
 

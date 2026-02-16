@@ -117,6 +117,7 @@ def get_lot_activity_data(
 
         result.append({
             "lot_number": lot.lot_number,
+            "expiration": _fmt_date(lot.expiration_date),
             "received": _fmt_date(min(received_dates)) if received_dates else "",
             "received_by": user_map.get(received_by_lot.get(lot.id), ""),
             "qc_doc": "Yes" if lot.id in qc_doc_lot_ids else "No",
@@ -124,9 +125,6 @@ def get_lot_activity_data(
             "qc_approved_by": user_map.get(lot.qc_approved_by, "") if lot.qc_approved_by else "",
             "first_opened": _fmt_date(min(opened_dates)) if opened_dates else "",
             "last_opened": _fmt_date(max(opened_dates)) if opened_dates else "",
-            "sealed": sum(1 for v in lot_vials if v.status == VialStatus.SEALED),
-            "opened": sum(1 for v in lot_vials if v.status == VialStatus.OPENED),
-            "depleted": sum(1 for v in lot_vials if v.status == VialStatus.DEPLETED),
         })
 
     return result
@@ -211,6 +209,10 @@ def get_usage_data(
 
         result.append({
             "lot_number": lot.lot_number,
+            "lot_id": str(lot.id),
+            "expiration_raw": lot.expiration_date,
+            "is_archived": lot.is_archived,
+            "sealed_count": sealed,
             "expiration": _fmt_date(lot.expiration_date),
             "received": _fmt_date(min(received_dates)) if received_dates else "",
             "vials_received": total,
@@ -220,6 +222,27 @@ def get_usage_data(
             "avg_week": avg_week,
             "status": status,
         })
+
+    # FEFO Current/New badges: among non-archived lots with sealed vials,
+    # the one with the earliest expiration date is "Current", rest are "New"
+    eligible = [r for r in result if not r["is_archived"] and r["sealed_count"] > 0]
+    if len(eligible) >= 2:
+        def _exp_key(r: dict):
+            return (r["expiration_raw"] is None, r["expiration_raw"] or "")
+        eligible.sort(key=_exp_key)
+        current_id = eligible[0]["lot_id"]
+        for r in result:
+            if r["lot_id"] == current_id:
+                r["status"] = "Current"
+            elif r in eligible:
+                r["status"] = "New"
+
+    # Remove internal fields before returning
+    for r in result:
+        del r["lot_id"]
+        del r["expiration_raw"]
+        del r["is_archived"]
+        del r["sealed_count"]
 
     return result
 

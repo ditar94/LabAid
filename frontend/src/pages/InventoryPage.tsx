@@ -1741,9 +1741,9 @@ export default function InventoryPage() {
                 "Upload succeeded, but lot approval failed.",
               );
             }
+            await loadData();
             setModalLot(null);
             setDocModalApproveAfter(false);
-            await loadData();
           } : undefined}
         />
       )}

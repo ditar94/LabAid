@@ -218,10 +218,7 @@ export default function ReportsPage() {
       const contentDisposition = res.headers["content-disposition"] || "";
       const match = contentDisposition.match(/filename="?([^"]+)"?/);
       const filename = match ? match[1] : `report.${format}`;
-      const blob = new Blob([res.data], {
-        type: format === "pdf" ? "application/pdf" : "text/csv",
-      });
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(res.data as Blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
@@ -231,10 +228,18 @@ export default function ReportsPage() {
       URL.revokeObjectURL(url);
       addToast(`Downloaded ${filename}`, "success");
     } catch (err: any) {
-      addToast(
-        err.response?.data?.detail || `Failed to download ${format.toUpperCase()}`,
-        "danger",
-      );
+      // When responseType is "blob", error responses are also blobs — parse them
+      let message = `Failed to download ${format.toUpperCase()}`;
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          if (json.detail) message = json.detail;
+        } catch { /* use default message */ }
+      } else if (err.response?.data?.detail) {
+        message = err.response.data.detail;
+      }
+      addToast(message, "danger");
     } finally {
       setDownloading(null);
     }
@@ -397,6 +402,7 @@ export default function ReportsPage() {
               <thead>
                 <tr>
                   <th>Lot #</th>
+                  <th>Expiration</th>
                   <th>Received</th>
                   <th>Received By</th>
                   <th>QC Doc</th>
@@ -404,25 +410,20 @@ export default function ReportsPage() {
                   <th>QC Approved By</th>
                   <th>First Opened</th>
                   <th>Last Opened</th>
-                  <th>Sealed</th>
-                  <th>Opened</th>
-                  <th>Depleted</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r: any, i: number) => (
                   <tr key={i}>
                     <td>{r.lot_number}</td>
+                    <td>{r.expiration || "\u2014"}</td>
                     <td>{r.received || "\u2014"}</td>
                     <td>{r.received_by || "\u2014"}</td>
-                    <td>{r.qc_doc}</td>
+                    <td>{r.qc_doc === "Yes" ? "\u2713" : "\u2014"}</td>
                     <td>{r.qc_approved || "\u2014"}</td>
                     <td>{r.qc_approved_by || "\u2014"}</td>
                     <td>{r.first_opened || "\u2014"}</td>
                     <td>{r.last_opened || "\u2014"}</td>
-                    <td>{r.sealed}</td>
-                    <td>{r.opened}</td>
-                    <td>{r.depleted}</td>
                   </tr>
                 ))}
               </tbody>
