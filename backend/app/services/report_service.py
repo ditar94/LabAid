@@ -558,7 +558,7 @@ def get_admin_activity_data(
 
     return [
         {
-            "timestamp": log.created_at.isoformat() if log.created_at else "",
+            "timestamp": log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else "",
             "action": ACTION_LABELS.get(log.action, log.action),
             "performed_by": user_map.get(log.user_id, str(log.user_id)),
             "target": labels_map.get(log.entity_id, str(log.entity_id)),
@@ -618,7 +618,7 @@ def get_audit_trail_data(
 
     return [
         {
-            "timestamp": log.created_at.isoformat() if log.created_at else "",
+            "timestamp": log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else "",
             "user": user_map.get(log.user_id, str(log.user_id)),
             "action": log.action,
             "entity_type": log.entity_type,

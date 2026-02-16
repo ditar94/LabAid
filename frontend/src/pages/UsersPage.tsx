@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { User } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
-import { Users as UsersIcon } from "lucide-react";
+import { Users as UsersIcon, ChevronDown, ChevronRight } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
 
@@ -103,6 +103,17 @@ export default function UsersPage() {
   }
 
   const canManage = currentUser?.role === "super_admin" || currentUser?.role === "lab_admin";
+  const [showInactive, setShowInactive] = useState(false);
+
+  const { activeUsers, inactiveUsers } = useMemo(() => {
+    const active: User[] = [];
+    const inactive: User[] = [];
+    for (const u of users) {
+      if (u.is_active) active.push(u);
+      else inactive.push(u);
+    }
+    return { activeUsers: active, inactiveUsers: inactive };
+  }, [users]);
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     setError(null);
@@ -236,6 +247,7 @@ export default function UsersPage() {
           description="Create a user to give them access to this lab."
         />
       ) : (
+        <>
         <div className="table-scroll">
         <table>
           <thead>
@@ -243,15 +255,14 @@ export default function UsersPage() {
               <th>Name</th>
               <th>Email</th>
               <th>Role</th>
-              <th>Active</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => {
+            {activeUsers.map((u) => {
               const canEdit = canManage && u.id !== currentUser?.id && u.role !== "super_admin";
               return (
-              <tr key={u.id} className={u.is_active ? "" : "row-inactive"}>
+              <tr key={u.id}>
                 <td>{u.full_name}</td>
                 <td>
                   {editingEmail === u.id ? (
@@ -300,7 +311,6 @@ export default function UsersPage() {
                     u.role.replaceAll("_", " ")
                   )}
                 </td>
-                <td>{u.is_active ? "Yes" : "No"}</td>
                 <td className="action-btns">
                   {canEdit && (
                     <>
@@ -311,10 +321,10 @@ export default function UsersPage() {
                         Reset Password
                       </button>
                       <button
-                        className={`btn-sm ${u.is_active ? "btn-danger" : "btn-success"}`}
+                        className="btn-sm btn-danger"
                         onClick={() => handleToggleActive(u)}
                       >
-                        {u.is_active ? "Deactivate" : "Activate"}
+                        Deactivate
                       </button>
                     </>
                   )}
@@ -325,6 +335,56 @@ export default function UsersPage() {
           </tbody>
         </table>
         </div>
+
+        {inactiveUsers.length > 0 && (
+          <div style={{ marginTop: "1.5rem" }}>
+            <button
+              className="btn-sm btn-secondary"
+              onClick={() => setShowInactive(!showInactive)}
+              style={{ display: "flex", alignItems: "center", gap: 4 }}
+            >
+              {showInactive ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              Inactive Users ({inactiveUsers.length})
+            </button>
+            {showInactive && (
+              <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inactiveUsers.map((u) => {
+                    const canEdit = canManage && u.id !== currentUser?.id && u.role !== "super_admin";
+                    return (
+                    <tr key={u.id} className="row-inactive">
+                      <td>{u.full_name}</td>
+                      <td>{u.email}</td>
+                      <td>{u.role.replaceAll("_", " ")}</td>
+                      <td className="action-btns">
+                        {canEdit && (
+                          <button
+                            className="btn-sm btn-success"
+                            onClick={() => handleToggleActive(u)}
+                          >
+                            Activate
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+            )}
+          </div>
+        )}
+        </>
       )}
     </div>
   );

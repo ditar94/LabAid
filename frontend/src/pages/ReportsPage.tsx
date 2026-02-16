@@ -190,8 +190,10 @@ export default function ReportsPage() {
     if (!activeReport) return;
     setDownloading(format);
     try {
+      const params = buildParams();
+      params.tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const res = await api.get(`/reports/${activeReport}/${format}`, {
-        params: buildParams(),
+        params,
         responseType: "blob",
       });
       const contentDisposition = res.headers["content-disposition"] || "";
@@ -465,8 +467,8 @@ export default function ReportsPage() {
                         <th>Lot #</th>
                         <th>Expiration</th>
                         <th>Received</th>
-                        <th>Received</th>
-                        <th>Consumed</th>
+                        <th>Vials Rcvd</th>
+                        <th>Vials Used</th>
                         <th>First Opened</th>
                         <th>Last Opened</th>
                         <th>Avg/Wk</th>
@@ -630,7 +632,7 @@ export default function ReportsPage() {
               <tbody>
                 {rows.map((r: any, i: number) => (
                   <tr key={i}>
-                    <td>{r.timestamp?.slice(0, 19)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{r.timestamp ? new Date(r.timestamp).toLocaleString() : "\u2014"}</td>
                     <td>
                       <span className="action-tag action-admin">
                         {r.action}

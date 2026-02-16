@@ -1,8 +1,20 @@
 """PDF rendering for compliance reports using fpdf2."""
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fpdf import FPDF
+
+
+def _format_local_time(tz: str | None = None) -> str:
+    """Format current time in user's timezone, falling back to UTC."""
+    if tz:
+        try:
+            now = datetime.now(ZoneInfo(tz))
+            return now.strftime("%Y-%m-%d %H:%M %Z")
+        except Exception:
+            pass
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
 def _safe(text: str) -> str:
@@ -26,13 +38,13 @@ class LabAidPDF(FPDF):
     """Base PDF class with branded header and footer."""
 
     def __init__(self, title: str, lab_name: str, pulled_by: str = "",
-                 subtitle: str = ""):
+                 subtitle: str = "", tz: str | None = None):
         super().__init__(orientation="L", unit="mm", format="A4")
         self.report_title = title
         self.lab_name = lab_name
         self.pulled_by = pulled_by
         self.subtitle = subtitle
-        self.generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+        self.generated_at = _format_local_time(tz)
         self.set_auto_page_break(auto=True, margin=20)
 
     def header(self):
@@ -99,9 +111,9 @@ class LabAidPDF(FPDF):
 
 def _render_table(title: str, lab_name: str, pulled_by: str,
                   columns: list[tuple[str, int]], data: list[dict],
-                  row_fn, subtitle: str = "") -> bytes:
+                  row_fn, subtitle: str = "", tz: str | None = None) -> bytes:
     """Shared helper to render a flat table PDF."""
-    pdf = LabAidPDF(title, lab_name, pulled_by, subtitle=subtitle)
+    pdf = LabAidPDF(title, lab_name, pulled_by, subtitle=subtitle, tz=tz)
     pdf.alias_nb_pages()
     pdf.add_page()
     pdf._table_header(columns)
@@ -113,9 +125,10 @@ def _render_table(title: str, lab_name: str, pulled_by: str,
 
 def _render_grouped_table(title: str, lab_name: str, pulled_by: str,
                           columns: list[tuple[str, int]], data: list[dict],
-                          row_fn, group_key: str = "antibody_full") -> bytes:
+                          row_fn, group_key: str = "antibody_full",
+                          tz: str | None = None) -> bytes:
     """Render a PDF with data grouped by antibody, each group as its own table."""
-    pdf = LabAidPDF(title, lab_name, pulled_by)
+    pdf = LabAidPDF(title, lab_name, pulled_by, tz=tz)
     pdf.alias_nb_pages()
     pdf.add_page()
     widths = [c[1] for c in columns]
@@ -135,7 +148,7 @@ def _render_grouped_table(title: str, lab_name: str, pulled_by: str,
 
 
 def render_lot_activity_pdf(data: list[dict], lab_name: str,
-                            pulled_by: str = "") -> bytes:
+                            pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
         ("Lot #", 30), ("Expiration", 24), ("Received", 24),
         ("Received By", 35), ("QC Doc", 16), ("QC Approved", 24),
@@ -148,18 +161,19 @@ def render_lot_activity_pdf(data: list[dict], lab_name: str,
             r["received_by"], r["qc_doc"], r["qc_approved"],
             r["qc_approved_by"], r["first_opened"], r["last_opened"],
         ],
+        tz=tz,
     )
 
 
 def render_usage_pdf(data: list[dict], lab_name: str,
-                     pulled_by: str = "") -> bytes:
+                     pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
         ("Lot #", 30), ("Expiration", 24), ("Received", 24),
-        ("Received", 24), ("Consumed", 22),
+        ("Vials Rcvd", 24), ("Vials Used", 22),
         ("First Opened", 26), ("Last Opened", 26),
         ("Avg/Wk", 20), ("Status", 24),
     ]
-    pdf = LabAidPDF("Usage Report", lab_name, pulled_by)
+    pdf = LabAidPDF("Usage by Lot", lab_name, pulled_by, tz=tz)
     pdf.alias_nb_pages()
     pdf.add_page()
     widths = [c[1] for c in columns]
@@ -197,13 +211,13 @@ def render_usage_pdf(data: list[dict], lab_name: str,
 
 
 def render_usage_trend_pdf(data: list[dict], lab_name: str,
-                           pulled_by: str = "") -> bytes:
+                           pulled_by: str = "", tz: str | None = None) -> bytes:
     """Render usage trend grouped by antibody, with a total row per group."""
     columns = [
         ("Month", 40), ("Vials Opened", 30), ("Lots Active", 30),
         ("Weeks", 24), ("Avg/Wk", 30),
     ]
-    pdf = LabAidPDF("Usage by Month", lab_name, pulled_by)
+    pdf = LabAidPDF("Usage by Month", lab_name, pulled_by, tz=tz)
     pdf.alias_nb_pages()
     pdf.add_page()
     widths = [c[1] for c in columns]
@@ -236,7 +250,8 @@ def render_usage_trend_pdf(data: list[dict], lab_name: str,
     return bytes(pdf.output())
 
 
-def render_admin_activity_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
+def render_admin_activity_pdf(data: list[dict], lab_name: str,
+                               pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
         ("Timestamp", 42), ("Action", 40), ("Performed By", 40),
         ("Target", 60), ("Details", 75),
@@ -247,10 +262,12 @@ def render_admin_activity_pdf(data: list[dict], lab_name: str, pulled_by: str = 
             r["timestamp"][:19], r["action"], r["performed_by"],
             r["target"], r["details"],
         ],
+        tz=tz,
     )
 
 
-def render_audit_trail_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
+def render_audit_trail_pdf(data: list[dict], lab_name: str,
+                            pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
         ("Timestamp", 42), ("User", 35), ("Action", 35),
         ("Entity Type", 25), ("Entity", 70), ("Note", 55), ("Support", 15),
@@ -261,4 +278,5 @@ def render_audit_trail_pdf(data: list[dict], lab_name: str, pulled_by: str = "")
             r["timestamp"][:19], r["user"], r["action"],
             r["entity_type"], r["entity"], r["note"], r["support"],
         ],
+        tz=tz,
     )

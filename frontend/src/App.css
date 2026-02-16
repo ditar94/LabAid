@@ -2892,9 +2892,21 @@ h2 .temp-badge {
 
 /* ── Audit Table ──────────────────────────────────────────────────── */
 
-/* Prevent wrapping in User and Action columns */
-table tbody td:nth-child(2),  /* User column */
-table tbody td:nth-child(3) { /* Action column */
+/* Prevent wrapping in User and Action columns (audit page) */
+.audit-page table tbody td:nth-child(2),  /* User column */
+.audit-page table tbody td:nth-child(3) { /* Action column */
+  white-space: nowrap;
+}
+
+/* ── Audit Page ────────────────────────────────────────────────────── */
+
+.audit-page table td,
+.audit-page table th {
+  font-size: 0.8rem;
+  padding: 0.45rem 0.6rem;
+}
+
+.audit-page table td:first-child {
   white-space: nowrap;
 }
 

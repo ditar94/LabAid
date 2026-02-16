@@ -217,7 +217,7 @@ export default function Layout() {
             <ClipboardList className="nav-icon" />
             Audit Log
           </NavLink>
-          {isSupervisor && hasLabContext && (
+          {hasLabContext && (
             <NavLink to="/reports" onClick={handleNavClick}>
               <FileSpreadsheet className="nav-icon" />
               Reports

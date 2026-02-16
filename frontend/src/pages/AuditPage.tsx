@@ -362,7 +362,7 @@ export default function AuditPage() {
   })();
 
   return (
-    <div>
+    <div className="audit-page">
       <div className="page-header">
         <h1>Audit Log</h1>
         <button

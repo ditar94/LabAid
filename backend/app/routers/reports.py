@@ -1,8 +1,11 @@
 """Reports router for compliance exports (CSV + PDF downloads and JSON previews)."""
 
+import csv
+import io
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
@@ -40,6 +43,14 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 PREVIEW_LIMIT = 50
 
+# All lab roles can view reports (reports are read-only).
+# Admin-activity stays restricted to SUPER_ADMIN / LAB_ADMIN.
+_REPORT_ROLES = (
+    UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR,
+    UserRole.TECH, UserRole.READ_ONLY,
+)
+_ADMIN_ROLES = (UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
+
 
 def _lab_name(db: Session, lab_id: UUID) -> str:
     lab = db.query(Lab).filter(Lab.id == lab_id).first()
@@ -65,6 +76,17 @@ def _lot_number(db: Session, lot_id: UUID | None) -> str | None:
 
 def _slug(text: str, max_len: int = 40) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "-", text.replace(" ", "-"))[:max_len]
+
+
+def _format_local_time(tz: str | None = None) -> str:
+    """Format current time in user's timezone, falling back to server local."""
+    if tz:
+        try:
+            now = datetime.now(ZoneInfo(tz))
+            return now.strftime("%Y-%m-%d %H:%M %Z")
+        except Exception:
+            pass
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
 def _date_range_part(date_from: date | None, date_to: date | None) -> str:
@@ -124,6 +146,22 @@ def _file_response(content: bytes, media_type: str, filename: str):
     )
 
 
+def _csv_with_metadata(
+    csv_bytes: bytes, report_title: str, lab_name: str,
+    pulled_by: str, tz: str | None = None,
+) -> bytes:
+    """Prepend metadata header rows (matching PDF header) to CSV output."""
+    now = _format_local_time(tz)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Report", report_title])
+    w.writerow(["Lab", lab_name])
+    w.writerow(["Pulled By", pulled_by])
+    w.writerow(["Generated", now])
+    w.writerow([])  # blank separator before data
+    return buf.getvalue().encode("utf-8") + csv_bytes
+
+
 # ── Lot Activity ──────────────────────────────────────────────────────────
 
 
@@ -131,7 +169,7 @@ def _file_response(content: bytes, media_type: str, filename: str):
 def lot_activity_range(
     antibody_id: UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     mn, mx = get_lot_activity_range(db, lab_id=current_user.lab_id, antibody_id=antibody_id)
     return {
@@ -147,7 +185,7 @@ def lot_activity_preview(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_lot_activity_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
@@ -162,8 +200,9 @@ def lot_activity_csv(
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_lot_activity_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
@@ -171,9 +210,11 @@ def lot_activity_csv(
     )
     ab_name = _antibody_display(db, antibody_id)
     lot_num = _lot_number(db, lot_id)
+    csv_bytes = render_lot_activity_csv(data, include_antibody=not antibody_id)
+    csv_bytes = _csv_with_metadata(csv_bytes, "Lot Activity", _lab_name(db, current_user.lab_id), current_user.full_name, tz)
     return _file_response(
-        render_lot_activity_csv(data, include_antibody=not antibody_id),
-        "text/csv", _report_filename("LotActivity", ab_name, "csv", date_from, date_to, lot_num),
+        csv_bytes, "text/csv",
+        _report_filename("LotActivity", ab_name, "csv", date_from, date_to, lot_num),
     )
 
 
@@ -183,8 +224,9 @@ def lot_activity_pdf(
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_lot_activity_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
@@ -194,7 +236,7 @@ def lot_activity_pdf(
     lot_num = _lot_number(db, lot_id)
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
-        render_lot_activity_pdf(data, lab_name, pulled_by=current_user.full_name),
+        render_lot_activity_pdf(data, lab_name, pulled_by=current_user.full_name, tz=tz),
         "application/pdf", _report_filename("LotActivity", ab_name, "pdf", date_from, date_to, lot_num),
     )
 
@@ -206,7 +248,7 @@ def lot_activity_pdf(
 def usage_range(
     antibody_id: UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     mn, mx = get_usage_range(db, lab_id=current_user.lab_id, antibody_id=antibody_id)
     return {
@@ -222,7 +264,7 @@ def usage_preview(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_usage_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
@@ -237,8 +279,9 @@ def usage_csv(
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_usage_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
@@ -246,9 +289,11 @@ def usage_csv(
     )
     ab_name = _antibody_display(db, antibody_id)
     lot_num = _lot_number(db, lot_id)
+    csv_bytes = render_usage_csv(data, include_antibody=not antibody_id)
+    csv_bytes = _csv_with_metadata(csv_bytes, "Usage by Lot", _lab_name(db, current_user.lab_id), current_user.full_name, tz)
     return _file_response(
-        render_usage_csv(data, include_antibody=not antibody_id),
-        "text/csv", _report_filename("UsageByLot", ab_name, "csv", date_from, date_to, lot_num),
+        csv_bytes, "text/csv",
+        _report_filename("UsageByLot", ab_name, "csv", date_from, date_to, lot_num),
     )
 
 
@@ -258,8 +303,9 @@ def usage_pdf(
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_usage_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
@@ -269,7 +315,7 @@ def usage_pdf(
     lot_num = _lot_number(db, lot_id)
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
-        render_usage_pdf(data, lab_name, pulled_by=current_user.full_name),
+        render_usage_pdf(data, lab_name, pulled_by=current_user.full_name, tz=tz),
         "application/pdf", _report_filename("UsageByLot", ab_name, "pdf", date_from, date_to, lot_num),
     )
 
@@ -281,7 +327,7 @@ def usage_pdf(
 def usage_trend_range(
     antibody_id: UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     mn, mx = get_usage_range(db, lab_id=current_user.lab_id, antibody_id=antibody_id)
     return {
@@ -296,7 +342,7 @@ def usage_trend_preview(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_usage_trend_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
@@ -310,17 +356,20 @@ def usage_trend_csv(
     antibody_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_usage_trend_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
         date_from=date_from, date_to=date_to,
     )
     ab_name = _antibody_display(db, antibody_id)
+    csv_bytes = render_usage_trend_csv(data, include_antibody=not antibody_id)
+    csv_bytes = _csv_with_metadata(csv_bytes, "Usage by Month", _lab_name(db, current_user.lab_id), current_user.full_name, tz)
     return _file_response(
-        render_usage_trend_csv(data, include_antibody=not antibody_id),
-        "text/csv", _report_filename("UsageByMonth", ab_name, "csv", date_from, date_to),
+        csv_bytes, "text/csv",
+        _report_filename("UsageByMonth", ab_name, "csv", date_from, date_to),
     )
 
 
@@ -329,8 +378,9 @@ def usage_trend_pdf(
     antibody_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_usage_trend_data(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
@@ -339,7 +389,7 @@ def usage_trend_pdf(
     ab_name = _antibody_display(db, antibody_id)
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
-        render_usage_trend_pdf(data, lab_name, pulled_by=current_user.full_name),
+        render_usage_trend_pdf(data, lab_name, pulled_by=current_user.full_name, tz=tz),
         "application/pdf", _report_filename("UsageByMonth", ab_name, "pdf", date_from, date_to),
     )
 
@@ -350,7 +400,7 @@ def usage_trend_pdf(
 @router.get("/admin-activity/range")
 def admin_activity_range(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+    current_user: User = Depends(require_role(*_ADMIN_ROLES)),
 ):
     mn, mx = get_admin_activity_range(db, lab_id=current_user.lab_id)
     return {
@@ -364,7 +414,7 @@ def admin_activity_preview(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+    current_user: User = Depends(require_role(*_ADMIN_ROLES)),
 ):
     data = get_admin_activity_data(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
@@ -376,28 +426,35 @@ def admin_activity_preview(
 def admin_activity_csv(
     date_from: date | None = None,
     date_to: date | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+    current_user: User = Depends(require_role(*_ADMIN_ROLES)),
 ):
     data = get_admin_activity_data(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
     )
-    return _file_response(render_admin_activity_csv(data), "text/csv", _report_filename("AdminActivity", "", "csv", date_from, date_to))
+    csv_bytes = render_admin_activity_csv(data)
+    csv_bytes = _csv_with_metadata(csv_bytes, "Admin Activity", _lab_name(db, current_user.lab_id), current_user.full_name, tz)
+    return _file_response(
+        csv_bytes, "text/csv",
+        _report_filename("AdminActivity", "", "csv", date_from, date_to),
+    )
 
 
 @router.get("/admin-activity/pdf")
 def admin_activity_pdf(
     date_from: date | None = None,
     date_to: date | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+    current_user: User = Depends(require_role(*_ADMIN_ROLES)),
 ):
     data = get_admin_activity_data(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
     )
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
-        render_admin_activity_pdf(data, lab_name, pulled_by=current_user.full_name),
+        render_admin_activity_pdf(data, lab_name, pulled_by=current_user.full_name, tz=tz),
         "application/pdf", _report_filename("AdminActivity", "", "pdf", date_from, date_to),
     )
 
@@ -412,7 +469,7 @@ def audit_trail_preview(
     entity_type: str | None = None,
     action: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_audit_trail_data(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
@@ -427,14 +484,20 @@ def audit_trail_csv(
     date_to: date | None = None,
     entity_type: str | None = None,
     action: str | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_audit_trail_data(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
         entity_type=entity_type, action=action,
     )
-    return _file_response(render_audit_trail_csv(data), "text/csv", _report_filename("AuditTrail", "", "csv", date_from, date_to))
+    csv_bytes = render_audit_trail_csv(data)
+    csv_bytes = _csv_with_metadata(csv_bytes, "Audit Trail", _lab_name(db, current_user.lab_id), current_user.full_name, tz)
+    return _file_response(
+        csv_bytes, "text/csv",
+        _report_filename("AuditTrail", "", "csv", date_from, date_to),
+    )
 
 
 @router.get("/audit-trail/pdf")
@@ -443,8 +506,9 @@ def audit_trail_pdf(
     date_to: date | None = None,
     entity_type: str | None = None,
     action: str | None = None,
+    tz: str | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+    current_user: User = Depends(require_role(*_REPORT_ROLES)),
 ):
     data = get_audit_trail_data(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
@@ -452,6 +516,6 @@ def audit_trail_pdf(
     )
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
-        render_audit_trail_pdf(data, lab_name, pulled_by=current_user.full_name),
+        render_audit_trail_pdf(data, lab_name, pulled_by=current_user.full_name, tz=tz),
         "application/pdf", _report_filename("AuditTrail", "", "pdf", date_from, date_to),
     )
