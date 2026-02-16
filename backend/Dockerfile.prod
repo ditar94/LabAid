@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["bash", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 2"]
+CMD ["bash", "-c", "alembic upgrade head && unset DATABASE_URL_MIGRATE && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 2"]

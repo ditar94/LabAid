@@ -5,8 +5,9 @@ locals {
   secrets = [
     "SECRET_KEY",
     "DATABASE_URL",
+    "DATABASE_URL_MIGRATE",
     "DATABASE_URL_BETA",
-    "DATABASE_URL_STAGING",
+    "DATABASE_URL_BETA_MIGRATE",
     "S3_ACCESS_KEY",
     "S3_SECRET_KEY",
     "S3_BUCKET",

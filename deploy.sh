@@ -86,6 +86,8 @@ deploy_backend() {
   local max_instances="${4:-3}"
   local email_backend="${5:-console}"
   local app_url="${6:-http://localhost:5173}"
+  local db_migrate_secret="${7:-${db_secret}_MIGRATE}"
+  local sql_instance="${8:-${CLOUD_SQL_INSTANCE}}"
   local image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REPO_NAME}/backend:${image_tag}"
 
   info "Building backend Docker image (tag: ${image_tag})..."
@@ -102,7 +104,7 @@ deploy_backend() {
   local env_vars="COOKIE_SECURE=True,COOKIE_SAMESITE=lax,S3_ENDPOINT_URL=https://storage.googleapis.com,S3_USE_PATH_STYLE=False,GCP_PROJECT=${GCP_PROJECT},EMAIL_BACKEND=${email_backend},APP_URL=${app_url}"
 
   # Build secrets — only include RESEND_API_KEY for production (resend backend)
-  local secrets="SECRET_KEY=SECRET_KEY:latest,DATABASE_URL=${db_secret}:latest,S3_ACCESS_KEY=S3_ACCESS_KEY:latest,S3_SECRET_KEY=S3_SECRET_KEY:latest,S3_BUCKET=S3_BUCKET:latest,CORS_ORIGINS=CORS_ORIGINS:latest,COOKIE_DOMAIN=COOKIE_DOMAIN:latest"
+  local secrets="SECRET_KEY=SECRET_KEY:latest,DATABASE_URL=${db_secret}:latest,DATABASE_URL_MIGRATE=${db_migrate_secret}:latest,S3_ACCESS_KEY=S3_ACCESS_KEY:latest,S3_SECRET_KEY=S3_SECRET_KEY:latest,S3_BUCKET=S3_BUCKET:latest,CORS_ORIGINS=CORS_ORIGINS:latest,COOKIE_DOMAIN=COOKIE_DOMAIN:latest"
   if [ "${email_backend}" = "resend" ]; then
     secrets="${secrets},RESEND_API_KEY=RESEND_API_KEY:latest"
   fi
@@ -115,7 +117,7 @@ deploy_backend() {
     --region "${GCP_REGION}" \
     --platform managed \
     --allow-unauthenticated \
-    --add-cloudsql-instances "${CLOUD_SQL_INSTANCE}" \
+    --add-cloudsql-instances "${sql_instance}" \
     --set-env-vars "${env_vars}" \
     --set-secrets "${secrets}" \
     --memory 512Mi \
@@ -152,25 +154,28 @@ deploy_frontend() {
 
 COMMAND="${1:-all}"
 
+NONPROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db-nonprod"
+PROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db-prod"
+
 case "${COMMAND}" in
   -h|--help|help) usage ;;
   setup)          setup ;;
-  backend)        deploy_backend "labaid-backend" "DATABASE_URL" "latest" "3" "resend" "https://labaid-prod.web.app" ;;
+  backend)        deploy_backend "labaid-backend" "DATABASE_URL" "latest" "3" "resend" "https://labaid-prod.web.app" "DATABASE_URL_MIGRATE" "${PROD_INSTANCE}" ;;
   frontend)       deploy_frontend "labaid-prod" ;;
-  all)            deploy_backend "labaid-backend" "DATABASE_URL" "latest" "3" "resend" "https://labaid-prod.web.app"
+  all)            deploy_backend "labaid-backend" "DATABASE_URL" "latest" "3" "resend" "https://labaid-prod.web.app" "DATABASE_URL_MIGRATE" "${PROD_INSTANCE}"
                   deploy_frontend "labaid-prod" ;;
   staging)        warn "Deploying to STAGING environment"
-                  deploy_backend "labaid-backend-staging" "DATABASE_URL_STAGING" "staging" "1" "resend" "https://labaid-staging.web.app"
+                  deploy_backend "labaid-backend-staging" "DATABASE_URL_BETA" "staging" "1" "resend" "https://labaid-staging.web.app" "DATABASE_URL_BETA_MIGRATE" "${NONPROD_INSTANCE}"
                   deploy_frontend "labaid-staging" ;;
   staging-backend) warn "Deploying backend to STAGING"
-                  deploy_backend "labaid-backend-staging" "DATABASE_URL_STAGING" "staging" "1" "resend" "https://labaid-staging.web.app" ;;
+                  deploy_backend "labaid-backend-staging" "DATABASE_URL_BETA" "staging" "1" "resend" "https://labaid-staging.web.app" "DATABASE_URL_BETA_MIGRATE" "${NONPROD_INSTANCE}" ;;
   staging-frontend) warn "Deploying frontend to STAGING"
                   deploy_frontend "labaid-staging" ;;
   beta)           warn "Deploying to BETA environment"
-                  deploy_backend "labaid-backend-beta" "DATABASE_URL_BETA" "beta" "1" "console" "https://labaid-beta.web.app"
+                  deploy_backend "labaid-backend-beta" "DATABASE_URL_BETA" "beta" "1" "console" "https://labaid-beta.web.app" "DATABASE_URL_BETA_MIGRATE" "${NONPROD_INSTANCE}"
                   deploy_frontend "labaid-beta" ;;
   beta-backend)   warn "Deploying backend to BETA"
-                  deploy_backend "labaid-backend-beta" "DATABASE_URL_BETA" "beta" "1" "console" "https://labaid-beta.web.app" ;;
+                  deploy_backend "labaid-backend-beta" "DATABASE_URL_BETA" "beta" "1" "console" "https://labaid-beta.web.app" "DATABASE_URL_BETA_MIGRATE" "${NONPROD_INSTANCE}" ;;
   beta-frontend)  warn "Deploying frontend to BETA"
                   deploy_frontend "labaid-beta" ;;
   *)              fail "Unknown command: ${COMMAND}. Run './deploy.sh help' for usage." ;;

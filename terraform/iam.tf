@@ -1,4 +1,26 @@
-# ── GitHub Actions Service Account ──────────────────────────────────────────────
+# ── Cloud Run Service Account ────────────────────────────────────────────────
+
+resource "google_service_account" "cloud_run" {
+  account_id   = "cloud-run-backend"
+  display_name = "Cloud Run Backend"
+  description  = "Service account for the LabAid backend Cloud Run service"
+}
+
+# Allow Cloud Run SA to connect to Cloud SQL via IAM authentication (Phase 4)
+resource "google_project_iam_member" "cloud_run_sql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
+# Allow Cloud Run SA to authenticate as a database user via IAM (Phase 4)
+resource "google_project_iam_member" "cloud_run_sql_instance_user" {
+  project = var.project_id
+  role    = "roles/cloudsql.instanceUser"
+  member  = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
+# ── GitHub Actions Service Account ──────────────────────────────────────────
 
 resource "google_service_account" "github_actions" {
   account_id   = "github-actions"
@@ -6,7 +28,7 @@ resource "google_service_account" "github_actions" {
   description  = "Service account for GitHub Actions deployments"
 }
 
-# ── IAM Role Bindings ──────────────────────────────────────────────────────────
+# ── IAM Role Bindings ──────────────────────────────────────────────────────
 
 locals {
   github_sa_roles = [
@@ -26,7 +48,7 @@ resource "google_project_iam_member" "github_actions" {
   member   = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
-# ── Workload Identity Federation ───────────────────────────────────────────────
+# ── Workload Identity Federation ───────────────────────────────────────────
 
 resource "google_iam_workload_identity_pool" "github" {
   provider                  = google-beta

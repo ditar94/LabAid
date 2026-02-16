@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://labaid:labaid@localhost:5432/labaid"
+    DATABASE_URL_MIGRATE: str | None = None  # Alembic uses this if set, falls back to DATABASE_URL
     SECRET_KEY: str = "change-me-in-production-use-a-real-secret"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours

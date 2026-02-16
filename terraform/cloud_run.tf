@@ -72,6 +72,15 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
       env {
+        name = "DATABASE_URL_MIGRATE"
+        value_source {
+          secret_key_ref {
+            secret  = var.db_migrate_secret_name
+            version = "latest"
+          }
+        }
+      }
+      env {
         name = "S3_ACCESS_KEY"
         value_source {
           secret_key_ref {
@@ -140,7 +149,7 @@ resource "google_cloud_run_v2_service" "backend" {
     volumes {
       name = "cloudsql"
       cloud_sql_instance {
-        instances = ["${var.project_id}:${var.region}:labaid-db"]
+        instances = ["${var.project_id}:${var.region}:${var.cloud_sql_instance_name}"]
       }
     }
   }

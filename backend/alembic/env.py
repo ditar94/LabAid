@@ -8,7 +8,10 @@ from app.core.database import Base
 from app.models import models  # noqa: F401 — ensure all models are imported
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option(
+    "sqlalchemy.url",
+    settings.DATABASE_URL_MIGRATE or settings.DATABASE_URL,
+)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
