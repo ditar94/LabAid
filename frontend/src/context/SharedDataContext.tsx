@@ -6,6 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Lab, Fluorochrome, StorageUnit } from "../api/types";
 import { useAuth } from "./AuthContext";
@@ -36,90 +37,74 @@ const SharedDataContext = createContext<SharedDataContextType | null>(null);
 
 export function SharedDataProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading, labSettings, impersonatingLab } = useAuth();
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
-  const [storageUnits, setStorageUnits] = useState<StorageUnit[]>([]);
+  const queryClient = useQueryClient();
   const [selectedLab, setSelectedLab] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  // Fetch labs list (super_admin only, not when impersonating)
-  const refreshLabs = useCallback(async () => {
-    if (user?.role !== "super_admin" || impersonatingLab) return;
-    const res = await api.get<Lab[]>("/labs/");
-    setLabs(res.data);
-  }, [user?.role, impersonatingLab]);
+  const isSuperAdmin = user?.role === "super_admin";
+  const needsLabParam = isSuperAdmin && !impersonatingLab;
 
-  // Super admin NOT impersonating — needs explicit lab_id param
-  const needsLabParam = user?.role === "super_admin" && !impersonatingLab;
+  // Labs query (super_admin only, not impersonating)
+  const { data: labs = [], isSuccess: labsLoaded } = useQuery<Lab[]>({
+    queryKey: ["labs"],
+    queryFn: () => api.get<Lab[]>("/labs/").then((r) => r.data),
+    enabled: !authLoading && !!user && isSuperAdmin && !impersonatingLab,
+  });
 
-  // Fetch fluorochromes for selected lab
-  const refreshFluorochromes = useCallback(async () => {
-    if (!selectedLab || !user) return;
-    const params: Record<string, string> = {};
-    if (needsLabParam) params.lab_id = selectedLab;
-    const res = await api.get<Fluorochrome[]>("/fluorochromes/", { params });
-    setFluorochromes(res.data);
-  }, [selectedLab, user, needsLabParam]);
-
-  // Fetch storage units for selected lab
-  const refreshStorageUnits = useCallback(async () => {
-    if (!selectedLab || !user) return;
-    if (labSettings.storage_enabled === false) {
-      setStorageUnits([]);
-      return;
+  // Auto-select first lab for super admin; lock to user.lab_id for others
+  useEffect(() => {
+    if (authLoading || !user) return;
+    if (isSuperAdmin && !impersonatingLab) {
+      if (labs.length > 0 && !selectedLab) {
+        setSelectedLab(labs[0].id);
+      }
+    } else {
+      setSelectedLab(user.lab_id || "");
     }
-    const params: Record<string, string> = {};
-    if (needsLabParam) params.lab_id = selectedLab;
-    const res = await api.get<StorageUnit[]>("/storage/units", { params });
-    setStorageUnits(res.data);
-  }, [selectedLab, user, needsLabParam, labSettings.storage_enabled]);
+  }, [user, authLoading, impersonatingLab, isSuperAdmin, labs, selectedLab]);
 
-  // Refresh both fluorochromes and storage units
+  // Fluorochromes — same queryKey as FluorochromesPage for shared cache
+  const labParams = needsLabParam && selectedLab ? { lab_id: selectedLab } : {};
+  const { data: fluorochromes = [] } = useQuery<Fluorochrome[]>({
+    queryKey: ["fluorochromes", selectedLab],
+    queryFn: () =>
+      api.get<Fluorochrome[]>("/fluorochromes/", { params: labParams }).then((r) => r.data),
+    enabled: !!selectedLab && !!user,
+  });
+
+  // Storage units
+  const storageDisabled = labSettings.storage_enabled === false;
+  const { data: storageUnits = [] } = useQuery<StorageUnit[]>({
+    queryKey: ["storage-units", selectedLab, storageDisabled],
+    queryFn: () => {
+      if (storageDisabled) return Promise.resolve([]);
+      const params: Record<string, string> = {};
+      if (needsLabParam) params.lab_id = selectedLab;
+      return api.get<StorageUnit[]>("/storage/units", { params }).then((r) => r.data);
+    },
+    enabled: !!selectedLab && !!user,
+  });
+
+  // Refresh callbacks — thin wrappers around query invalidation
+  const refreshLabs = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["labs"] });
+  }, [queryClient]);
+
+  const refreshFluorochromes = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["fluorochromes"] });
+  }, [queryClient]);
+
+  const refreshStorageUnits = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["storage-units"] });
+  }, [queryClient]);
+
   const refreshLabData = useCallback(async () => {
     await Promise.all([refreshFluorochromes(), refreshStorageUnits()]);
   }, [refreshFluorochromes, refreshStorageUnits]);
 
-  // Wait for auth to finish, then set selectedLab from user context
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      // Not logged in — nothing to fetch, just stop loading
-      setLoading(false);
-      return;
-    }
-    // Reset loading while we fetch lab data for the newly-logged-in user
-    setLoading(true);
-    if (user.role === "super_admin" && !impersonatingLab) {
-      // Pure super admin — fetch all labs for the selector dropdown
-      (async () => {
-        try {
-          const res = await api.get<Lab[]>("/labs/");
-          setLabs(res.data);
-          if (res.data.length > 0 && !selectedLab) {
-            setSelectedLab(res.data[0].id);
-          }
-        } catch { /* ignore */ }
-        setLoading(false);
-      })();
-    } else {
-      // Regular user or impersonating super admin — lock to their lab
-      setLabs([]);
-      setSelectedLab(user.lab_id || "");
-      setLoading(false);
-    }
-  }, [user, authLoading, impersonatingLab]);
-
-  // When selectedLab changes, fetch lab-scoped data (only if logged in)
-  useEffect(() => {
-    if (!selectedLab || !user) return;
-    refreshLabData();
-  }, [selectedLab]);
-
-  // Re-fetch storage units when storage_enabled setting changes
-  useEffect(() => {
-    if (!selectedLab || !user) return;
-    refreshStorageUnits();
-  }, [labSettings.storage_enabled]);
+  // Loading = auth pending, or super admin waiting for labs list to set initial selectedLab
+  const loading =
+    authLoading ||
+    (!!user && isSuperAdmin && !impersonatingLab && !labsLoaded);
 
   return (
     <SharedDataContext.Provider

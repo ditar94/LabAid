@@ -1,12 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
-import { useNavigate, Link } from "react-router-dom";
+import { Navigate, useNavigate, Link } from "react-router-dom";
 import { FlaskConical } from "lucide-react";
 import { version } from "../../package.json";
+import { preloadAppChunks } from "../App";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
+
+  // Already authenticated (e.g. page refresh while logged in) — go to dashboard
+  if (user) return <Navigate to="/" replace />;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -19,6 +23,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
+      preloadAppChunks();
       navigate("/");
     } catch (err: any) {
       if (err?.response?.status === 429) {

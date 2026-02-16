@@ -28,10 +28,14 @@ router = APIRouter(prefix="/api/lot-requests", tags=["lot-requests"])
 _DEFAULT_FLUORO_COLOR = "#9ca3af"
 
 
-def _enrich_request(req: LotRequest, db: Session) -> LotRequestOut:
-    submitter = db.get(User, req.user_id)
-    reviewer = db.get(User, req.reviewed_by) if req.reviewed_by else None
-    unit = db.get(StorageUnit, req.storage_unit_id) if req.storage_unit_id else None
+def _enrich_request(
+    req: LotRequest,
+    users: dict[UUID, User],
+    units: dict[UUID, StorageUnit],
+) -> LotRequestOut:
+    submitter = users.get(req.user_id)
+    reviewer = users.get(req.reviewed_by) if req.reviewed_by else None
+    unit = units.get(req.storage_unit_id) if req.storage_unit_id else None
     return LotRequestOut(
         id=req.id,
         lab_id=req.lab_id,
@@ -56,6 +60,18 @@ def _enrich_request(req: LotRequest, db: Session) -> LotRequestOut:
     )
 
 
+def _batch_lookups(db: Session, requests: list[LotRequest]):
+    """Batch-load all users and storage units referenced by a list of requests."""
+    user_ids = {r.user_id for r in requests}
+    user_ids |= {r.reviewed_by for r in requests if r.reviewed_by}
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
+    unit_ids = {r.storage_unit_id for r in requests if r.storage_unit_id}
+    units = {u.id: u for u in db.query(StorageUnit).filter(StorageUnit.id.in_(unit_ids)).all()} if unit_ids else {}
+
+    return users, units
+
+
 @router.get("/", response_model=list[LotRequestOut])
 def list_lot_requests(
     db: Session = Depends(get_db),
@@ -68,7 +84,8 @@ def list_lot_requests(
         q = q.filter(LotRequest.user_id == current_user.id)
 
     requests = q.order_by(LotRequest.created_at.desc()).all()
-    return [_enrich_request(r, db) for r in requests]
+    users, units = _batch_lookups(db, requests)
+    return [_enrich_request(r, users, units) for r in requests]
 
 
 @router.get("/pending-count")
@@ -127,7 +144,8 @@ def submit_lot_request(
 
     db.commit()
     db.refresh(req)
-    return _enrich_request(req, db)
+    users, units = _batch_lookups(db, [req])
+    return _enrich_request(req, users, units)
 
 
 @router.patch("/{request_id}/approve", response_model=LotRequestOut)
@@ -287,7 +305,8 @@ def approve_lot_request(
 
     db.commit()
     db.refresh(req)
-    return _enrich_request(req, db)
+    users, units = _batch_lookups(db, [req])
+    return _enrich_request(req, users, units)
 
 
 @router.patch("/{request_id}/reject", response_model=LotRequestOut)
@@ -331,4 +350,5 @@ def reject_lot_request(
 
     db.commit()
     db.refresh(req)
-    return _enrich_request(req, db)
+    users, units = _batch_lookups(db, [req])
+    return _enrich_request(req, users, units)

@@ -95,18 +95,21 @@ def scan_lookup(
         )
         unit_ids = list(set(c.storage_unit_id for c in cells_with_vials))
 
-        # Batch-load all storage units
+        # Batch-load all storage units and their cells in 2 queries (not N+1)
         units = db.query(StorageUnit).filter(StorageUnit.id.in_(unit_ids)).all()
+        all_cells = (
+            db.query(StorageCell)
+            .filter(StorageCell.storage_unit_id.in_(unit_ids))
+            .order_by(StorageCell.storage_unit_id, StorageCell.row, StorageCell.col)
+            .all()
+        )
+        cells_by_unit: dict[UUID, list[StorageCell]] = {u.id: [] for u in units}
+        for cell in all_cells:
+            cells_by_unit[cell.storage_unit_id].append(cell)
         for unit in units:
-            all_cells = (
-                db.query(StorageCell)
-                .filter(StorageCell.storage_unit_id == unit.id)
-                .order_by(StorageCell.row, StorageCell.col)
-                .all()
-            )
             storage_grids.append(StorageGridOut(
                 unit=unit,
-                cells=build_grid_cells(db, all_cells),
+                cells=build_grid_cells(db, cells_by_unit.get(unit.id, [])),
             ))
 
     # QC warning

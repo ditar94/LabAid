@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type {
   ScanLookupResult,
@@ -38,6 +39,7 @@ export default function ScanSearchPage() {
   const { user, labSettings } = useAuth();
   const { fluorochromes, storageUnits: sharedStorageUnits, refreshFluorochromes } = useSharedData();
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const sealedOnly = labSettings.sealed_counts_only ?? false;
   const storageEnabled = labSettings.storage_enabled !== false;
@@ -87,7 +89,6 @@ export default function ScanSearchPage() {
 
   // ── GS1 Enrich state ───────────────────────────────────────────────
   const [enrichResult, setEnrichResult] = useState<ScanEnrichResult | null>(null);
-  const [enrichLoading, setEnrichLoading] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<GUDIDDevice | null>(null);
 
   // ── Search state ────────────────────────────────────────────────────
@@ -217,7 +218,6 @@ export default function ScanSearchPage() {
             setStorageUnits(sharedStorageUnits);
 
             // Try GS1 enrichment in the background
-            setEnrichLoading(true);
             try {
               const enrichRes = await api.post<ScanEnrichResult>("/scan/enrich", { barcode: q });
               const enrich = enrichRes.data;
@@ -252,8 +252,6 @@ export default function ScanSearchPage() {
               }
             } catch {
               // Enrich failure is non-blocking — user can still register manually
-            } finally {
-              setEnrichLoading(false);
             }
           }
         } catch {
@@ -275,6 +273,10 @@ export default function ScanSearchPage() {
     } catch {
       setResult(null);
     }
+    // Invalidate cached dashboard/inventory data so they reflect mutations
+    queryClient.invalidateQueries({ queryKey: ["lots"] });
+    queryClient.invalidateQueries({ queryKey: ["antibodies"] });
+    queryClient.invalidateQueries({ queryKey: ["temp-storage"] });
   };
 
   // ── Scan: Receive More ──────────────────────────────────────────────
@@ -488,6 +490,7 @@ export default function ScanSearchPage() {
 
         addToast("Lot request submitted for review", "success");
         setMessage("Your lot request has been submitted for supervisor review.");
+        queryClient.invalidateQueries({ queryKey: ["lot-requests"] });
         setMode("idle");
         setInput("");
         inputRef.current?.focus();
@@ -571,6 +574,8 @@ export default function ScanSearchPage() {
       });
       setMessage(`Lot "${regForm.lot_number}" registered with ${quantity} vial(s). Barcode: ${scannedBarcode}`);
       refreshFluorochromes();
+      queryClient.invalidateQueries({ queryKey: ["lots"] });
+      queryClient.invalidateQueries({ queryKey: ["antibodies"] });
       setMode("idle");
       setInput("");
       inputRef.current?.focus();
@@ -665,10 +670,6 @@ export default function ScanSearchPage() {
           <p className="page-desc">
             This barcode isn't registered and no antibodies match. Fill in the details below to register a new lot.
           </p>
-
-          {enrichLoading && (
-            <p className="info">Parsing barcode...</p>
-          )}
 
           {enrichResult && enrichResult.warnings.length > 0 && (
             <div className="enrich-warnings">

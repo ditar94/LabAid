@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Search, ChevronDown, BookOpen } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { SupportTicket, TicketStatus } from "../api/types";
 import { useAuth } from "../context/AuthContext";
@@ -163,8 +164,13 @@ export default function TicketsPage() {
   const { user, labSettings, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"guide" | "tickets">("guide");
 
+  const queryClient = useQueryClient();
   // Ticket state
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const { data: tickets = [] } = useQuery<SupportTicket[]>({
+    queryKey: ["tickets"],
+    queryFn: () => api.get("/tickets/").then((r) => r.data),
+    staleTime: 20_000,
+  });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ subject: "", message: "" });
   const [error, setError] = useState<string | null>(null);
@@ -182,11 +188,6 @@ export default function TicketsPage() {
   const isAdmin = user?.role === "lab_admin" || isSuperAdmin;
   const { addToast } = useToast();
 
-  const load = () => api.get("/tickets/").then((r) => setTickets(r.data));
-
-  useEffect(() => {
-    load();
-  }, []);
 
   // Guide search filtering
   const filteredContent = useMemo(() => {
@@ -212,7 +213,7 @@ export default function TicketsPage() {
       await api.post("/tickets/", form);
       setForm({ subject: "", message: "" });
       setShowForm(false);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: ["tickets"] });
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create ticket");
     } finally {
@@ -226,7 +227,7 @@ export default function TicketsPage() {
     try {
       await api.post(`/tickets/${ticketId}/replies`, { message: replyText.trim() });
       setReplyText("");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: ["tickets"] });
     } catch {
       // keep UI stable
     } finally {
@@ -237,7 +238,7 @@ export default function TicketsPage() {
   const handleStatusChange = async (ticketId: string, status: TicketStatus) => {
     try {
       await api.patch(`/tickets/${ticketId}/status`, { status });
-      await load();
+      await queryClient.invalidateQueries({ queryKey: ["tickets"] });
     } catch {
       // keep UI stable
     }

@@ -755,11 +755,6 @@ export default function AuditPage() {
               </td>
             </tr>
           ))}
-          {loadingLogs && logs.length === 0 && (
-            <tr>
-              <td colSpan={5}>Loading audit entries...</td>
-            </tr>
-          )}
           {!loadingLogs && logs.length === 0 && (
             <tr>
               <td colSpan={5}>

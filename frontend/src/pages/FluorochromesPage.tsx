@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Fluorochrome } from "../api/types";
 import { useAuth } from "../context/AuthContext";
@@ -12,8 +13,13 @@ const DEFAULT_FLUORO_COLOR = "#9ca3af";
 export default function FluorochromesPage() {
   const { user } = useAuth();
   const { labs, selectedLab, setSelectedLab, refreshFluorochromes } = useSharedData();
-  const [fluorochromes, setFluorochromes] = useState<Fluorochrome[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const labParams = user?.role === "super_admin" && selectedLab ? { lab_id: selectedLab } : {};
+  const { data: fluorochromes = [], isLoading: loading } = useQuery<Fluorochrome[]>({
+    queryKey: ["fluorochromes", selectedLab],
+    queryFn: () => api.get("/fluorochromes/", { params: labParams }).then(r => r.data),
+    enabled: !!selectedLab,
+  });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -21,24 +27,6 @@ export default function FluorochromesPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
-
-  const load = () => {
-    const params: Record<string, string> = {};
-    if (user?.role === "super_admin" && selectedLab) {
-      params.lab_id = selectedLab;
-    }
-    api
-      .get("/fluorochromes/", { params })
-      .then((r) => setFluorochromes(r.data))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    if (selectedLab) {
-      setLoading(true);
-      load();
-    }
-  }, [selectedLab]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -52,7 +40,7 @@ export default function FluorochromesPage() {
       addToast(`Fluorochrome "${form.name}" created`, "success");
       setForm({ name: "", color: DEFAULT_FLUORO_COLOR });
       setShowForm(false);
-      load();
+      queryClient.invalidateQueries({ queryKey: ["fluorochromes"] });
       refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create fluorochrome");
@@ -63,7 +51,7 @@ export default function FluorochromesPage() {
   const handleColorChange = async (fluoro: Fluorochrome, color: string) => {
     try {
       await api.patch(`/fluorochromes/${fluoro.id}`, { color });
-      load();
+      queryClient.invalidateQueries({ queryKey: ["fluorochromes"] });
       refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update color");

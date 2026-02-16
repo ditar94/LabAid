@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Lab, BillingStatus } from "../api/types";
 import { Building2, LogIn } from "lucide-react";
@@ -10,8 +11,11 @@ import { useSharedData } from "../context/SharedDataContext";
 
 export default function LabsPage() {
   const { refreshLabs } = useSharedData();
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: labs = [], isLoading: loading } = useQuery<Lab[]>({
+    queryKey: ["labs"],
+    queryFn: () => api.get("/labs/").then((r) => r.data),
+  });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "" });
   const [error, setError] = useState<string | null>(null);
@@ -26,16 +30,6 @@ export default function LabsPage() {
   const { startImpersonation } = useAuth();
   const navigate = useNavigate();
 
-  const load = () =>
-    api
-      .get("/labs/")
-      .then((r) => setLabs(r.data))
-      .finally(() => setLoading(false));
-
-  useEffect(() => {
-    load();
-  }, []);
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -44,7 +38,7 @@ export default function LabsPage() {
       setForm({ name: "" });
       setShowForm(false);
       addToast(`Lab "${form.name}" created`, "success");
-      load();
+      queryClient.invalidateQueries({ queryKey: ["labs"] });
       refreshLabs();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create lab");
@@ -55,7 +49,7 @@ export default function LabsPage() {
     setSuspendLoading(true);
     try {
       await api.patch(`/labs/${labId}/suspend`);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
       refreshLabs();
       const lab = labs.find((l) => l.id === labId);
       addToast(
@@ -73,7 +67,7 @@ export default function LabsPage() {
   const handleBillingChange = async (labId: string, status: BillingStatus) => {
     try {
       await api.patch(`/labs/${labId}/billing`, { billing_status: status });
-      await load();
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
       refreshLabs();
       addToast(`Billing status updated to ${status.replace("_", " ")}`, "success");
     } catch {
@@ -100,7 +94,7 @@ export default function LabsPage() {
         trial_ends_at: trialDate ? new Date(trialDate).toISOString() : null,
       });
       setEditingTrialId(null);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
       addToast("Trial end date updated", "success");
     } catch {
       addToast("Failed to update trial date", "danger");
@@ -111,7 +105,7 @@ export default function LabsPage() {
     try {
       await api.patch(`/labs/${labId}/settings`, { billing_url: billingUrl || null });
       setEditingBillingUrlId(null);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
       addToast("Billing URL updated", "success");
     } catch {
       addToast("Failed to update billing URL", "danger");

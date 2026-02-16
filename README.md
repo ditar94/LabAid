@@ -183,10 +183,10 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 
 > Formatted reports for lab inspections and audits. Builds on the existing audit log infrastructure.
 
-- [ ] Audit trail export (CSV + PDF) — filterable by date range, entity, action
-- [ ] Lot lifecycle report — full history of a lot from receipt to depletion with all events
-- [ ] QC history export — all QC approvals/failures with documents, approvers, dates
-- [ ] Inspection export — combined report (inventory snapshot + QC status + audit trail)
+- [x] Audit trail export (CSV + PDF) — filterable by date range, entity, action
+- [x] Lot lifecycle report — full history of a lot from receipt to depletion with all events
+- [x] QC history export — all QC approvals/failures with documents, approvers, dates
+- [x] Inspection export — combined report (inventory snapshot + QC status + audit trail)
 
 ### Pending: Email Notifications
 

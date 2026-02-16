@@ -5629,6 +5629,37 @@ tr.lot-row-depleted > td:first-child {
   display: none;
 }
 
+/* ── Page Shell (Suspense fallback while lazy chunks load) ───────────── */
+
+.page-shell {
+  min-height: 100vh;
+}
+
+/* ── Shimmer Placeholder (first-load state for data) ─────────────────── */
+
+.shimmer {
+  background: linear-gradient(90deg, var(--neutral-100) 25%, var(--neutral-200) 50%, var(--neutral-100) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+.shimmer-text {
+  display: inline-block;
+  height: 1em;
+  width: 3em;
+  vertical-align: middle;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer { animation: none; opacity: 0.6; }
+}
+
 /* ── Page entry animation ────────────────────────────────────────────── */
 
 .main-content > * {
@@ -6419,4 +6450,154 @@ textarea:focus-visible {
     margin: 1.5cm;
     size: auto;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reports Page
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.report-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 700px) {
+  .report-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg, 10px);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.report-card:hover {
+  border-color: var(--primary-400);
+}
+
+.report-card-active {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 2px var(--primary-200);
+}
+
+[data-theme="dark"] .report-card-active {
+  box-shadow: 0 0 0 2px var(--primary-800);
+}
+
+.report-card-icon {
+  color: var(--primary-500);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.report-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.report-card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.report-card-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.report-card-formats {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.report-format-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+
+[data-theme="dark"] .report-format-badge {
+  background: var(--primary-900);
+  color: var(--primary-300);
+}
+
+.report-config {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 10px);
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.report-config-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.report-config-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  min-width: 140px;
+}
+
+.report-config-filters label span {
+  font-weight: 500;
+}
+
+.report-config-filters select,
+.report-config-filters input[type="date"],
+.report-config-filters input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg, var(--card-bg));
+  color: inherit;
+  font-size: 0.85rem;
+}
+
+.report-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-preview {
+  margin-top: 16px;
+}
+
+.report-preview h3 {
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+}
+
+.report-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
 }

@@ -5,6 +5,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { User, LabSettings } from "../api/types";
 
@@ -39,15 +40,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   });
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const fetchUser = async () => {
-    const res = await api.get("/auth/me");
-    setUser(res.data);
-    try {
-      const settingsRes = await api.get("/labs/my-settings");
-      setLabSettings(settingsRes.data || {});
-    } catch {
-      setLabSettings({});
+    const res = await api.get("/bootstrap");
+    const { user: u, lab_settings, fluorochromes, storage_units, labs } = res.data;
+    setUser(u);
+    setLabSettings(lab_settings || {});
+
+    // Seed TanStack Query cache so SharedDataContext and pages show data instantly
+    const labId = u.lab_id || "";
+    if (fluorochromes) {
+      queryClient.setQueryData(["fluorochromes", labId], fluorochromes);
+    }
+    const storageDisabled = lab_settings?.storage_enabled === false;
+    if (storage_units) {
+      queryClient.setQueryData(["storage-units", labId, storageDisabled], storage_units);
+    }
+    if (labs) {
+      queryClient.setQueryData(["labs"], labs);
     }
   };
 

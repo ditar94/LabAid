@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { User } from "../api/types";
 import { useAuth } from "../context/AuthContext";
@@ -10,8 +11,13 @@ import { useToast } from "../context/ToastContext";
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const { labs, selectedLab, setSelectedLab } = useSharedData();
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const labParams = currentUser?.role === "super_admin" && selectedLab ? { lab_id: selectedLab } : {};
+  const { data: users = [], isLoading: loading } = useQuery<User[]>({
+    queryKey: ["users", selectedLab],
+    queryFn: () => api.get("/auth/users", { params: labParams }).then(r => r.data),
+    enabled: !!selectedLab,
+  });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     email: "",
@@ -31,25 +37,6 @@ export default function UsersPage() {
   const { addToast } = useToast();
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [editEmailValue, setEditEmailValue] = useState("");
-
-  const load = () => {
-    if (!selectedLab) return;
-    const params: Record<string, string> = {};
-    if (currentUser?.role === "super_admin") {
-      params.lab_id = selectedLab;
-    }
-    api
-      .get("/auth/users", { params })
-      .then((r) => setUsers(r.data))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    if (selectedLab) {
-      setLoading(true);
-      load();
-    }
-  }, [selectedLab]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -73,7 +60,7 @@ export default function UsersPage() {
       }
       setForm({ email: "", full_name: "", role: "tech" });
       setShowForm(false);
-      load();
+      queryClient.invalidateQueries({ queryKey: ["users"] });
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create user");
     }
@@ -123,7 +110,7 @@ export default function UsersPage() {
       await api.patch(`/auth/users/${userId}/role`, { role: newRole });
       const u = users.find((u) => u.id === userId);
       addToast(`Role updated for ${u?.full_name || "user"}`, "success");
-      load();
+      queryClient.invalidateQueries({ queryKey: ["users"] });
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update role");
     }
@@ -137,7 +124,7 @@ export default function UsersPage() {
     try {
       await api.patch(`/auth/users/${u.id}`, { is_active: newActive });
       addToast(`${u.full_name} ${newActive ? "reactivated" : "deactivated"}`, "success");
-      load();
+      queryClient.invalidateQueries({ queryKey: ["users"] });
     } catch (err: any) {
       setError(err.response?.data?.detail || `Failed to ${action} user`);
     }
@@ -149,7 +136,7 @@ export default function UsersPage() {
       await api.patch(`/auth/users/${userId}`, { email: editEmailValue });
       addToast("Email updated", "success");
       setEditingEmail(null);
-      load();
+      queryClient.invalidateQueries({ queryKey: ["users"] });
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update email");
     }

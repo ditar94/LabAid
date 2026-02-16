@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SharedDataProvider } from "./context/SharedDataContext";
 import { ToastProvider } from "./context/ToastContext";
@@ -7,18 +8,39 @@ import { lazy, Suspense, type ReactNode } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,     // 60s default — pages show cached data instantly
+      gcTime: 5 * 60_000,    // 5min — keep unused data in memory
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
+  },
+});
+
+export { queryClient };
+
 // Eagerly-loaded pages (entry points users hit first — no loading flash)
 import LoginPage from "./pages/LoginPage";
 import SetupPage from "./pages/SetupPage";
+
+// Eagerly-loaded: primary landing page after login — no chunk-load flash
+import DashboardPage from "./pages/DashboardPage";
 
 // Lazy-loaded pages — each becomes a separate chunk
 const LabSetupWizardPage = lazy(() => import("./pages/LabSetupWizardPage"));
 const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const SetPasswordPage = lazy(() => import("./pages/SetPasswordPage"));
-const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const InventoryPage = lazy(() => import("./pages/InventoryPage"));
-const ScanSearchPage = lazy(() => import("./pages/ScanSearchPage"));
+const scanSearchImport = () => import("./pages/ScanSearchPage");
+const ScanSearchPage = lazy(scanSearchImport);
+
+/** Preload the most-likely-next chunks after login so they're instant. */
+export function preloadAppChunks() {
+  scanSearchImport();
+}
 const StoragePage = lazy(() => import("./pages/StoragePage"));
 const AuditPage = lazy(() => import("./pages/AuditPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
@@ -27,13 +49,14 @@ const FluorochromesPage = lazy(() => import("./pages/FluorochromesPage"));
 const TicketsPage = lazy(() => import("./pages/TicketsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const GlobalSearchPage = lazy(() => import("./pages/GlobalSearchPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, labSettings } = useAuth();
   const location = useLocation();
   if (loading) return null;
-  if (!user) return <Navigate to="/login" />;
+  if (!user) return <Navigate to="/login" replace />;
   if (user.must_change_password && location.pathname !== "/change-password") {
     return <Navigate to="/change-password" />;
   }
@@ -50,7 +73,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 }
 function AppRoutes() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<div className="page-shell" />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/setup" element={<SetupPage />} />
@@ -88,6 +111,7 @@ function AppRoutes() {
           <Route path="/scan-search" element={<ScanSearchPage />} />
           <Route path="/storage" element={<StoragePage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/labs" element={<LabsPage />} />
           <Route path="/fluorochromes" element={<FluorochromesPage />} />
@@ -103,15 +127,17 @@ function AppRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <AuthProvider>
-          <SharedDataProvider>
-            <ToastProvider>
-              <AppRoutes />
-            </ToastProvider>
-          </SharedDataProvider>
-        </AuthProvider>
-      </BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AuthProvider>
+            <SharedDataProvider>
+              <ToastProvider>
+                <AppRoutes />
+              </ToastProvider>
+            </SharedDataProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

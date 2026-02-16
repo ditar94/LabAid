@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type {
   Antibody, Lot, TempStorageSummary, TempStorageSummaryItem,
@@ -37,105 +38,94 @@ export default function DashboardPage() {
   const { user, labSettings } = useAuth();
   const { labs, fluorochromes, selectedLab, setSelectedLab } = useSharedData();
   const navigate = useNavigate();
-  const [antibodies, setAntibodies] = useState<Antibody[]>([]);
+  const queryClient = useQueryClient();
   const [selectedCard, setSelectedCard] = useState<"requests" | "pending" | "low" | "expiring" | "temp" | null>(null);
-  const [pendingRequests, setPendingRequests] = useState<LotRequest[]>([]);
   const [reviewingRequest, setReviewingRequest] = useState<LotRequest | null>(null);
-  const [pendingLots, setPendingLots] = useState<Lot[]>([]);
-  const [expiringLots, setExpiringLots] = useState<Lot[]>([]);
-  const [lowStock, setLowStock] = useState<Antibody[]>([]);
-  const [allLots, setAllLots] = useState<Lot[]>([]);
-  const [tempSummary, setTempSummary] = useState<TempStorageSummary | null>(null);
 
-  // Temp storage drill-down + move
+  // Temp storage drill-down + move (local UI state only)
   const [tempSelectedItem, setTempSelectedItem] = useState<TempStorageSummaryItem | null>(null);
   const [tempGrid, setTempGrid] = useState<StorageGridData | null>(null);
   const [tempGridLoading, setTempGridLoading] = useState(false);
   const [tempMessage, setTempMessage] = useState<string | null>(null);
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [loadingData, setLoadingData] = useState(false);
   const [tempError, setTempError] = useState<string | null>(null);
   const tempViewRef = useRef<StorageViewHandle>(null);
 
   const isMobile = useMediaQuery("(max-width: 768px)");
-  // Dynamic lot list component — LotCardList on mobile, LotTable on desktop
   const LotList = isMobile ? LotCardList : LotTable;
   const { addToast } = useToast();
 
-  const loadData = useCallback(async () => {
-    if (!selectedLab) return;
-    setLoadingData(true);
-    const params: Record<string, string> = { lab_id: selectedLab };
-    const isSupervisorPlus = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
-    try {
-      const requestsPromise = isSupervisorPlus
-        ? api.get<LotRequest[]>("/lot-requests/")
-        : Promise.resolve({ data: [] as LotRequest[] });
+  const isSupervisorPlus = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
+  const labParams = selectedLab ? { lab_id: selectedLab } : undefined;
 
-      const [abRes, lotRes, lowStockRes, tempRes, requestsRes] = await Promise.allSettled([
-        api.get<Antibody[]>("/antibodies/", { params }),
-        api.get<Lot[]>("/lots/", { params }),
-        api.get<Antibody[]>("/antibodies/low-stock", { params }),
-        api.get<TempStorageSummary>("/storage/temp-storage/summary", { params }),
-        requestsPromise,
-      ]);
+  // ── Data queries (cached, stale-while-revalidate) ──
 
-      const hadAnySuccess = [abRes, lotRes, lowStockRes, tempRes, requestsRes]
-        .some((result) => result.status === "fulfilled");
-      setDataLoaded(hadAnySuccess);
-      if (!hadAnySuccess) return;
+  const { data: antibodies = [], isSuccess: abLoaded } = useQuery({
+    queryKey: ["antibodies", selectedLab],
+    queryFn: () => api.get<Antibody[]>("/antibodies/", { params: labParams }).then(r => r.data),
+    enabled: !!selectedLab,
+  });
 
-      const antibodies: Antibody[] = abRes.status === "fulfilled" ? abRes.value.data : [];
-      const lots: Lot[] = lotRes.status === "fulfilled" ? lotRes.value.data : [];
-      const lowStockLots: Antibody[] = lowStockRes.status === "fulfilled" ? lowStockRes.value.data : [];
-      const tempData: TempStorageSummary | null = tempRes.status === "fulfilled" ? tempRes.value.data : null;
-      const allRequests: LotRequest[] = requestsRes.status === "fulfilled" ? requestsRes.value.data : [];
+  const { data: allLots = [], isSuccess: lotsLoaded } = useQuery({
+    queryKey: ["lots", selectedLab],
+    queryFn: () => api.get<Lot[]>("/lots/", { params: labParams }).then(r => r.data),
+    enabled: !!selectedLab,
+  });
 
-      setAntibodies(antibodies);
-      setAllLots(lots);
-      setLowStock(lowStockLots);
-      setPendingLots(lots.filter((l: Lot) => l.qc_status === "pending"));
-      setTempSummary(tempData);
-      setPendingRequests(isSupervisorPlus ? allRequests.filter((r) => r.status === "pending") : []);
+  const { data: lowStock = [] } = useQuery({
+    queryKey: ["antibodies", "low-stock", selectedLab],
+    queryFn: () => api.get<Antibody[]>("/antibodies/low-stock", { params: labParams }).then(r => r.data),
+    enabled: !!selectedLab,
+  });
 
-      // Expiring lots
-      const expiryWarnDays = labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS;
-      const now = new Date();
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() + expiryWarnDays);
-      const expiring = lots
-        .filter((l) => {
-          if (!l.expiration_date) return false;
-          const exp = new Date(l.expiration_date);
-          return exp <= cutoff && exp >= now;
-        })
-        .sort(
-          (a, b) =>
-            new Date(a.expiration_date!).getTime() -
-            new Date(b.expiration_date!).getTime()
-        );
-      const expired = lots
-        .filter((l) => {
-          if (!l.expiration_date) return false;
-          return new Date(l.expiration_date) < now;
-        })
-        .sort(
-          (a, b) =>
-            new Date(a.expiration_date!).getTime() -
-            new Date(b.expiration_date!).getTime()
-        );
-      setExpiringLots([...expired, ...expiring]);
-    } finally {
-      setLoadingData(false);
-    }
-  }, [selectedLab, labSettings.expiry_warn_days, user?.role]);
+  const { data: tempSummary } = useQuery({
+    queryKey: ["temp-storage", "summary", selectedLab],
+    queryFn: () => api.get<TempStorageSummary>("/storage/temp-storage/summary", { params: labParams }).then(r => r.data),
+    enabled: !!selectedLab,
+  });
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const { data: allRequests = [] } = useQuery({
+    queryKey: ["lot-requests", selectedLab],
+    queryFn: () => api.get<LotRequest[]>("/lot-requests/").then(r => r.data),
+    enabled: !!selectedLab && !!isSupervisorPlus,
+  });
+
+  // ── Derived state (computed from query data) ──
+
+  const dataLoaded = abLoaded || lotsLoaded;
+  const pendingLots = useMemo(() => allLots.filter(l => l.qc_status === "pending"), [allLots]);
+  const pendingRequests = useMemo(() => allRequests.filter(r => r.status === "pending"), [allRequests]);
+
+  const expiringLots = useMemo(() => {
+    const expiryWarnDays = labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS;
+    const now = new Date();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + expiryWarnDays);
+    const expiring = allLots
+      .filter(l => {
+        if (!l.expiration_date) return false;
+        const exp = new Date(l.expiration_date);
+        return exp <= cutoff && exp >= now;
+      })
+      .sort((a, b) => new Date(a.expiration_date!).getTime() - new Date(b.expiration_date!).getTime());
+    const expired = allLots
+      .filter(l => {
+        if (!l.expiration_date) return false;
+        return new Date(l.expiration_date) < now;
+      })
+      .sort((a, b) => new Date(a.expiration_date!).getTime() - new Date(b.expiration_date!).getTime());
+    return [...expired, ...expiring];
+  }, [allLots, labSettings.expiry_warn_days]);
+
+  // Invalidate all dashboard queries (used by pull-to-refresh + mutation callbacks)
+  const invalidateDashboard = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["antibodies"] });
+    queryClient.invalidateQueries({ queryKey: ["lots"] });
+    queryClient.invalidateQueries({ queryKey: ["temp-storage"] });
+    queryClient.invalidateQueries({ queryKey: ["lot-requests"] });
+  }, [queryClient]);
 
   const ptr = usePullToRefresh({
-    onRefresh: loadData,
+    onRefresh: async () => { invalidateDashboard(); },
     disabled: !isMobile,
   });
 
@@ -287,7 +277,6 @@ export default function DashboardPage() {
     return badges;
   }, [lowStock, abVialStats]);
 
-  const isSupervisorPlus = user?.role === "super_admin" || user?.role === "lab_admin" || user?.role === "supervisor";
   const storageEnabled = labSettings.storage_enabled !== false;
   const cards = [
     ...(isSupervisorPlus && pendingRequests.length > 0
@@ -371,15 +360,10 @@ export default function DashboardPage() {
 
   // Auto-enter move mode when temp grid loads with a selected item
   const handleTempRefresh = useCallback(async () => {
-    try {
-      const tempRes = await api.get<TempStorageSummary>("/storage/temp-storage/summary", {
-        params: { lab_id: selectedLab },
-      });
-      setTempSummary(tempRes.data);
-    } catch { /* ignore */ }
+    queryClient.invalidateQueries({ queryKey: ["temp-storage", "summary", selectedLab] });
     setTempSelectedItem(null);
     setTempGrid(null);
-  }, [selectedLab]);
+  }, [selectedLab, queryClient]);
 
   useEffect(() => {
     if (tempGrid && tempSelectedItem) {
@@ -427,10 +411,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {!dataLoaded && loadingData && (
-        <p className="page-desc">Loading dashboard data...</p>
-      )}
-
       <div className="stats-grid stagger-reveal">
         {cards.map((card) => {
           const Icon = card.icon;
@@ -450,7 +430,7 @@ export default function DashboardPage() {
               <div className={`stat-icon-wrap`}>
                 {dataLoaded && card.count === 0 ? <CheckCircle2 size={20} /> : <Icon size={20} />}
               </div>
-              <div className="stat-value">{dataLoaded ? card.count : "\u2014"}</div>
+              <div className="stat-value">{dataLoaded ? card.count : <span className="shimmer shimmer-text" />}</div>
               <div className="stat-label">{card.label}</div>
             </button>
           );
@@ -534,7 +514,7 @@ export default function DashboardPage() {
           onSuccess={() => {
             setReviewingRequest(null);
             addToast("Lot request processed", "success");
-            loadData();
+            invalidateDashboard();
           }}
         />
       )}

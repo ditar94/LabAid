@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type {
   StorageGrid as StorageGridType,
@@ -15,6 +16,7 @@ export default function StoragePage() {
   const { user, labSettings } = useAuth();
   const { labs, fluorochromes, storageUnits: units, selectedLab, setSelectedLab, refreshStorageUnits } = useSharedData();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const viewRef = useRef<StorageViewHandle>(null);
@@ -170,6 +172,10 @@ export default function StoragePage() {
         `Stocked ${stockLabel} (Lot ${vialInfo?.lot_number}) into cell ${cell.label}`
       );
       setBarcode("");
+      // Invalidate shared cache so other pages get fresh data
+      queryClient.invalidateQueries({ queryKey: ["lots"] });
+      queryClient.invalidateQueries({ queryKey: ["antibodies"] });
+      queryClient.invalidateQueries({ queryKey: ["temp-storage"] });
       // Refresh grid and next empty
       await loadGrid(selectedGrid.unit.id);
       setStockingMode(true);

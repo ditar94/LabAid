@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Antibody, Fluorochrome, Lot, LotDocument, StorageGrid as StorageGridData, VialCounts } from "../api/types";
 import { useAuth } from "../context/AuthContext";
@@ -259,6 +260,7 @@ export default function InventoryPage() {
   const { user, labSettings } = useAuth();
   const { labs, fluorochromes, storageUnits, selectedLab, setSelectedLab, refreshFluorochromes } = useSharedData();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const requestedAntibodyId = searchParams.get("antibodyId");
   const requestedLabId = searchParams.get("labId");
@@ -423,6 +425,10 @@ export default function InventoryPage() {
     ]);
     setAntibodies(abRes.data);
     setLots(lotRes.data);
+    // Invalidate shared TanStack Query cache so other pages get fresh data
+    queryClient.invalidateQueries({ queryKey: ["antibodies"] });
+    queryClient.invalidateQueries({ queryKey: ["lots"] });
+    queryClient.invalidateQueries({ queryKey: ["temp-storage"] });
   };
 
   useEffect(() => {

@@ -1,13 +1,17 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Outlet, NavLink, Link, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import type { Antibody, Lot, User } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 import {
   LayoutDashboard,
   ScanLine,
   Package,
   Warehouse,
   ClipboardList,
+  FileSpreadsheet,
   Users,
   Building2,
   LifeBuoy,
@@ -102,22 +106,30 @@ export default function Layout() {
     return null;
   }, [hasLabContext, labSettings.billing_status, labSettings.is_active, labSettings.trial_ends_at, labSettings.billing_url]);
 
-  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  const { selectedLab } = useSharedData();
+  const queryClient = useQueryClient();
+  const { data: pendingRequestCount = 0 } = useQuery<number>({
+    queryKey: ["lot-requests-count", selectedLab],
+    queryFn: () => api.get<{ count: number }>("/lot-requests/pending-count").then((r) => r.data.count),
+    enabled: isSupervisor && hasLabContext,
+    refetchInterval: 30_000,
+  });
 
-  useEffect(() => {
-    if (!isSupervisor || !hasLabContext) {
-      setPendingRequestCount(0);
-      return;
+  // Prefetch primary data for a page on nav hover
+  const prefetch = useCallback((queries: Array<{ queryKey: unknown[]; queryFn: () => Promise<unknown> }>) => {
+    for (const q of queries) {
+      queryClient.prefetchQuery({ queryKey: q.queryKey, queryFn: q.queryFn, staleTime: 30_000 });
     }
-    const fetchCount = () => {
-      api.get<{ count: number }>("/lot-requests/pending-count")
-        .then((res) => setPendingRequestCount(res.data.count))
-        .catch(() => {});
-    };
-    fetchCount();
-    const interval = setInterval(fetchCount, 30_000);
-    return () => clearInterval(interval);
-  }, [isSupervisor, hasLabContext]);
+  }, [queryClient]);
+  const prefetchDashboard = useCallback(() => {
+    prefetch([
+      { queryKey: ["antibodies", selectedLab], queryFn: () => api.get<Antibody[]>("/antibodies/", { params: { lab_id: selectedLab } }).then((r) => r.data) },
+      { queryKey: ["lots", selectedLab], queryFn: () => api.get<Lot[]>("/lots/", { params: { lab_id: selectedLab } }).then((r) => r.data) },
+    ]);
+  }, [prefetch, selectedLab]);
+  const prefetchUsers = useCallback(() => {
+    prefetch([{ queryKey: ["users", selectedLab], queryFn: () => api.get<User[]>("/auth/users").then((r) => r.data) }]);
+  }, [prefetch, selectedLab]);
 
   const initials = useMemo(() => {
     if (!user?.full_name) return "?";
@@ -176,7 +188,7 @@ export default function Layout() {
           </div>
         )}
         <div className="nav-links">
-          <NavLink to="/" onClick={handleNavClick}>
+          <NavLink to="/" onClick={handleNavClick} onMouseEnter={prefetchDashboard}>
             <LayoutDashboard className="nav-icon" />
             Dashboard
             {pendingRequestCount > 0 && <span className="nav-badge">{pendingRequestCount}</span>}
@@ -187,7 +199,7 @@ export default function Layout() {
                 <ScanLine className="nav-icon" />
                 Scan / Search
               </NavLink>
-              <NavLink to="/inventory" onClick={handleNavClick}>
+              <NavLink to="/inventory" onClick={handleNavClick} onMouseEnter={prefetchDashboard}>
                 <Package className="nav-icon" />
                 Inventory
               </NavLink>
@@ -205,12 +217,18 @@ export default function Layout() {
             <ClipboardList className="nav-icon" />
             Audit Log
           </NavLink>
+          {isSupervisor && hasLabContext && (
+            <NavLink to="/reports" onClick={handleNavClick}>
+              <FileSpreadsheet className="nav-icon" />
+              Reports
+            </NavLink>
+          )}
 
           {(isSupervisor || isSuperAdmin) && (
             <>
               <div className="nav-section-label">Admin</div>
               {isSupervisor && (
-                <NavLink to="/users" onClick={handleNavClick}>
+                <NavLink to="/users" onClick={handleNavClick} onMouseEnter={prefetchUsers}>
                   <Users className="nav-icon" />
                   Users
                 </NavLink>
