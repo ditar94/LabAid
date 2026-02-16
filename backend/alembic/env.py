@@ -36,9 +36,12 @@ def apply_grants(connection):
         stmt = stmt.strip()
         if stmt:
             try:
+                connection.execute(text("SAVEPOINT grant_sp"))
                 connection.execute(text(stmt))
+                connection.execute(text("RELEASE SAVEPOINT grant_sp"))
             except Exception as e:
                 logger.warning("Grant failed (user may not exist): %s", e)
+                connection.execute(text("ROLLBACK TO SAVEPOINT grant_sp"))
     logger.info("Post-migration grants applied")
 
 
