@@ -39,7 +39,7 @@ class LabAidPDF(FPDF):
 
     def __init__(self, title: str, lab_name: str, pulled_by: str = "",
                  subtitle: str = "", tz: str | None = None):
-        super().__init__(orientation="L", unit="mm", format="A4")
+        super().__init__(orientation="P", unit="mm", format="A4")
         self.report_title = title
         self.lab_name = lab_name
         self.pulled_by = pulled_by
@@ -150,9 +150,9 @@ def _render_grouped_table(title: str, lab_name: str, pulled_by: str,
 def render_lot_activity_pdf(data: list[dict], lab_name: str,
                             pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
-        ("Lot #", 30), ("Expiration", 24), ("Received", 24),
-        ("Received By", 35), ("QC Doc", 16), ("QC Approved", 24),
-        ("QC Approved By", 35), ("First Opened", 24), ("Last Opened", 24),
+        ("Lot #", 24), ("Expiration", 19), ("Received", 19),
+        ("Received By", 28), ("QC Doc", 13), ("QC Approved", 19),
+        ("QC Approved By", 28), ("First Opened", 20), ("Last Opened", 20),
     ]
     return _render_grouped_table(
         "Lot Activity Report", lab_name, pulled_by, columns, data,
@@ -168,10 +168,10 @@ def render_lot_activity_pdf(data: list[dict], lab_name: str,
 def render_usage_pdf(data: list[dict], lab_name: str,
                      pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
-        ("Lot #", 30), ("Expiration", 24), ("Received", 24),
-        ("Vials Rcvd", 24), ("Vials Used", 22),
-        ("First Opened", 26), ("Last Opened", 26),
-        ("Avg/Wk", 20), ("Status", 24),
+        ("Lot #", 24), ("Expiration", 20), ("Received", 20),
+        ("Vials Rcvd", 18), ("Vials Used", 18),
+        ("First Opened", 22), ("Last Opened", 22),
+        ("Avg/Wk", 18), ("Status", 28),
     ]
     pdf = LabAidPDF("Usage by Lot", lab_name, pulled_by, tz=tz)
     pdf.alias_nb_pages()
@@ -214,8 +214,8 @@ def render_usage_trend_pdf(data: list[dict], lab_name: str,
                            pulled_by: str = "", tz: str | None = None) -> bytes:
     """Render usage trend grouped by antibody, with a total row per group."""
     columns = [
-        ("Month", 40), ("Vials Opened", 30), ("Lots Active", 30),
-        ("Weeks", 24), ("Avg/Wk", 30),
+        ("Month", 45), ("Vials Opened", 35), ("Lots Active", 35),
+        ("Weeks", 35), ("Avg/Wk", 40),
     ]
     pdf = LabAidPDF("Usage by Month", lab_name, pulled_by, tz=tz)
     pdf.alias_nb_pages()
@@ -253,8 +253,8 @@ def render_usage_trend_pdf(data: list[dict], lab_name: str,
 def render_admin_activity_pdf(data: list[dict], lab_name: str,
                                pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
-        ("Timestamp", 42), ("Action", 40), ("Performed By", 40),
-        ("Target", 60), ("Details", 75),
+        ("Timestamp", 30), ("Action", 30), ("Performed By", 30),
+        ("Target", 46), ("Details", 54),
     ]
     return _render_table(
         "Admin Activity Report", lab_name, pulled_by, columns, data,
@@ -269,8 +269,8 @@ def render_admin_activity_pdf(data: list[dict], lab_name: str,
 def render_audit_trail_pdf(data: list[dict], lab_name: str,
                             pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
-        ("Timestamp", 42), ("User", 35), ("Action", 35),
-        ("Entity Type", 25), ("Entity", 70), ("Note", 55), ("Support", 15),
+        ("Timestamp", 28), ("User", 24), ("Action", 24),
+        ("Entity Type", 18), ("Entity", 48), ("Note", 36), ("Support", 12),
     ]
     return _render_table(
         "Audit Trail Report", lab_name, pulled_by, columns, data,
