@@ -4656,16 +4656,18 @@ table tbody td:nth-child(3) { /* Action column */
 }
 
 .inventory-expanded-inner table {
-  table-layout: fixed;
   width: 100%;
 }
 
-.inventory-expanded-inner td,
 .inventory-expanded-inner th {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 0.82rem;
-  padding: 6px 5px;
+  font-size: 0.68rem;
+  padding: 5px 4px;
+  white-space: nowrap;
+}
+
+.inventory-expanded-inner td {
+  font-size: 0.78rem;
+  padding: 5px 4px;
 }
 
 .inventory-card.collapsing .inventory-expanded {
@@ -6608,15 +6610,18 @@ textarea:focus-visible {
 }
 
 .report-preview table {
-  table-layout: fixed;
   width: 100%;
 }
 
-.report-preview td,
 .report-preview th {
+  font-size: 0.68rem;
+  padding: 5px 4px;
+  white-space: nowrap;
+}
+
+.report-preview td {
   font-size: 0.78rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 5px 4px;
 }
 
 .report-preview-meta {

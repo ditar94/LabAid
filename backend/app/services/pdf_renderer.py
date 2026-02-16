@@ -97,7 +97,7 @@ def _render_table(title: str, lab_name: str, pulled_by: str,
     widths = [c[1] for c in columns]
     for row in data:
         pdf._table_row(row_fn(row), widths)
-    return pdf.output()
+    return bytes(pdf.output())
 
 
 def render_lot_activity_pdf(data: list[dict], lab_name: str,
