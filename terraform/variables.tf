@@ -63,3 +63,8 @@ variable "github_repo" {
   type        = string
   default     = "ditar94/LabAid"
 }
+
+variable "alert_email" {
+  description = "Email address for monitoring alerts"
+  type        = string
+}

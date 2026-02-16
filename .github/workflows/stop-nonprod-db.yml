@@ -1,0 +1,35 @@
+name: Stop Nonprod Database
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # Midnight EST (5 AM UTC) every day
+
+jobs:
+  stop-nonprod-db:
+    name: Stop Nonprod Database
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Stop nonprod Cloud SQL if running
+        env:
+          GCP_PROJECT: labaid-prod
+        run: |
+          STATE=$(gcloud sql instances describe labaid-db-nonprod --project ${GCP_PROJECT} --format='value(state)')
+          if [ "$STATE" = "RUNNABLE" ]; then
+            echo "Instance is running, stopping it..."
+            gcloud sql instances patch labaid-db-nonprod \
+              --activation-policy=NEVER \
+              --project ${GCP_PROJECT}
+          else
+            echo "Instance already stopped (state: $STATE)"
+          fi
