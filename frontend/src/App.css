@@ -4650,7 +4650,6 @@ table tbody td:nth-child(3) { /* Action column */
 .inventory-expanded-inner {
   min-height: 0;
   overflow: hidden;
-  overflow-x: auto;
   padding-top: var(--space-lg);
   transform: translateY(0);
   transition: padding-top 100ms var(--ease-out), transform 100ms var(--ease-out);
@@ -6595,10 +6594,16 @@ textarea:focus-visible {
   margin-bottom: 10px;
 }
 
+.report-preview table {
+  table-layout: fixed;
+  width: 100%;
+}
+
 .report-preview td,
 .report-preview th {
-  white-space: nowrap;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .report-preview-meta {

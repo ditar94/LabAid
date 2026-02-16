@@ -8,11 +8,13 @@ from fpdf import FPDF
 class LabAidPDF(FPDF):
     """Base PDF class with branded header and footer."""
 
-    def __init__(self, title: str, lab_name: str, pulled_by: str = ""):
+    def __init__(self, title: str, lab_name: str, pulled_by: str = "",
+                 subtitle: str = ""):
         super().__init__(orientation="L", unit="mm", format="A4")
         self.report_title = title
         self.lab_name = lab_name
         self.pulled_by = pulled_by
+        self.subtitle = subtitle
         self.generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         self.set_auto_page_break(auto=True, margin=20)
 
@@ -22,6 +24,8 @@ class LabAidPDF(FPDF):
         self.set_font("Helvetica", "", 9)
         self.set_text_color(100, 100, 100)
         parts = [f"Lab: {self.lab_name}"]
+        if self.subtitle:
+            parts.append(self.subtitle)
         if self.pulled_by:
             parts.append(f"Pulled by: {self.pulled_by}")
         parts.append(f"Generated: {self.generated_at}")
@@ -66,9 +70,9 @@ class LabAidPDF(FPDF):
 
 def _render_table(title: str, lab_name: str, pulled_by: str,
                   columns: list[tuple[str, int]], data: list[dict],
-                  row_fn) -> bytes:
+                  row_fn, subtitle: str = "") -> bytes:
     """Shared helper to render a flat table PDF."""
-    pdf = LabAidPDF(title, lab_name, pulled_by)
+    pdf = LabAidPDF(title, lab_name, pulled_by, subtitle=subtitle)
     pdf.alias_nb_pages()
     pdf.add_page()
     pdf._table_header(columns)
@@ -78,37 +82,41 @@ def _render_table(title: str, lab_name: str, pulled_by: str,
     return pdf.output()
 
 
-def render_lot_activity_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
+def render_lot_activity_pdf(data: list[dict], lab_name: str,
+                            pulled_by: str = "", antibody_name: str = "") -> bytes:
     columns = [
-        ("Lot #", 30), ("Expiration", 24), ("Received", 24), ("Received By", 35),
-        ("QC Doc", 16), ("QC Approved", 24), ("QC Approved By", 35),
-        ("First Opened", 24), ("Last Opened", 24),
+        ("Antibody", 34), ("Lot #", 26), ("Expiration", 22), ("Received", 22),
+        ("Received By", 30), ("QC Doc", 14), ("QC Approved", 22),
+        ("QC Approved By", 30), ("First Opened", 22), ("Last Opened", 22),
     ]
     return _render_table(
         "Lot Activity Report", lab_name, pulled_by, columns, data,
         lambda r: [
-            r["lot_number"], r["expiration"], r["received"], r["received_by"],
-            r["qc_doc"], r["qc_approved"], r["qc_approved_by"],
-            r["first_opened"], r["last_opened"],
+            r["antibody"], r["lot_number"], r["expiration"], r["received"],
+            r["received_by"], r["qc_doc"], r["qc_approved"],
+            r["qc_approved_by"], r["first_opened"], r["last_opened"],
         ],
+        subtitle=f"Antibody: {antibody_name}" if antibody_name else "",
     )
 
 
-def render_usage_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
+def render_usage_pdf(data: list[dict], lab_name: str,
+                     pulled_by: str = "", antibody_name: str = "") -> bytes:
     columns = [
-        ("Lot #", 30), ("Expiration", 22), ("Received", 22),
-        ("Vials Received", 25), ("Vials Consumed", 25),
+        ("Antibody", 34), ("Lot #", 26), ("Expiration", 22), ("Received", 22),
+        ("Received", 22), ("Consumed", 20),
         ("First Opened", 24), ("Last Opened", 24),
-        ("Avg/Week", 20), ("Status", 22),
+        ("Avg/Wk", 18), ("Status", 22),
     ]
     return _render_table(
         "Usage Report", lab_name, pulled_by, columns, data,
         lambda r: [
-            r["lot_number"], r["expiration"], r["received"],
+            r["antibody"], r["lot_number"], r["expiration"], r["received"],
             str(r["vials_received"]), str(r["vials_consumed"]),
             r["first_opened"], r["last_opened"],
             r["avg_week"], r["status"],
         ],
+        subtitle=f"Antibody: {antibody_name}" if antibody_name else "",
     )
 
 

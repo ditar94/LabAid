@@ -3,13 +3,13 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.middleware.auth import require_role
-from app.models.models import Lab, User, UserRole
+from app.models.models import Antibody, Lab, User, UserRole
 from app.services.csv_renderer import (
     render_audit_trail_csv,
     render_lot_activity_csv,
@@ -48,22 +48,24 @@ def _lab_name(db: Session, lab_id: UUID) -> str:
     return lab.name if lab else "Lab"
 
 
+def _antibody_display(db: Session, antibody_id: UUID | None) -> str:
+    """Resolve antibody name for report headers. Empty if None."""
+    if not antibody_id:
+        return ""
+    ab = db.query(Antibody).filter(Antibody.id == antibody_id).first()
+    if ab:
+        return f"{ab.target} {ab.fluorochrome}".strip()
+    return ""
+
+
 def _today() -> str:
     return date.today().isoformat()
 
 
-def _stream_csv(csv_bytes: bytes, filename: str):
-    return StreamingResponse(
-        iter([csv_bytes]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-def _stream_pdf(pdf_bytes: bytes, filename: str):
-    return StreamingResponse(
-        iter([pdf_bytes]),
-        media_type="application/pdf",
+def _file_response(content: bytes, media_type: str, filename: str):
+    return Response(
+        content=content,
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -73,7 +75,7 @@ def _stream_pdf(pdf_bytes: bytes, filename: str):
 
 @router.get("/lot-activity/range")
 def lot_activity_range(
-    antibody_id: UUID = Query(...),
+    antibody_id: UUID | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
@@ -86,7 +88,7 @@ def lot_activity_range(
 
 @router.get("/lot-activity/preview")
 def lot_activity_preview(
-    antibody_id: UUID = Query(...),
+    antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -102,7 +104,7 @@ def lot_activity_preview(
 
 @router.get("/lot-activity/csv")
 def lot_activity_csv(
-    antibody_id: UUID = Query(...),
+    antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -113,13 +115,17 @@ def lot_activity_csv(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
         lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
+    ab_name = _antibody_display(db, antibody_id)
     slug = _lab_slug(db, current_user.lab_id)
-    return _stream_csv(render_lot_activity_csv(data), f"lot-activity_{slug}_{_today()}.csv")
+    return _file_response(
+        render_lot_activity_csv(data, antibody_name=ab_name),
+        "text/csv", f"lot-activity_{slug}_{_today()}.csv",
+    )
 
 
 @router.get("/lot-activity/pdf")
 def lot_activity_pdf(
-    antibody_id: UUID = Query(...),
+    antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -130,11 +136,12 @@ def lot_activity_pdf(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
         lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
+    ab_name = _antibody_display(db, antibody_id)
     lab_name = _lab_name(db, current_user.lab_id)
     slug = _lab_slug(db, current_user.lab_id)
-    return _stream_pdf(
-        render_lot_activity_pdf(data, lab_name, pulled_by=current_user.full_name),
-        f"lot-activity_{slug}_{_today()}.pdf",
+    return _file_response(
+        render_lot_activity_pdf(data, lab_name, pulled_by=current_user.full_name, antibody_name=ab_name),
+        "application/pdf", f"lot-activity_{slug}_{_today()}.pdf",
     )
 
 
@@ -143,7 +150,7 @@ def lot_activity_pdf(
 
 @router.get("/usage/preview")
 def usage_preview(
-    antibody_id: UUID = Query(...),
+    antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -159,7 +166,7 @@ def usage_preview(
 
 @router.get("/usage/csv")
 def usage_csv(
-    antibody_id: UUID = Query(...),
+    antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -170,13 +177,17 @@ def usage_csv(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
         lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
+    ab_name = _antibody_display(db, antibody_id)
     slug = _lab_slug(db, current_user.lab_id)
-    return _stream_csv(render_usage_csv(data), f"usage-report_{slug}_{_today()}.csv")
+    return _file_response(
+        render_usage_csv(data, antibody_name=ab_name),
+        "text/csv", f"usage-report_{slug}_{_today()}.csv",
+    )
 
 
 @router.get("/usage/pdf")
 def usage_pdf(
-    antibody_id: UUID = Query(...),
+    antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -187,11 +198,12 @@ def usage_pdf(
         db, lab_id=current_user.lab_id, antibody_id=antibody_id,
         lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
+    ab_name = _antibody_display(db, antibody_id)
     lab_name = _lab_name(db, current_user.lab_id)
     slug = _lab_slug(db, current_user.lab_id)
-    return _stream_pdf(
-        render_usage_pdf(data, lab_name, pulled_by=current_user.full_name),
-        f"usage-report_{slug}_{_today()}.pdf",
+    return _file_response(
+        render_usage_pdf(data, lab_name, pulled_by=current_user.full_name, antibody_name=ab_name),
+        "application/pdf", f"usage-report_{slug}_{_today()}.pdf",
     )
 
 
@@ -234,7 +246,7 @@ def admin_activity_csv(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
     )
     slug = _lab_slug(db, current_user.lab_id)
-    return _stream_csv(render_admin_activity_csv(data), f"admin-activity_{slug}_{_today()}.csv")
+    return _file_response(render_admin_activity_csv(data), "text/csv", f"admin-activity_{slug}_{_today()}.csv")
 
 
 @router.get("/admin-activity/pdf")
@@ -249,9 +261,9 @@ def admin_activity_pdf(
     )
     lab_name = _lab_name(db, current_user.lab_id)
     slug = _lab_slug(db, current_user.lab_id)
-    return _stream_pdf(
+    return _file_response(
         render_admin_activity_pdf(data, lab_name, pulled_by=current_user.full_name),
-        f"admin-activity_{slug}_{_today()}.pdf",
+        "application/pdf", f"admin-activity_{slug}_{_today()}.pdf",
     )
 
 
@@ -288,7 +300,7 @@ def audit_trail_csv(
         entity_type=entity_type, action=action,
     )
     slug = _lab_slug(db, current_user.lab_id)
-    return _stream_csv(render_audit_trail_csv(data), f"audit-trail_{slug}_{_today()}.csv")
+    return _file_response(render_audit_trail_csv(data), "text/csv", f"audit-trail_{slug}_{_today()}.csv")
 
 
 @router.get("/audit-trail/pdf")
@@ -306,7 +318,7 @@ def audit_trail_pdf(
     )
     lab_name = _lab_name(db, current_user.lab_id)
     slug = _lab_slug(db, current_user.lab_id)
-    return _stream_pdf(
+    return _file_response(
         render_audit_trail_pdf(data, lab_name, pulled_by=current_user.full_name),
-        f"audit-trail_{slug}_{_today()}.pdf",
+        "application/pdf", f"audit-trail_{slug}_{_today()}.pdf",
     )

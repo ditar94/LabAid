@@ -4,36 +4,42 @@ import csv
 import io
 
 
-def _render(headers: list[str], rows: list[list[str]]) -> bytes:
+def _render(headers: list[str], rows: list[list[str]], subtitle: str = "") -> bytes:
     buf = io.StringIO()
     writer = csv.writer(buf)
+    if subtitle:
+        writer.writerow([subtitle])
+        writer.writerow([])
     writer.writerow(headers)
     writer.writerows(rows)
     return buf.getvalue().encode("utf-8")
 
 
-def render_lot_activity_csv(data: list[dict]) -> bytes:
+def render_lot_activity_csv(data: list[dict], antibody_name: str = "") -> bytes:
     return _render(
-        ["Lot #", "Expiration", "Received", "Received By", "QC Doc",
+        ["Antibody", "Lot #", "Expiration", "Received", "Received By", "QC Doc",
          "QC Approved", "QC Approved By", "First Opened", "Last Opened"],
         [[
-            row["lot_number"], row["expiration"], row["received"], row["received_by"],
+            row["antibody"], row["lot_number"], row["expiration"],
+            row["received"], row["received_by"],
             row["qc_doc"], row["qc_approved"], row["qc_approved_by"],
             row["first_opened"], row["last_opened"],
         ] for row in data],
+        subtitle=f"Antibody: {antibody_name}" if antibody_name else "",
     )
 
 
-def render_usage_csv(data: list[dict]) -> bytes:
+def render_usage_csv(data: list[dict], antibody_name: str = "") -> bytes:
     return _render(
-        ["Lot #", "Expiration", "Received", "Vials Received", "Vials Consumed",
-         "First Opened", "Last Opened", "Avg/Week", "Status"],
+        ["Antibody", "Lot #", "Expiration", "Received", "Vials Received",
+         "Vials Consumed", "First Opened", "Last Opened", "Avg/Week", "Status"],
         [[
-            row["lot_number"], row["expiration"], row["received"],
+            row["antibody"], row["lot_number"], row["expiration"], row["received"],
             str(row["vials_received"]), str(row["vials_consumed"]),
             row["first_opened"], row["last_opened"],
             row["avg_week"], row["status"],
         ] for row in data],
+        subtitle=f"Antibody: {antibody_name}" if antibody_name else "",
     )
 
 

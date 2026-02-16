@@ -903,10 +903,29 @@ def move_vials(
         lot = lots_map.get(lot_id)
         lot_label = lot.lot_number if lot else str(lot_id)[:8]
 
-        # Collect unique source descriptions
-        sources = list(dict.fromkeys(source_labels[i] for i in indices))
+        # Group source cells by container (same bracketed format as target)
+        source_by_unit: dict[str, list[str]] = {}
+        for i in indices:
+            lbl = source_labels[i]
+            if lbl == "unassigned":
+                source_by_unit.setdefault("unassigned", [])
+            else:
+                # source_labels[i] is "UnitName [CellLabel]" — split on last " ["
+                bracket = lbl.rfind(" [")
+                if bracket > 0:
+                    uname = lbl[:bracket]
+                    cell = lbl[bracket + 2 : -1]  # strip trailing ]
+                    source_by_unit.setdefault(uname, []).append(cell)
+                else:
+                    source_by_unit.setdefault(lbl, [])
+        source_parts = []
+        for unit_name, cells in source_by_unit.items():
+            if unit_name == "unassigned" or not cells:
+                source_parts.append(unit_name)
+            else:
+                source_parts.append(f"{unit_name} [{', '.join(dict.fromkeys(cells))}]")
+        source_desc = ", ".join(source_parts)
         target_cells = [empty_cells[i].label for i in indices]
-        source_desc = ", ".join(sources)
         target_desc = f"{target_unit.name} [{', '.join(target_cells)}]"
 
         log_audit(

@@ -51,17 +51,28 @@ def _fmt_date(dt: datetime | date | None) -> str:
 # ── Lot Activity Report ───────────────────────────────────────────────────
 
 
+def _antibody_name_map(db: Session, antibody_ids: set[UUID]) -> dict[UUID, str]:
+    if not antibody_ids:
+        return {}
+    rows = db.query(Antibody.id, Antibody.target, Antibody.fluorochrome).filter(
+        Antibody.id.in_(antibody_ids)
+    ).all()
+    return {r.id: f"{r.target} {r.fluorochrome}".strip() for r in rows}
+
+
 def get_lot_activity_data(
     db: Session,
     *,
     lab_id: UUID,
-    antibody_id: UUID,
+    antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[dict]:
     """One row per lot: received, QC, opened milestones + vial counts."""
-    lots_q = db.query(Lot).filter(Lot.lab_id == lab_id, Lot.antibody_id == antibody_id)
+    lots_q = db.query(Lot).filter(Lot.lab_id == lab_id)
+    if antibody_id:
+        lots_q = lots_q.filter(Lot.antibody_id == antibody_id)
     if lot_id:
         lots_q = lots_q.filter(Lot.id == lot_id)
     if date_from:
@@ -109,6 +120,9 @@ def get_lot_activity_data(
     all_user_ids = set(received_by_lot.values()) | approver_ids
     user_map = _resolve_user_map(db, all_user_ids)
 
+    # Resolve antibody names
+    ab_map = _antibody_name_map(db, {l.antibody_id for l in lots})
+
     result = []
     for lot in lots:
         lot_vials = vials_by_lot.get(lot.id, [])
@@ -116,6 +130,7 @@ def get_lot_activity_data(
         received_dates = [v.received_at for v in lot_vials if v.received_at]
 
         result.append({
+            "antibody": ab_map.get(lot.antibody_id, ""),
             "lot_number": lot.lot_number,
             "expiration": _fmt_date(lot.expiration_date),
             "received": _fmt_date(min(received_dates)) if received_dates else "",
@@ -134,14 +149,15 @@ def get_lot_activity_range(
     db: Session,
     *,
     lab_id: UUID,
-    antibody_id: UUID,
+    antibody_id: UUID | None = None,
 ) -> tuple[datetime | None, datetime | None]:
-    """Min/max lot.created_at for the given antibody."""
-    row = (
-        db.query(sa_func.min(Lot.created_at), sa_func.max(Lot.created_at))
-        .filter(Lot.lab_id == lab_id, Lot.antibody_id == antibody_id)
-        .one()
+    """Min/max lot.created_at, optionally filtered by antibody."""
+    q = db.query(sa_func.min(Lot.created_at), sa_func.max(Lot.created_at)).filter(
+        Lot.lab_id == lab_id
     )
+    if antibody_id:
+        q = q.filter(Lot.antibody_id == antibody_id)
+    row = q.one()
     return row[0], row[1]
 
 
@@ -152,13 +168,15 @@ def get_usage_data(
     db: Session,
     *,
     lab_id: UUID,
-    antibody_id: UUID,
+    antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[dict]:
     """Consumption analytics: one row per lot with rate and status."""
-    lots_q = db.query(Lot).filter(Lot.lab_id == lab_id, Lot.antibody_id == antibody_id)
+    lots_q = db.query(Lot).filter(Lot.lab_id == lab_id)
+    if antibody_id:
+        lots_q = lots_q.filter(Lot.antibody_id == antibody_id)
     if lot_id:
         lots_q = lots_q.filter(Lot.id == lot_id)
     if date_from:
@@ -174,6 +192,9 @@ def get_usage_data(
     vials_by_lot: dict[UUID, list[Vial]] = {}
     for v in vials:
         vials_by_lot.setdefault(v.lot_id, []).append(v)
+
+    # Resolve antibody names
+    ab_map = _antibody_name_map(db, {l.antibody_id for l in lots})
 
     now = datetime.now(timezone.utc)
     result = []
@@ -208,6 +229,7 @@ def get_usage_data(
             status = "Active"
 
         result.append({
+            "antibody": ab_map.get(lot.antibody_id, ""),
             "lot_number": lot.lot_number,
             "lot_id": str(lot.id),
             "expiration_raw": lot.expiration_date,
@@ -223,19 +245,26 @@ def get_usage_data(
             "status": status,
         })
 
-    # FEFO Current/New badges: among non-archived lots with sealed vials,
-    # the one with the earliest expiration date is "Current", rest are "New"
-    eligible = [r for r in result if not r["is_archived"] and r["sealed_count"] > 0]
-    if len(eligible) >= 2:
-        def _exp_key(r: dict):
-            return (r["expiration_raw"] is None, r["expiration_raw"] or "")
-        eligible.sort(key=_exp_key)
-        current_id = eligible[0]["lot_id"]
-        for r in result:
-            if r["lot_id"] == current_id:
-                r["status"] = "Current"
-            elif r in eligible:
-                r["status"] = "New"
+    # FEFO Current/New badges per antibody: among non-archived lots with
+    # sealed vials, the one with the earliest expiration date is "Current",
+    # rest are "New".  Group by antibody so cross-antibody lots don't clash.
+    by_ab: dict[str, list[dict]] = {}
+    for r in result:
+        if not r["is_archived"] and r["sealed_count"] > 0:
+            by_ab.setdefault(r["antibody"], []).append(r)
+
+    def _exp_key(r: dict):
+        return (r["expiration_raw"] is None, r["expiration_raw"] or "")
+
+    for eligible in by_ab.values():
+        if len(eligible) >= 2:
+            eligible.sort(key=_exp_key)
+            current_id = eligible[0]["lot_id"]
+            for r in result:
+                if r["lot_id"] == current_id:
+                    r["status"] = "Current"
+                elif r in eligible:
+                    r["status"] = "New"
 
     # Remove internal fields before returning
     for r in result:
