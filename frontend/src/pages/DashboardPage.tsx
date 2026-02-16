@@ -100,16 +100,19 @@ export default function DashboardPage() {
     const now = new Date();
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + expiryWarnDays);
+    // Only consider lots that still have usable vials (sealed or opened)
+    const hasUsableVials = (l: Lot) =>
+      (l.vial_counts?.sealed ?? 0) + (l.vial_counts?.opened ?? 0) > 0;
     const expiring = allLots
       .filter(l => {
-        if (!l.expiration_date) return false;
+        if (!l.expiration_date || !hasUsableVials(l)) return false;
         const exp = new Date(l.expiration_date);
         return exp <= cutoff && exp >= now;
       })
       .sort((a, b) => new Date(a.expiration_date!).getTime() - new Date(b.expiration_date!).getTime());
     const expired = allLots
       .filter(l => {
-        if (!l.expiration_date) return false;
+        if (!l.expiration_date || !hasUsableVials(l)) return false;
         return new Date(l.expiration_date) < now;
       })
       .sort((a, b) => new Date(a.expiration_date!).getTime() - new Date(b.expiration_date!).getTime());

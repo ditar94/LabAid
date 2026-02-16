@@ -610,16 +610,19 @@ export default function InventoryPage() {
         badges.push({ label: "Needs QC", color: "yellow" });
       }
 
-      // Expiring badge: has lots expiring within 30 days
+      // Expiring badge: has lots expiring within 30 days (only if lot still has usable vials)
       const now = new Date();
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() + expiryWarnDays);
-      const hasExpiring = activAbLots.some((l) => {
+      const lotsWithVials = activAbLots.filter(
+        (l) => (l.vial_counts?.sealed ?? 0) + (l.vial_counts?.opened ?? 0) > 0
+      );
+      const hasExpiring = lotsWithVials.some((l) => {
         if (!l.expiration_date) return false;
         const exp = new Date(l.expiration_date);
         return exp <= cutoff && exp >= now;
       });
-      const hasExpired = activAbLots.some((l) => {
+      const hasExpired = lotsWithVials.some((l) => {
         if (!l.expiration_date) return false;
         return new Date(l.expiration_date) < now;
       });
