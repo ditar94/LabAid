@@ -113,6 +113,8 @@ Deploy to beta first, verify health check passes, then promote through staging t
 3. **Use Cloud SQL Studio for production debugging** — It requires Google login + MFA, logs all queries, and can't be scripted accidentally.
 4. **Beta/staging are fair game** — Direct database access for testing, seeding, and debugging is expected.
 5. **Use `labaid_readonly` for manual queries.** Only use `labaid_migrate` when you need DDL, and never against production outside the deploy pipeline.
+6. **NEVER rename Terraform resource keys or Cloud SQL instance names.** This causes Terraform to destroy and recreate the instance, losing all data. See [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md#terraform-safety-rules-for-stateful-resources) for details and the 2026-02-16 incident.
+7. **NEVER set `deletion_protection = false` to unblock a Terraform apply.** If deletion protection is blocking a destroy, the protection is working. Investigate why Terraform wants to destroy the resource.
 
 ---
 

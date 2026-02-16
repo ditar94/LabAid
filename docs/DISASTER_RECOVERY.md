@@ -189,6 +189,46 @@ Run quarterly. Record results below.
 
 ---
 
+## Terraform Safety Rules for Stateful Resources
+
+Cloud SQL instances, databases, and other stateful resources require special care in Terraform. Violating these rules can cause **permanent data loss**.
+
+### Incident: Beta database lost (2026-02-16)
+
+The original `labaid-db` instance (containing all beta data) was destroyed when Terraform resource keys were changed from `google_sql_database_instance.main` to `google_sql_database_instance.nonprod`. Terraform interpreted this as "delete old resource, create new one" — even though `deletion_protection = true` was set. The protection was likely disabled temporarily during troubleshooting to unblock the apply.
+
+**Root cause**: Renaming a Terraform resource key without running `terraform state mv` first.
+
+**Data lost**: All beta users, labs, antibodies, lots, vials, and audit history.
+
+### Rules
+
+1. **NEVER change a Terraform resource key for a stateful resource.** Changing `google_sql_database_instance.main` to `google_sql_database_instance.nonprod` tells Terraform to destroy the old and create a new one. Instead, use:
+   ```bash
+   terraform state mv google_sql_database_instance.main google_sql_database_instance.nonprod
+   ```
+
+2. **NEVER change the `name` of a Cloud SQL instance.** Cloud SQL does not support renaming. Changing the name forces a destroy+create, which deletes all data. If you need a different name, create a new instance, migrate data, then decommission the old one.
+
+3. **NEVER set `deletion_protection = false` to unblock a Terraform apply.** If Terraform wants to destroy a database instance and deletion protection is blocking it, that protection is working correctly. Stop and figure out why Terraform wants to destroy it (usually a resource key or name change).
+
+4. **Always run `terraform plan` and review the output before `terraform apply`.** If the plan shows `destroy` on any Cloud SQL instance or database, **STOP**. Do not proceed.
+
+5. **Before any major infrastructure change, export the database:**
+   ```bash
+   gcloud sql export sql labaid-db-prod gs://labaid-tfstate/pre-migration-backup.sql \
+     --database=labaid --project=labaid-prod
+   ```
+
+6. **After restoring a backup, re-set database user passwords.** Restoring a backup reverts the PostgreSQL user catalog to the backup's state, which may have different passwords than what's stored in Secret Manager. Run:
+   ```bash
+   # Extract passwords from secrets and re-apply to the instance
+   gcloud sql users set-password labaid_app --instance=INSTANCE --password='PASSWORD_FROM_SECRET'
+   gcloud sql users set-password labaid_migrate --instance=INSTANCE --password='PASSWORD_FROM_SECRET'
+   ```
+
+---
+
 ## Contacts
 
 | Role | Contact |
