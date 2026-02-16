@@ -28,6 +28,7 @@ from app.services.report_service import (
     get_lot_activity_data,
     get_lot_activity_range,
     get_usage_data,
+    get_usage_range,
     get_admin_activity_data,
     get_admin_activity_range,
 )
@@ -142,6 +143,19 @@ def lot_activity_pdf(
 
 
 # ── Usage Report ──────────────────────────────────────────────────────────
+
+
+@router.get("/usage/range")
+def usage_range(
+    antibody_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    mn, mx = get_usage_range(db, lab_id=current_user.lab_id, antibody_id=antibody_id)
+    return {
+        "min": mn.isoformat() if mn else None,
+        "max": mx.isoformat() if mx else None,
+    }
 
 
 @router.get("/usage/preview")

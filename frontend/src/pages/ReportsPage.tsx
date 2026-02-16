@@ -253,7 +253,7 @@ export default function ReportsPage() {
             </label>
           )}
           <label>
-            <span>Date Range</span>
+            <span>{activeReport === "usage" ? "Usage Date" : activeReport === "lot-activity" ? "Received Date" : activeReport === "admin-activity" ? "Activity Date" : "Event Date"}</span>
             <MonthPicker
               value={dateRange}
               onChange={setDateRange}

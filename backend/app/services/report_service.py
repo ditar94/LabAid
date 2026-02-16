@@ -181,6 +181,22 @@ def get_lot_activity_range(
     return row[0], row[1]
 
 
+def get_usage_range(
+    db: Session,
+    *,
+    lab_id: UUID,
+    antibody_id: UUID | None = None,
+) -> tuple[datetime | None, datetime | None]:
+    """Min/max vial.opened_at for usage date range, optionally filtered by antibody."""
+    q = db.query(sa_func.min(Vial.opened_at), sa_func.max(Vial.opened_at)).join(
+        Lot, Vial.lot_id == Lot.id
+    ).filter(Lot.lab_id == lab_id, Vial.opened_at.isnot(None))
+    if antibody_id:
+        q = q.filter(Lot.antibody_id == antibody_id)
+    row = q.one()
+    return row[0], row[1]
+
+
 # ── Usage Report ──────────────────────────────────────────────────────────
 
 
@@ -199,10 +215,20 @@ def get_usage_data(
         lots_q = lots_q.filter(Lot.antibody_id == antibody_id)
     if lot_id:
         lots_q = lots_q.filter(Lot.id == lot_id)
+
+    # Usage report filters by vial opened_at (usage dates), not lot received date.
+    # Include a lot if any of its vials were opened within the range.
     if date_from:
-        lots_q = lots_q.filter(Lot.created_at >= date_from)
+        lots_q = lots_q.filter(Lot.id.in_(
+            db.query(Vial.lot_id).filter(Vial.opened_at >= date_from).distinct()
+        ))
     if date_to:
-        lots_q = lots_q.filter(Lot.created_at < _make_date_inclusive(date_to))
+        lots_q = lots_q.filter(Lot.id.in_(
+            db.query(Vial.lot_id).filter(
+                Vial.opened_at < _make_date_inclusive(date_to)
+            ).distinct()
+        ))
+
     lots = lots_q.order_by(Lot.created_at.desc()).all()
     if not lots:
         return []
