@@ -90,7 +90,7 @@ PRs still run `ci.yml` (tests + typecheck) as a safety check.
 | Staging | staging.labaid.io | labaid-backend-staging | resend | labaid_beta (shared) | 1 |
 | Production | labaid.io | labaid-backend | resend | labaid | 3 |
 
-Beta and staging share the same database for convenience. Production has its own isolated database. All databases currently live on the same Cloud SQL instance (`labaid-db`) — see [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for the plan to separate production onto its own instance.
+Beta and staging share the same database for convenience. Production has its own isolated instance (`labaid-db-prod`), nonprod has its own (`labaid-db-nonprod`). See [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for details.
 
 ## Infrastructure Rules
 

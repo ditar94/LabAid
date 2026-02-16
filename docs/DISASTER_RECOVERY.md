@@ -13,8 +13,9 @@
 
 ### Database (Cloud SQL)
 
-- **Instance**: `labaid-db` (PostgreSQL 16, `us-central1`)
-- **Databases**: `labaid` (prod), `labaid_beta`, `labaid_staging`
+- **Production instance**: `labaid-db-prod` (PostgreSQL 16, `us-central1`, HA REGIONAL)
+- **Nonprod instance**: `labaid-db-nonprod` (PostgreSQL 16, `us-central1`, ZONAL)
+- **Databases**: `labaid` (prod, on `labaid-db-prod`), `labaid_beta` (on `labaid-db-nonprod`)
 - **Automated backups**: Daily at 03:00 UTC
 - **Retention**: 7 most recent backups
 - **Point-in-time recovery (PITR)**: Enabled, 7-day WAL retention
@@ -47,13 +48,13 @@ Use this when data was corrupted or accidentally deleted and you know approximat
 TARGET="2026-02-15T02:00:00.000Z"
 
 # 2. Restore to a new temporary instance
-gcloud sql instances clone labaid-db labaid-db-restore \
+gcloud sql instances clone labaid-db-prod labaid-db-restore \
   --point-in-time="$TARGET" \
   --project=labaid-prod
 
 # 3. Verify the restored data (connect via Cloud SQL Proxy)
 cloud-sql-proxy labaid-prod:us-central1:labaid-db-restore &
-psql "host=127.0.0.1 port=5433 user=labaid dbname=labaid sslmode=disable"
+psql "host=127.0.0.1 port=5433 user=labaid_readonly dbname=labaid sslmode=disable"
 
 # 4. Run validation queries (see below)
 
@@ -71,13 +72,13 @@ Use this when the entire database needs to be rolled back to a daily snapshot.
 
 ```bash
 # 1. List available backups
-gcloud sql backups list --instance=labaid-db --project=labaid-prod
+gcloud sql backups list --instance=labaid-db-prod --project=labaid-prod
 
 # 2. Note the backup ID from the list
 BACKUP_ID="1707955200000"
 
 # 3. Restore to a new instance
-gcloud sql instances clone labaid-db labaid-db-restore \
+gcloud sql instances clone labaid-db-prod labaid-db-restore \
   --backup-id="$BACKUP_ID" \
   --project=labaid-prod
 
@@ -106,9 +107,9 @@ gcloud storage restore "gs://labaid-documents-prod/prefix/**"
 cd terraform && terraform apply -var-file=environments/prod.tfvars
 
 # 2. Restore from the most recent backup
-gcloud sql backups list --instance=labaid-db --project=labaid-prod
+gcloud sql backups list --instance=labaid-db-prod --project=labaid-prod
 gcloud sql backups restore BACKUP_ID \
-  --restore-instance=labaid-db \
+  --restore-instance=labaid-db-prod \
   --project=labaid-prod
 
 # 3. Verify DATABASE_URL secret still points to correct instance
@@ -173,7 +174,7 @@ SELECT status, COUNT(*) FROM vials GROUP BY status;
 
 Run quarterly. Record results below.
 
-1. Create a PITR clone: `gcloud sql instances clone labaid-db labaid-db-test-restore --point-in-time="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" --project=labaid-prod`
+1. Create a PITR clone: `gcloud sql instances clone labaid-db-prod labaid-db-test-restore --point-in-time="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" --project=labaid-prod`
 2. Connect to the clone via Cloud SQL Proxy
 3. Run all validation queries above
 4. Verify row counts match production

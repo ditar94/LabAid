@@ -7,7 +7,7 @@ set -euo pipefail
 GCP_PROJECT="${GCP_PROJECT:-labaid-prod}"
 GCP_REGION="${GCP_REGION:-us-central1}"
 REPO_NAME="${REPO_NAME:-labaid}"
-CLOUD_SQL_INSTANCE="${CLOUD_SQL_INSTANCE:-${GCP_PROJECT}:${GCP_REGION}:labaid-db}"
+CLOUD_SQL_INSTANCE="${CLOUD_SQL_INSTANCE:-${GCP_PROJECT}:${GCP_REGION}:labaid-db-nonprod}"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -154,7 +154,7 @@ deploy_frontend() {
 
 COMMAND="${1:-all}"
 
-NONPROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db"
+NONPROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db-nonprod"
 PROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db-prod"
 
 case "${COMMAND}" in

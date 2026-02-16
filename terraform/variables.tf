@@ -46,7 +46,7 @@ variable "db_migrate_secret_name" {
 variable "cloud_sql_instance_name" {
   description = "Cloud SQL instance name (e.g. labaid-db-prod or labaid-db-nonprod)"
   type        = string
-  default     = "labaid-db"
+  default     = "labaid-db-nonprod"
 }
 
 variable "authorized_networks" {

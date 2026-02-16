@@ -1,33 +1,16 @@
 -- ============================================================================
--- Database Security Hardening — Phase 1: Separate Database Users
+-- Database Security Hardening — Privilege Grants
 -- ============================================================================
--- Run this script ONCE per database (labaid, labaid_staging, labaid_beta).
--- Connect as the postgres superuser or current labaid admin user.
+-- Run this script ONCE per database after the users are created by Terraform.
+-- Connect as the postgres superuser.
 --
--- Usage:
---   psql -h <host> -U postgres -d labaid -f setup_db_users.sql
---   psql -h <host> -U postgres -d labaid_staging -f setup_db_users.sql
---   psql -h <host> -U postgres -d labaid_beta -f setup_db_users.sql
---
--- After running, set passwords via:
---   ALTER ROLE labaid_app PASSWORD '<generated>';
---   ALTER ROLE labaid_migrate PASSWORD '<generated>';
---   ALTER ROLE labaid_readonly PASSWORD '<generated>';
---
--- Then update secrets in GCP Secret Manager.
+-- Usage (via Cloud SQL Proxy):
+--   psql -h 127.0.0.1 -U postgres -d labaid -f setup_db_users.sql
+--   psql -h 127.0.0.1 -U postgres -d labaid_beta -f setup_db_users.sql
 -- ============================================================================
 
 -- ── App user (Cloud Run runtime — SELECT/INSERT/UPDATE/DELETE only) ──────────
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'labaid_app') THEN
-    CREATE ROLE labaid_app WITH LOGIN;
-  END IF;
-END
-$$;
-
-GRANT CONNECT ON DATABASE current_database() TO labaid_app;
 GRANT USAGE ON SCHEMA public TO labaid_app;
 
 -- Existing tables
@@ -45,15 +28,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 
 -- ── Migration user (Alembic — full DDL for schema changes) ──────────────────
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'labaid_migrate') THEN
-    CREATE ROLE labaid_migrate WITH LOGIN;
-  END IF;
-END
-$$;
-
-GRANT CONNECT ON DATABASE current_database() TO labaid_migrate;
 GRANT ALL PRIVILEGES ON SCHEMA public TO labaid_migrate;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO labaid_migrate;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -65,15 +39,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 
 -- ── Read-only user (support queries, reporting, debugging) ──────────────────
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'labaid_readonly') THEN
-    CREATE ROLE labaid_readonly WITH LOGIN;
-  END IF;
-END
-$$;
-
-GRANT CONNECT ON DATABASE current_database() TO labaid_readonly;
 GRANT USAGE ON SCHEMA public TO labaid_readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO labaid_readonly;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public

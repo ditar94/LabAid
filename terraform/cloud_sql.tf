@@ -1,7 +1,7 @@
 # ── Non-production instance (beta + staging) ────────────────────────────────
 
 resource "google_sql_database_instance" "nonprod" {
-  name                = "labaid-db"
+  name                = "labaid-db-nonprod"
   database_version    = "POSTGRES_16"
   region              = var.region
   deletion_protection = true
@@ -143,44 +143,56 @@ resource "google_sql_database" "prod" {
 resource "google_sql_user" "app_nonprod" {
   name     = "labaid_app"
   instance = google_sql_database_instance.nonprod.name
-  password = "change-me" # Set real password via: gcloud sql users set-password
+  password = "Temp-Pw-1!" # Set real password via: gcloud sql users set-password
+
+  lifecycle { ignore_changes = [password] }
 }
 
 resource "google_sql_user" "app_prod" {
   name     = "labaid_app"
   instance = google_sql_database_instance.prod.name
-  password = "change-me"
+  password = "Temp-Pw-2!"
+
+  lifecycle { ignore_changes = [password] }
 }
 
 # Migration user (Alembic — full DDL)
 resource "google_sql_user" "migrate_nonprod" {
   name     = "labaid_migrate"
   instance = google_sql_database_instance.nonprod.name
-  password = "change-me"
+  password = "Temp-Pw-3!"
+
+  lifecycle { ignore_changes = [password] }
 }
 
 resource "google_sql_user" "migrate_prod" {
   name     = "labaid_migrate"
   instance = google_sql_database_instance.prod.name
-  password = "change-me"
+  password = "Temp-Pw-4!"
+
+  lifecycle { ignore_changes = [password] }
 }
 
 # Read-only user (support queries, debugging)
 resource "google_sql_user" "readonly_nonprod" {
   name     = "labaid_readonly"
   instance = google_sql_database_instance.nonprod.name
-  password = "change-me"
+  password = "Temp-Pw-5!"
+
+  lifecycle { ignore_changes = [password] }
 }
 
 resource "google_sql_user" "readonly_prod" {
   name     = "labaid_readonly"
   instance = google_sql_database_instance.prod.name
-  password = "change-me"
+  password = "Temp-Pw-6!"
+
+  lifecycle { ignore_changes = [password] }
 }
 
 # IAM-authenticated user for Cloud Run (production only — Phase 4)
 resource "google_sql_user" "iam_app" {
-  name     = google_service_account.cloud_run.email
+  name     = trimsuffix(google_service_account.cloud_run.email, ".gserviceaccount.com")
   instance = google_sql_database_instance.prod.name
   type     = "CLOUD_IAM_SERVICE_ACCOUNT"
 }

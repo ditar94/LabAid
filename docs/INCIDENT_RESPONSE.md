@@ -47,7 +47,7 @@ gcloud run services describe labaid-backend --region=us-central1 --project=labai
 gcloud run services logs read labaid-backend --region=us-central1 --project=labaid-prod --limit=50
 
 # Check Cloud SQL status
-gcloud sql instances describe labaid-db --project=labaid-prod --format='value(state)'
+gcloud sql instances describe labaid-db-prod --project=labaid-prod --format='value(state)'
 
 # Check recent deployments
 gcloud run revisions list --service=labaid-backend --region=us-central1 --project=labaid-prod --limit=5
@@ -63,7 +63,7 @@ curl -sf https://labaid.io/api/health | python3 -m json.tool
 | Issue | Action |
 |-------|--------|
 | Bad deploy broke prod | Roll back to previous revision: `gcloud run services update-traffic labaid-backend --to-revisions=PREVIOUS_REVISION=100 --region=us-central1 --project=labaid-prod` |
-| Database connection errors | Check Cloud SQL instance state, restart if needed: `gcloud sql instances restart labaid-db --project=labaid-prod` |
+| Database connection errors | Check Cloud SQL instance state, restart if needed: `gcloud sql instances restart labaid-db-prod --project=labaid-prod` |
 | Database corruption | Restore from backup (see [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)) |
 | Auth/cookie issues | Verify COOKIE_DOMAIN and APP_URL match, check SECRET_KEY secret hasn't changed |
 | Email delivery failing | Check Resend dashboard, verify API key in Secret Manager |

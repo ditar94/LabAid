@@ -6,7 +6,7 @@
 
 | Instance | Databases | Purpose |
 |----------|-----------|---------|
-| `labaid-db` | `labaid_beta` | Beta and staging (shared database) |
+| `labaid-db-nonprod` | `labaid_beta` | Beta and staging (shared database) |
 | `labaid-db-prod` | `labaid` | Production only |
 
 Production data lives on a physically separate instance. Even with full access to the nonprod instance, you cannot reach production data.
@@ -33,12 +33,12 @@ The production instance has `cloudsql.iam_authentication` enabled. The Cloud Run
 
 ## Secret Manager layout
 
-| Secret | Environment | Connects as |
-|--------|-------------|-------------|
-| `DATABASE_URL` | Production | `labaid_app` |
-| `DATABASE_URL_MIGRATE` | Production | `labaid_migrate` |
-| `DATABASE_URL_BETA` | Beta + Staging (shared DB) | `labaid_app` |
-| `DATABASE_URL_BETA_MIGRATE` | Beta + Staging (shared DB) | `labaid_migrate` |
+| Secret | Environment | Instance | Connects as |
+|--------|-------------|----------|-------------|
+| `DATABASE_URL` | Production | `labaid-db-prod` | `labaid_app` |
+| `DATABASE_URL_MIGRATE` | Production | `labaid-db-prod` | `labaid_migrate` |
+| `DATABASE_URL_BETA` | Beta + Staging | `labaid-db-nonprod` | `labaid_app` |
+| `DATABASE_URL_BETA_MIGRATE` | Beta + Staging | `labaid-db-nonprod` | `labaid_migrate` |
 
 Format: `postgresql://labaid_app:<password>@/<db_name>?host=/cloudsql/<instance_connection_name>`
 
@@ -59,12 +59,12 @@ This creates the instances, databases, users (with placeholder passwords), and I
 ### 2. Set real passwords
 
 ```bash
-# Nonprod instance
-gcloud sql users set-password labaid_app     --instance=labaid-db --password="$(openssl rand -base64 32)"
-gcloud sql users set-password labaid_migrate --instance=labaid-db --password="$(openssl rand -base64 32)"
-gcloud sql users set-password labaid_readonly --instance=labaid-db --password="$(openssl rand -base64 32)"
+# Nonprod instance (labaid-db-nonprod)
+gcloud sql users set-password labaid_app     --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
+gcloud sql users set-password labaid_migrate --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
+gcloud sql users set-password labaid_readonly --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
 
-# Prod instance
+# Prod instance (labaid-db-prod)
 gcloud sql users set-password labaid_app     --instance=labaid-db-prod --password="$(openssl rand -base64 32)"
 gcloud sql users set-password labaid_migrate --instance=labaid-db-prod --password="$(openssl rand -base64 32)"
 gcloud sql users set-password labaid_readonly --instance=labaid-db-prod --password="$(openssl rand -base64 32)"
@@ -76,50 +76,31 @@ Connect to each database and run the setup script:
 
 ```bash
 # Via Cloud SQL Proxy or Cloud SQL Studio
-psql -h <host> -U postgres -d labaid      -f scripts/setup_db_users.sql   # prod instance
-psql -h <host> -U postgres -d labaid_beta -f scripts/setup_db_users.sql   # nonprod instance
+psql -h <host> -U postgres -d labaid      -f scripts/setup_db_users.sql   # labaid-db-prod
+psql -h <host> -U postgres -d labaid_beta -f scripts/setup_db_users.sql   # labaid-db-nonprod
 ```
 
 ### 4. Update secrets
 
 ```bash
-# Example for production
+# Production (labaid-db-prod)
 echo -n "postgresql://labaid_app:<password>@/labaid?host=/cloudsql/labaid-prod:us-central1:labaid-db-prod" | \
   gcloud secrets versions add DATABASE_URL --data-file=-
 
 echo -n "postgresql://labaid_migrate:<password>@/labaid?host=/cloudsql/labaid-prod:us-central1:labaid-db-prod" | \
   gcloud secrets versions add DATABASE_URL_MIGRATE --data-file=-
 
-# Repeat for beta/staging with their respective instances and passwords
+# Beta/Staging (labaid-db-nonprod)
+echo -n "postgresql://labaid_app:<password>@/labaid_beta?host=/cloudsql/labaid-prod:us-central1:labaid-db-nonprod" | \
+  gcloud secrets versions add DATABASE_URL_BETA --data-file=-
+
+echo -n "postgresql://labaid_migrate:<password>@/labaid_beta?host=/cloudsql/labaid-prod:us-central1:labaid-db-nonprod" | \
+  gcloud secrets versions add DATABASE_URL_BETA_MIGRATE --data-file=-
 ```
 
-### 5. Migrate data from old instance
-
-If migrating from the existing `labaid-db` single instance:
-
-```bash
-# Export from old instance
-gcloud sql export sql labaid-db gs://labaid-tfstate/migration/labaid.sql --database=labaid
-gcloud sql export sql labaid-db gs://labaid-tfstate/migration/labaid_beta.sql --database=labaid_beta
-
-# Import to new instances
-gcloud sql import sql labaid-db-prod    gs://labaid-tfstate/migration/labaid.sql      --database=labaid
-gcloud sql import sql labaid-db gs://labaid-tfstate/migration/labaid_beta.sql --database=labaid_beta
-```
-
-### 6. Deploy and verify
+### 5. Deploy and verify
 
 Deploy to beta first, verify health check passes, then promote through staging to production.
-
-### 7. Decommission old instance
-
-After confirming everything works on the new instances:
-
-```bash
-# Remove deletion protection first
-gcloud sql instances patch labaid-db --no-deletion-protection
-gcloud sql instances delete labaid-db
-```
 
 ---
 
