@@ -6,7 +6,7 @@
 
 | Instance | Databases | Purpose |
 |----------|-----------|---------|
-| `labaid-db-nonprod` | `labaid_beta` | Beta and staging (shared database) |
+| `labaid-db` | `labaid_beta` | Beta and staging (shared database) |
 | `labaid-db-prod` | `labaid` | Production only |
 
 Production data lives on a physically separate instance. Even with full access to the nonprod instance, you cannot reach production data.
@@ -60,9 +60,9 @@ This creates the instances, databases, users (with placeholder passwords), and I
 
 ```bash
 # Nonprod instance
-gcloud sql users set-password labaid_app     --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
-gcloud sql users set-password labaid_migrate --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
-gcloud sql users set-password labaid_readonly --instance=labaid-db-nonprod --password="$(openssl rand -base64 32)"
+gcloud sql users set-password labaid_app     --instance=labaid-db --password="$(openssl rand -base64 32)"
+gcloud sql users set-password labaid_migrate --instance=labaid-db --password="$(openssl rand -base64 32)"
+gcloud sql users set-password labaid_readonly --instance=labaid-db --password="$(openssl rand -base64 32)"
 
 # Prod instance
 gcloud sql users set-password labaid_app     --instance=labaid-db-prod --password="$(openssl rand -base64 32)"
@@ -104,7 +104,7 @@ gcloud sql export sql labaid-db gs://labaid-tfstate/migration/labaid_beta.sql --
 
 # Import to new instances
 gcloud sql import sql labaid-db-prod    gs://labaid-tfstate/migration/labaid.sql      --database=labaid
-gcloud sql import sql labaid-db-nonprod gs://labaid-tfstate/migration/labaid_beta.sql --database=labaid_beta
+gcloud sql import sql labaid-db gs://labaid-tfstate/migration/labaid_beta.sql --database=labaid_beta
 ```
 
 ### 6. Deploy and verify

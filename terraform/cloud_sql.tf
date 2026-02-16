@@ -1,14 +1,15 @@
 # ── Non-production instance (beta + staging) ────────────────────────────────
 
 resource "google_sql_database_instance" "nonprod" {
-  name                = "labaid-db-nonprod"
+  name                = "labaid-db"
   database_version    = "POSTGRES_16"
   region              = var.region
   deletion_protection = true
 
   settings {
-    tier              = "db-f1-micro"
-    availability_type = "ZONAL"
+    tier                         = "db-f1-micro"
+    availability_type            = "ZONAL"
+    deletion_protection_enabled  = true
 
     backup_configuration {
       enabled                        = true
@@ -28,6 +29,7 @@ resource "google_sql_database_instance" "nonprod" {
 
     ip_configuration {
       ipv4_enabled = true
+      require_ssl  = true
 
       dynamic "authorized_networks" {
         for_each = var.authorized_networks
@@ -36,6 +38,23 @@ resource "google_sql_database_instance" "nonprod" {
           value = authorized_networks.value.value
         }
       }
+    }
+
+    database_flags {
+      name  = "cloudsql.enable_pgaudit"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "pgaudit.log"
+      value = "all"
+    }
+
+    password_validation_policy {
+      enable_password_policy      = true
+      complexity                  = "COMPLEXITY_DEFAULT"
+      min_length                  = 8
+      disallow_username_substring = true
     }
   }
 }
@@ -55,8 +74,9 @@ resource "google_sql_database_instance" "prod" {
   deletion_protection = true
 
   settings {
-    tier              = "db-f1-micro" # upgrade to db-g1-small when needed
-    availability_type = "REGIONAL"    # HA for production
+    tier                         = "db-f1-micro" # upgrade to db-g1-small when needed
+    availability_type            = "REGIONAL"    # HA for production
+    deletion_protection_enabled  = true
 
     backup_configuration {
       enabled                        = true
@@ -76,6 +96,7 @@ resource "google_sql_database_instance" "prod" {
 
     ip_configuration {
       ipv4_enabled = true
+      require_ssl  = true
 
       dynamic "authorized_networks" {
         for_each = var.authorized_networks
@@ -89,6 +110,23 @@ resource "google_sql_database_instance" "prod" {
     database_flags {
       name  = "cloudsql.iam_authentication"
       value = "on"
+    }
+
+    database_flags {
+      name  = "cloudsql.enable_pgaudit"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "pgaudit.log"
+      value = "all"
+    }
+
+    password_validation_policy {
+      enable_password_policy      = true
+      complexity                  = "COMPLEXITY_DEFAULT"
+      min_length                  = 8
+      disallow_username_substring = true
     }
   }
 }

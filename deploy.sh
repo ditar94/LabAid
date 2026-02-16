@@ -154,7 +154,7 @@ deploy_frontend() {
 
 COMMAND="${1:-all}"
 
-NONPROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db-nonprod"
+NONPROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db"
 PROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db-prod"
 
 case "${COMMAND}" in
