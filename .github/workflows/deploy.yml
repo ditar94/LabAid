@@ -454,6 +454,8 @@ jobs:
           SECRET_KEY: unused
           DATABASE_URL: "sqlite://"
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           VERSION="v$(date -u +%Y.%m.%d)"
           MIGRATION_HEAD=$(cd backend && python -c "from alembic.config import Config; from alembic.script import ScriptDirectory; print(ScriptDirectory.from_config(Config('alembic.ini')).get_current_head())")
           SHORT_SHA="${GITHUB_SHA::8}"
