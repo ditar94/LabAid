@@ -270,10 +270,10 @@ app.include_router(admin.router)
 def health():
     checks: dict = {}
 
-    # Database connectivity
+    # Database connectivity + table permissions
     db = SessionLocal()
     try:
-        db.execute(text("SELECT 1"))
+        db.execute(text("SELECT count(*) FROM labs"))
         checks["database"] = "ok"
     except Exception:
         checks["database"] = "error"

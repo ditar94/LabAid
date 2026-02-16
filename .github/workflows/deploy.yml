@@ -146,7 +146,13 @@ jobs:
       - name: Health check
         run: |
           URL=$(gcloud run services describe labaid-backend-beta --region=${GCP_REGION} --project=${GCP_PROJECT} --format='value(status.url)')
-          curl -sf "${URL}/api/health" || echo "Health check failed (service may still be starting)"
+          for i in 1 2 3; do
+            RESPONSE=$(curl -sf "${URL}/api/health" 2>&1) && break
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"status":"ok"' || { echo "Health check failed!"; exit 1; }
 
   beta-frontend:
     name: Deploy Frontend (Beta)
@@ -236,7 +242,13 @@ jobs:
       - name: Health check
         run: |
           URL=$(gcloud run services describe labaid-backend-staging --region=${GCP_REGION} --project=${GCP_PROJECT} --format='value(status.url)')
-          curl -sf "${URL}/api/health" || echo "Health check failed (service may still be starting)"
+          for i in 1 2 3; do
+            RESPONSE=$(curl -sf "${URL}/api/health" 2>&1) && break
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"status":"ok"' || { echo "Health check failed!"; exit 1; }
 
   staging-frontend:
     name: Deploy Frontend (Staging)
@@ -334,7 +346,13 @@ jobs:
       - name: Health check
         run: |
           URL=$(gcloud run services describe labaid-backend --region=${GCP_REGION} --project=${GCP_PROJECT} --format='value(status.url)')
-          curl -sf "${URL}/api/health" || echo "Health check failed (service may still be starting)"
+          for i in 1 2 3; do
+            RESPONSE=$(curl -sf "${URL}/api/health" 2>&1) && break
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"status":"ok"' || { echo "Health check failed!"; exit 1; }
 
   prod-frontend:
     name: Deploy Frontend (Production)

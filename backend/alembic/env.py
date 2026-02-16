@@ -1,11 +1,14 @@
+import logging
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from app.core.config import settings
 from app.core.database import Base
 from app.models import models  # noqa: F401 — ensure all models are imported
+
+logger = logging.getLogger("alembic.env")
 
 config = context.config
 config.set_main_option(
@@ -17,6 +20,26 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+POST_MIGRATION_GRANTS = """
+GRANT USAGE ON SCHEMA public TO labaid_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO labaid_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO labaid_app;
+GRANT USAGE ON SCHEMA public TO labaid_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO labaid_readonly;
+"""
+
+
+def apply_grants(connection):
+    """Grant permissions to app and readonly users after migrations."""
+    for stmt in POST_MIGRATION_GRANTS.strip().split("\n"):
+        stmt = stmt.strip()
+        if stmt:
+            try:
+                connection.execute(text(stmt))
+            except Exception as e:
+                logger.warning("Grant failed (user may not exist): %s", e)
+    logger.info("Post-migration grants applied")
 
 
 def run_migrations_offline() -> None:
@@ -36,6 +59,8 @@ def run_migrations_online() -> None:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
+        apply_grants(connection)
+        connection.commit()
 
 
 if context.is_offline_mode():
