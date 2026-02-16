@@ -95,7 +95,7 @@ export default function LotTable({
           <th>Total</th>
           {storageEnabled && <th>Location</th>}
           {extraColumns?.map((col) => <th key={col.header}>{col.header}</th>)}
-          {!hideActions && <th style={{ width: 120, textAlign: "center" }}></th>}
+          {!hideActions && <th style={{ width: 100, textAlign: "center" }}></th>}
         </tr>
       </thead>
       <tbody>
@@ -105,8 +105,8 @@ export default function LotTable({
             {prefixColumn && <td>{prefixColumn.render(lot)}</td>}
 
             {/* Lot number + age badge + barcode + custom badges */}
-            <td style={{ whiteSpace: "nowrap" }}>
-              <span>{lot.lot_number}</span>
+            <td>
+              <span style={{ whiteSpace: "nowrap" }}>{lot.lot_number}</span>
               <LotAgeBadge age={lotAgeBadgeMap.get(lot.id)} />
               {customBadges?.get(lot.id)}
               {lot.vendor_barcode && (
@@ -154,7 +154,7 @@ export default function LotTable({
 
             {/* Storage location */}
             {storageEnabled && (
-              <td style={{ fontSize: "0.85em", whiteSpace: "nowrap" }}>
+              <td style={{ fontSize: "0.85em" }}>
                 {lot.storage_locations && lot.storage_locations.length > 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                     {lot.storage_locations.map((loc) => (

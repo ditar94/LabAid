@@ -4655,6 +4655,19 @@ table tbody td:nth-child(3) { /* Action column */
   transition: padding-top 100ms var(--ease-out), transform 100ms var(--ease-out);
 }
 
+.inventory-expanded-inner table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.inventory-expanded-inner td,
+.inventory-expanded-inner th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.82rem;
+  padding: 6px 5px;
+}
+
 .inventory-card.collapsing .inventory-expanded {
   grid-template-rows: 0fr;
   margin-top: 0;
