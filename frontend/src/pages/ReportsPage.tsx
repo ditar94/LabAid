@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 
-type ReportType = "lot-activity" | "usage" | "admin-activity" | "audit-trail";
+type ReportType = "lot-activity" | "usage" | "usage-trend" | "admin-activity" | "audit-trail";
 
 const REPORT_CARDS: {
   type: ReportType;
@@ -29,6 +29,7 @@ const REPORT_CARDS: {
   formats: ("csv" | "pdf")[];
   needsAntibody: boolean;
   needsLot: boolean;
+  dateLabel: string;
 }[] = [
   {
     type: "lot-activity",
@@ -39,16 +40,29 @@ const REPORT_CARDS: {
     formats: ["csv", "pdf"],
     needsAntibody: true,
     needsLot: true,
+    dateLabel: "Received Date",
   },
   {
     type: "usage",
-    title: "Usage Report",
+    title: "Usage by Lot",
     description:
-      "Consumption analytics: vials received vs consumed, average usage rate per week, and lot status.",
+      "Consumption analytics per lot: vials received vs consumed, average usage rate per week, and lot status.",
     icon: BarChart3,
     formats: ["csv", "pdf"],
     needsAntibody: true,
     needsLot: true,
+    dateLabel: "Usage Date",
+  },
+  {
+    type: "usage-trend",
+    title: "Usage by Month",
+    description:
+      "Monthly consumption trend: vials opened, active lots, and average usage rate per week for each month.",
+    icon: BarChart3,
+    formats: ["csv", "pdf"],
+    needsAntibody: true,
+    needsLot: false,
+    dateLabel: "Usage Date",
   },
   {
     type: "admin-activity",
@@ -59,6 +73,7 @@ const REPORT_CARDS: {
     formats: ["csv", "pdf"],
     needsAntibody: false,
     needsLot: false,
+    dateLabel: "Activity Date",
   },
   {
     type: "audit-trail",
@@ -69,6 +84,7 @@ const REPORT_CARDS: {
     formats: ["csv", "pdf"],
     needsAntibody: false,
     needsLot: false,
+    dateLabel: "Event Date",
   },
 ];
 
@@ -131,7 +147,7 @@ export default function ReportsPage() {
     }
   };
 
-  const isAllAntibodies = (activeReport === "lot-activity" || activeReport === "usage") && !filterAntibody;
+  const isAllAntibodies = (activeReport === "lot-activity" || activeReport === "usage" || activeReport === "usage-trend") && !filterAntibody;
 
   const buildParams = (): Record<string, string> => {
     const params: Record<string, string> = {};
@@ -144,7 +160,7 @@ export default function ReportsPage() {
     if (actionFilter && activeReport === "audit-trail") params.action = actionFilter;
     if (
       filterAntibody &&
-      (activeReport === "lot-activity" || activeReport === "usage")
+      (activeReport === "lot-activity" || activeReport === "usage" || activeReport === "usage-trend")
     )
       params.antibody_id = filterAntibody;
     if (
@@ -253,7 +269,7 @@ export default function ReportsPage() {
             </label>
           )}
           <label>
-            <span>{activeReport === "usage" ? "Usage Date" : activeReport === "lot-activity" ? "Received Date" : activeReport === "admin-activity" ? "Activity Date" : "Event Date"}</span>
+            <span>{card.dateLabel}</span>
             <MonthPicker
               value={dateRange}
               onChange={setDateRange}
@@ -519,6 +535,75 @@ export default function ReportsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      );
+    }
+
+    if (activeReport === "usage-trend") {
+      // Group by antibody
+      const groups: Record<string, any[]> = {};
+      for (const r of rows) {
+        const ab = r.antibody_full || r.antibody || "Unknown";
+        (groups[ab] ??= []).push(r);
+      }
+      const antibodyKeys = Object.keys(groups);
+      const isSingleAntibody = antibodyKeys.length === 1;
+
+      const renderTrendTable = (groupRows: any[]) => {
+        const totalVials = groupRows[0]?.total_vials ?? 0;
+        const totalAvg = groupRows[0]?.total_avg_week ?? "";
+        return (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Vials Opened</th>
+                  <th>Lots Active</th>
+                  <th>Avg/Wk</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupRows.map((r: any, i: number) => (
+                  <tr key={i}>
+                    <td>{r.month_label}</td>
+                    <td>{r.vials_opened}</td>
+                    <td>{r.lots_active}</td>
+                    <td>{r.avg_week}</td>
+                  </tr>
+                ))}
+                {totalVials > 0 && (
+                  <tr style={{ fontWeight: 600, borderTop: "2px solid var(--border)" }}>
+                    <td>Total</td>
+                    <td>{totalVials}</td>
+                    <td></td>
+                    <td>{totalAvg}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      };
+
+      if (!isSingleAntibody) {
+        return (
+          <div className="report-preview">
+            <h3>{heading}</h3>
+            {antibodyKeys.map((abName) => (
+              <div key={abName} style={{ marginBottom: 20 }}>
+                <h4 style={{ fontSize: "0.85rem", margin: "12px 0 6px", color: "var(--text-secondary)" }}>{abName}</h4>
+                {renderTrendTable(groups[abName])}
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      return (
+        <div className="report-preview">
+          <h3>{heading}</h3>
+          {renderTrendTable(rows)}
         </div>
       );
     }

@@ -196,6 +196,44 @@ def render_usage_pdf(data: list[dict], lab_name: str,
     return bytes(pdf.output())
 
 
+def render_usage_trend_pdf(data: list[dict], lab_name: str,
+                           pulled_by: str = "") -> bytes:
+    """Render usage trend grouped by antibody, with a total row per group."""
+    columns = [
+        ("Month", 40), ("Vials Opened", 30), ("Lots Active", 30), ("Avg/Wk", 30),
+    ]
+    pdf = LabAidPDF("Usage by Month", lab_name, pulled_by)
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    widths = [c[1] for c in columns]
+
+    groups: dict[str, list[dict]] = {}
+    for row in data:
+        key = row.get("antibody_full") or "Unknown"
+        groups.setdefault(key, []).append(row)
+
+    for group_name, group_rows in groups.items():
+        pdf._section_header(group_name)
+        pdf._table_header(columns)
+        for row in group_rows:
+            pdf._table_row([
+                row["month_label"], str(row["vials_opened"]),
+                str(row["lots_active"]), row["avg_week"],
+            ], widths)
+
+        # Total row
+        total_vials = group_rows[0].get("total_vials", 0)
+        total_avg = group_rows[0].get("total_avg_week", "")
+        if total_vials:
+            pdf.set_font("Helvetica", "B", 7)
+            pdf.set_fill_color(245, 245, 250)
+            pdf._table_row([
+                "Total", str(total_vials), "", total_avg,
+            ], widths)
+
+    return bytes(pdf.output())
+
+
 def render_admin_activity_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
     columns = [
         ("Timestamp", 42), ("Action", 40), ("Performed By", 40),

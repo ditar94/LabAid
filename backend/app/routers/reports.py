@@ -10,17 +10,19 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.middleware.auth import require_role
-from app.models.models import Antibody, Lab, User, UserRole
+from app.models.models import Antibody, Lab, Lot, User, UserRole
 from app.services.csv_renderer import (
     render_audit_trail_csv,
     render_lot_activity_csv,
     render_usage_csv,
+    render_usage_trend_csv,
     render_admin_activity_csv,
 )
 from app.services.pdf_renderer import (
     render_audit_trail_pdf,
     render_lot_activity_pdf,
     render_usage_pdf,
+    render_usage_trend_pdf,
     render_admin_activity_pdf,
 )
 from app.services.report_service import (
@@ -29,6 +31,7 @@ from app.services.report_service import (
     get_lot_activity_range,
     get_usage_data,
     get_usage_range,
+    get_usage_trend_data,
     get_admin_activity_data,
     get_admin_activity_range,
 )
@@ -53,12 +56,46 @@ def _antibody_display(db: Session, antibody_id: UUID | None) -> str:
     return ""
 
 
-def _report_filename(report_type: str, antibody_name: str, ext: str) -> str:
-    """Build filename: ReportType_Antibody_YYYYMMDD.ext"""
-    ab_part = "AllAntibodies" if not antibody_name else (
-        re.sub(r"[^A-Za-z0-9_-]", "-", antibody_name.replace(" ", "-"))[:40]
-    )
-    return f"{report_type}_{ab_part}_{date.today().strftime('%Y%m%d')}.{ext}"
+def _lot_number(db: Session, lot_id: UUID | None) -> str | None:
+    if not lot_id:
+        return None
+    lot = db.query(Lot.lot_number).filter(Lot.id == lot_id).first()
+    return lot.lot_number if lot else None
+
+
+def _slug(text: str, max_len: int = 40) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "-", text.replace(" ", "-"))[:max_len]
+
+
+def _date_range_part(date_from: date | None, date_to: date | None) -> str:
+    """Format date range for filename: 'Jan2025-Mar2025' or 'AllTime'."""
+    months = [
+        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+    if not date_from and not date_to:
+        return "AllTime"
+    if date_from and date_to:
+        f = f"{months[date_from.month]}{date_from.year}"
+        t = f"{months[date_to.month]}{date_to.year}"
+        return f if f == t else f"{f}-{t}"
+    if date_from:
+        return f"{months[date_from.month]}{date_from.year}-Present"
+    return f"Through-{months[date_to.month]}{date_to.year}"  # type: ignore[union-attr]
+
+
+def _report_filename(
+    report_type: str, antibody_name: str, ext: str,
+    date_from: date | None = None, date_to: date | None = None,
+    lot_number: str | None = None,
+) -> str:
+    """Build filename: ReportType_Antibody[_LotXXX]_DateRange.ext"""
+    ab_part = "AllAntibodies" if not antibody_name else _slug(antibody_name)
+    parts = [report_type, ab_part]
+    if lot_number:
+        parts.append(f"Lot{_slug(lot_number, 20)}")
+    parts.append(_date_range_part(date_from, date_to))
+    return f"{'_'.join(parts)}.{ext}"
 
 
 def _file_response(content: bytes, media_type: str, filename: str):
@@ -115,9 +152,10 @@ def lot_activity_csv(
         lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
     ab_name = _antibody_display(db, antibody_id)
+    lot_num = _lot_number(db, lot_id)
     return _file_response(
         render_lot_activity_csv(data, include_antibody=not antibody_id),
-        "text/csv", _report_filename("LotActivity", ab_name, "csv"),
+        "text/csv", _report_filename("LotActivity", ab_name, "csv", date_from, date_to, lot_num),
     )
 
 
@@ -135,10 +173,11 @@ def lot_activity_pdf(
         lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
     ab_name = _antibody_display(db, antibody_id)
+    lot_num = _lot_number(db, lot_id)
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
         render_lot_activity_pdf(data, lab_name, pulled_by=current_user.full_name),
-        "application/pdf", _report_filename("LotActivity", ab_name, "pdf"),
+        "application/pdf", _report_filename("LotActivity", ab_name, "pdf", date_from, date_to, lot_num),
     )
 
 
@@ -188,9 +227,10 @@ def usage_csv(
         lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
     ab_name = _antibody_display(db, antibody_id)
+    lot_num = _lot_number(db, lot_id)
     return _file_response(
         render_usage_csv(data, include_antibody=not antibody_id),
-        "text/csv", _report_filename("UsageReport", ab_name, "csv"),
+        "text/csv", _report_filename("UsageByLot", ab_name, "csv", date_from, date_to, lot_num),
     )
 
 
@@ -208,10 +248,81 @@ def usage_pdf(
         lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
     ab_name = _antibody_display(db, antibody_id)
+    lot_num = _lot_number(db, lot_id)
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
         render_usage_pdf(data, lab_name, pulled_by=current_user.full_name),
-        "application/pdf", _report_filename("UsageReport", ab_name, "pdf"),
+        "application/pdf", _report_filename("UsageByLot", ab_name, "pdf", date_from, date_to, lot_num),
+    )
+
+
+# ── Usage Trend (by Month) ───────────────────────────────────────────────
+
+
+@router.get("/usage-trend/range")
+def usage_trend_range(
+    antibody_id: UUID | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    mn, mx = get_usage_range(db, lab_id=current_user.lab_id, antibody_id=antibody_id)
+    return {
+        "min": mn.isoformat() if mn else None,
+        "max": mx.isoformat() if mx else None,
+    }
+
+
+@router.get("/usage-trend/preview")
+def usage_trend_preview(
+    antibody_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_usage_trend_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        date_from=date_from, date_to=date_to,
+    )
+    return {"rows": data[:200], "total": len(data)}
+
+
+@router.get("/usage-trend/csv")
+def usage_trend_csv(
+    antibody_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_usage_trend_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        date_from=date_from, date_to=date_to,
+    )
+    ab_name = _antibody_display(db, antibody_id)
+    return _file_response(
+        render_usage_trend_csv(data, include_antibody=not antibody_id),
+        "text/csv", _report_filename("UsageByMonth", ab_name, "csv", date_from, date_to),
+    )
+
+
+@router.get("/usage-trend/pdf")
+def usage_trend_pdf(
+    antibody_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_usage_trend_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        date_from=date_from, date_to=date_to,
+    )
+    ab_name = _antibody_display(db, antibody_id)
+    lab_name = _lab_name(db, current_user.lab_id)
+    return _file_response(
+        render_usage_trend_pdf(data, lab_name, pulled_by=current_user.full_name),
+        "application/pdf", _report_filename("UsageByMonth", ab_name, "pdf", date_from, date_to),
     )
 
 
@@ -253,7 +364,7 @@ def admin_activity_csv(
     data = get_admin_activity_data(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
     )
-    return _file_response(render_admin_activity_csv(data), "text/csv", _report_filename("AdminActivity", "", "csv"))
+    return _file_response(render_admin_activity_csv(data), "text/csv", _report_filename("AdminActivity", "", "csv", date_from, date_to))
 
 
 @router.get("/admin-activity/pdf")
@@ -269,7 +380,7 @@ def admin_activity_pdf(
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
         render_admin_activity_pdf(data, lab_name, pulled_by=current_user.full_name),
-        "application/pdf", _report_filename("AdminActivity", "", "pdf"),
+        "application/pdf", _report_filename("AdminActivity", "", "pdf", date_from, date_to),
     )
 
 
@@ -305,7 +416,7 @@ def audit_trail_csv(
         db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
         entity_type=entity_type, action=action,
     )
-    return _file_response(render_audit_trail_csv(data), "text/csv", _report_filename("AuditTrail", "", "csv"))
+    return _file_response(render_audit_trail_csv(data), "text/csv", _report_filename("AuditTrail", "", "csv", date_from, date_to))
 
 
 @router.get("/audit-trail/pdf")
@@ -324,5 +435,5 @@ def audit_trail_pdf(
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
         render_audit_trail_pdf(data, lab_name, pulled_by=current_user.full_name),
-        "application/pdf", _report_filename("AuditTrail", "", "pdf"),
+        "application/pdf", _report_filename("AuditTrail", "", "pdf", date_from, date_to),
     )

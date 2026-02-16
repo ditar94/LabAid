@@ -4,6 +4,7 @@ Each function returns structured dicts ready for rendering into CSV or PDF.
 All queries are lab-scoped and read-only.
 """
 
+import calendar
 from datetime import date, datetime, timedelta, timezone
 from math import ceil
 from uuid import UUID
@@ -355,6 +356,129 @@ def get_usage_data(
         del r["sealed_count"]
         del r["_first_opened_dt"]
         del r["_last_opened_dt"]
+
+    return result
+
+
+# ── Usage Trend (by Month) ────────────────────────────────────────────────
+
+
+def get_usage_trend_data(
+    db: Session,
+    *,
+    lab_id: UUID,
+    antibody_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict]:
+    """Monthly consumption buckets: vials opened, lots active, avg/week.
+
+    Returns one row per antibody per month. Months with zero usage are included
+    so the trend has no gaps.
+    """
+    # Resolve the effective date range
+    if not date_from or not date_to:
+        mn, mx = get_usage_range(db, lab_id=lab_id, antibody_id=antibody_id)
+        if not mn or not mx:
+            return []
+        if not date_from:
+            date_from = mn.date().replace(day=1)
+        if not date_to:
+            date_to = mx.date()
+
+    date_to_exclusive = _make_date_inclusive(date_to)
+
+    # Query vials with opened_at in range, joined to lots for filtering
+    vials_q = (
+        db.query(
+            Vial.opened_at,
+            Vial.lot_id,
+            Lot.antibody_id,
+        )
+        .join(Lot, Vial.lot_id == Lot.id)
+        .filter(
+            Lot.lab_id == lab_id,
+            Vial.opened_at.isnot(None),
+            Vial.opened_at >= date_from,
+        )
+    )
+    if date_to_exclusive:
+        vials_q = vials_q.filter(Vial.opened_at < date_to_exclusive)
+    if antibody_id:
+        vials_q = vials_q.filter(Lot.antibody_id == antibody_id)
+
+    vial_rows = vials_q.all()
+
+    # Resolve antibody names
+    ab_ids = {r.antibody_id for r in vial_rows}
+    if not ab_ids:
+        # No data at all — if we have a date range, still return empty months
+        if antibody_id:
+            ab_ids = {antibody_id}
+        else:
+            return []
+
+    ab_map = _antibody_name_map(db, ab_ids)
+    ab_full = _antibody_full_map(db, ab_ids)
+
+    # Bucket vials by (antibody_id, year, month)
+    buckets: dict[tuple[UUID, int, int], dict] = {}
+    for opened_at, lot_id, ab_id in vial_rows:
+        key = (ab_id, opened_at.year, opened_at.month)
+        if key not in buckets:
+            buckets[key] = {"vials": 0, "lots": set()}
+        buckets[key]["vials"] += 1
+        buckets[key]["lots"].add(lot_id)
+
+    # Generate all months in the range for each antibody (include zero months)
+    def _iter_months(start: date, end: date):
+        y, m = start.year, start.month
+        while (y, m) <= (end.year, end.month):
+            yield y, m
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+
+    month_names = [
+        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+
+    result = []
+    for ab_id in sorted(ab_ids, key=lambda a: ab_map.get(a, "")):
+        ab_total_vials = 0
+        ab_rows = []
+
+        for year, month in _iter_months(date_from, date_to):
+            key = (ab_id, year, month)
+            vials_opened = buckets.get(key, {}).get("vials", 0)
+            lots_active = len(buckets.get(key, {}).get("lots", set()))
+            days = calendar.monthrange(year, month)[1]
+            weeks = days / 7
+            avg_week = f"{vials_opened / weeks:.1f}" if vials_opened > 0 else "0.0"
+
+            ab_total_vials += vials_opened
+            ab_rows.append({
+                "antibody": ab_map.get(ab_id, ""),
+                "antibody_full": ab_full.get(ab_id, ""),
+                "month": f"{year}-{month:02d}",
+                "month_label": f"{month_names[month]} {year}",
+                "vials_opened": vials_opened,
+                "lots_active": lots_active,
+                "avg_week": avg_week,
+            })
+
+        # Compute total row for this antibody
+        total_days = (date_to - date_from).days + 1  # inclusive
+        total_weeks = max(1, total_days / 7)
+        total_avg = f"{ab_total_vials / total_weeks:.1f}" if ab_total_vials > 0 else "0.0"
+
+        for r in ab_rows:
+            r["total_vials"] = ab_total_vials
+            r["total_avg_week"] = total_avg
+
+        result.extend(ab_rows)
 
     return result
 
