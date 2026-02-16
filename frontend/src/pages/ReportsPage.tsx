@@ -343,7 +343,7 @@ export default function ReportsPage() {
       if (isAllAntibodies) {
         const groups: Record<string, any[]> = {};
         for (const r of rows) {
-          const ab = r.antibody || "Unknown";
+          const ab = r.antibody_full || r.antibody || "Unknown";
           (groups[ab] ??= []).push(r);
         }
         return (
@@ -433,7 +433,7 @@ export default function ReportsPage() {
       if (isAllAntibodies) {
         const groups: Record<string, any[]> = {};
         for (const r of rows) {
-          const ab = r.antibody || "Unknown";
+          const ab = r.antibody_full || r.antibody || "Unknown";
           (groups[ab] ??= []).push(r);
         }
         return (
@@ -454,6 +454,7 @@ export default function ReportsPage() {
                         <th>First Opened</th>
                         <th>Last Opened</th>
                         <th>Avg/Wk</th>
+                        <th>Ab Avg/Wk</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -468,6 +469,7 @@ export default function ReportsPage() {
                           <td>{r.first_opened || "\u2014"}</td>
                           <td>{r.last_opened || "\u2014"}</td>
                           <td>{r.avg_week || "\u2014"}</td>
+                          <td>{r.ab_avg_week || "\u2014"}</td>
                           <td>{r.status}</td>
                         </tr>
                       ))}
@@ -495,6 +497,7 @@ export default function ReportsPage() {
                   <th>First Opened</th>
                   <th>Last Opened</th>
                   <th>Avg/Wk</th>
+                  <th>Ab Avg/Wk</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -509,6 +512,7 @@ export default function ReportsPage() {
                     <td>{r.first_opened || "\u2014"}</td>
                     <td>{r.last_opened || "\u2014"}</td>
                     <td>{r.avg_week || "\u2014"}</td>
+                    <td>{r.ab_avg_week || "\u2014"}</td>
                     <td>{r.status}</td>
                   </tr>
                 ))}

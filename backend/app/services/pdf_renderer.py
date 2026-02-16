@@ -1,6 +1,6 @@
 """PDF rendering for compliance reports using fpdf2."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fpdf import FPDF
 
@@ -32,7 +32,7 @@ class LabAidPDF(FPDF):
         self.lab_name = lab_name
         self.pulled_by = pulled_by
         self.subtitle = subtitle
-        self.generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        self.generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.set_auto_page_break(auto=True, margin=20)
 
     def header(self):
@@ -85,6 +85,17 @@ class LabAidPDF(FPDF):
             self.multi_cell(w, 4, val, border=1, new_x="RIGHT", new_y="TOP", max_line_height=row_h)
         self.set_y(y_start + row_h)
 
+    def _section_header(self, title: str):
+        """Render a section title (e.g., antibody name) as a bold row."""
+        if self.get_y() + 14 > self.h - 20:
+            self.add_page()
+        self.ln(4)
+        self.set_font("Helvetica", "B", 10)
+        self.set_text_color(50, 50, 50)
+        self.cell(0, 7, _safe(title), new_x="LMARGIN", new_y="NEXT")
+        self.set_text_color(0, 0, 0)
+        self.ln(1)
+
 
 def _render_table(title: str, lab_name: str, pulled_by: str,
                   columns: list[tuple[str, int]], data: list[dict],
@@ -100,42 +111,89 @@ def _render_table(title: str, lab_name: str, pulled_by: str,
     return bytes(pdf.output())
 
 
+def _render_grouped_table(title: str, lab_name: str, pulled_by: str,
+                          columns: list[tuple[str, int]], data: list[dict],
+                          row_fn, group_key: str = "antibody_full") -> bytes:
+    """Render a PDF with data grouped by antibody, each group as its own table."""
+    pdf = LabAidPDF(title, lab_name, pulled_by)
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    widths = [c[1] for c in columns]
+
+    groups: dict[str, list[dict]] = {}
+    for row in data:
+        key = row.get(group_key) or "Unknown"
+        groups.setdefault(key, []).append(row)
+
+    for group_name, group_rows in groups.items():
+        pdf._section_header(group_name)
+        pdf._table_header(columns)
+        for row in group_rows:
+            pdf._table_row(row_fn(row), widths)
+
+    return bytes(pdf.output())
+
+
 def render_lot_activity_pdf(data: list[dict], lab_name: str,
-                            pulled_by: str = "", antibody_name: str = "") -> bytes:
+                            pulled_by: str = "") -> bytes:
     columns = [
-        ("Antibody", 34), ("Lot #", 26), ("Expiration", 22), ("Received", 22),
-        ("Received By", 30), ("QC Doc", 14), ("QC Approved", 22),
-        ("QC Approved By", 30), ("First Opened", 22), ("Last Opened", 22),
+        ("Lot #", 30), ("Expiration", 24), ("Received", 24),
+        ("Received By", 35), ("QC Doc", 16), ("QC Approved", 24),
+        ("QC Approved By", 35), ("First Opened", 24), ("Last Opened", 24),
     ]
-    return _render_table(
+    return _render_grouped_table(
         "Lot Activity Report", lab_name, pulled_by, columns, data,
         lambda r: [
-            r["antibody"], r["lot_number"], r["expiration"], r["received"],
+            r["lot_number"], r["expiration"], r["received"],
             r["received_by"], r["qc_doc"], r["qc_approved"],
             r["qc_approved_by"], r["first_opened"], r["last_opened"],
         ],
-        subtitle=f"Antibody: {antibody_name}" if antibody_name else "",
     )
 
 
 def render_usage_pdf(data: list[dict], lab_name: str,
-                     pulled_by: str = "", antibody_name: str = "") -> bytes:
+                     pulled_by: str = "") -> bytes:
     columns = [
-        ("Antibody", 34), ("Lot #", 26), ("Expiration", 22), ("Received", 22),
-        ("Received", 22), ("Consumed", 20),
-        ("First Opened", 24), ("Last Opened", 24),
-        ("Avg/Wk", 18), ("Status", 22),
+        ("Lot #", 30), ("Expiration", 24), ("Received", 24),
+        ("Received", 24), ("Consumed", 22),
+        ("First Opened", 26), ("Last Opened", 26),
+        ("Avg/Wk", 20), ("Status", 24),
     ]
-    return _render_table(
-        "Usage Report", lab_name, pulled_by, columns, data,
-        lambda r: [
-            r["antibody"], r["lot_number"], r["expiration"], r["received"],
-            str(r["vials_received"]), str(r["vials_consumed"]),
-            r["first_opened"], r["last_opened"],
-            r["avg_week"], r["status"],
-        ],
-        subtitle=f"Antibody: {antibody_name}" if antibody_name else "",
-    )
+    pdf = LabAidPDF("Usage Report", lab_name, pulled_by)
+    pdf.alias_nb_pages()
+    pdf.add_page()
+    widths = [c[1] for c in columns]
+
+    groups: dict[str, list[dict]] = {}
+    for row in data:
+        key = row.get("antibody_full") or "Unknown"
+        groups.setdefault(key, []).append(row)
+
+    for group_name, group_rows in groups.items():
+        pdf._section_header(group_name)
+        pdf._table_header(columns)
+        for row in group_rows:
+            pdf._table_row([
+                row["lot_number"], row["expiration"], row["received"],
+                str(row["vials_received"]), str(row["vials_consumed"]),
+                row["first_opened"], row["last_opened"],
+                row["avg_week"], row["status"],
+            ], widths)
+
+        # Antibody summary line
+        ab_avg = group_rows[0].get("ab_avg_week", "")
+        total_consumed = sum(r["vials_consumed"] for r in group_rows)
+        total_received = sum(r["vials_received"] for r in group_rows)
+        if ab_avg:
+            pdf.set_font("Helvetica", "I", 7)
+            pdf.set_text_color(100, 100, 100)
+            pdf.cell(0, 5, _safe(
+                f"Antibody total: {total_consumed}/{total_received} vials consumed  |  "
+                f"Weighted avg: {ab_avg} vials/week"
+            ), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+
+    return bytes(pdf.output())
 
 
 def render_admin_activity_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:

@@ -52,12 +52,29 @@ def _fmt_date(dt: datetime | date | None) -> str:
 
 
 def _antibody_name_map(db: Session, antibody_ids: set[UUID]) -> dict[UUID, str]:
+    """Short name: 'Target Fluorochrome'."""
     if not antibody_ids:
         return {}
     rows = db.query(Antibody.id, Antibody.target, Antibody.fluorochrome).filter(
         Antibody.id.in_(antibody_ids)
     ).all()
     return {r.id: f"{r.target} {r.fluorochrome}".strip() for r in rows}
+
+
+def _antibody_full_map(db: Session, antibody_ids: set[UUID]) -> dict[UUID, str]:
+    """Full label: 'Target Fluorochrome — Vendor'."""
+    if not antibody_ids:
+        return {}
+    rows = db.query(Antibody.id, Antibody.target, Antibody.fluorochrome, Antibody.vendor).filter(
+        Antibody.id.in_(antibody_ids)
+    ).all()
+    result = {}
+    for r in rows:
+        name = f"{r.target} {r.fluorochrome}".strip()
+        if r.vendor:
+            name += f" - {r.vendor}"
+        result[r.id] = name
+    return result
 
 
 def get_lot_activity_data(
@@ -120,8 +137,10 @@ def get_lot_activity_data(
     all_user_ids = set(received_by_lot.values()) | approver_ids
     user_map = _resolve_user_map(db, all_user_ids)
 
-    # Resolve antibody names
-    ab_map = _antibody_name_map(db, {l.antibody_id for l in lots})
+    # Resolve antibody names (short for column, full for PDF headers)
+    ab_ids = {l.antibody_id for l in lots}
+    ab_map = _antibody_name_map(db, ab_ids)
+    ab_full = _antibody_full_map(db, ab_ids)
 
     result = []
     for lot in lots:
@@ -131,6 +150,7 @@ def get_lot_activity_data(
 
         result.append({
             "antibody": ab_map.get(lot.antibody_id, ""),
+            "antibody_full": ab_full.get(lot.antibody_id, ""),
             "lot_number": lot.lot_number,
             "expiration": _fmt_date(lot.expiration_date),
             "received": _fmt_date(min(received_dates)) if received_dates else "",
@@ -194,7 +214,9 @@ def get_usage_data(
         vials_by_lot.setdefault(v.lot_id, []).append(v)
 
     # Resolve antibody names
-    ab_map = _antibody_name_map(db, {l.antibody_id for l in lots})
+    ab_ids = {l.antibody_id for l in lots}
+    ab_map = _antibody_name_map(db, ab_ids)
+    ab_full = _antibody_full_map(db, ab_ids)
 
     now = datetime.now(timezone.utc)
     result = []
@@ -230,11 +252,13 @@ def get_usage_data(
 
         result.append({
             "antibody": ab_map.get(lot.antibody_id, ""),
+            "antibody_full": ab_full.get(lot.antibody_id, ""),
             "lot_number": lot.lot_number,
             "lot_id": str(lot.id),
             "expiration_raw": lot.expiration_date,
             "is_archived": lot.is_archived,
             "sealed_count": sealed,
+            "_first_opened_dt": first_opened,
             "expiration": _fmt_date(lot.expiration_date),
             "received": _fmt_date(min(received_dates)) if received_dates else "",
             "vials_received": total,
@@ -266,12 +290,37 @@ def get_usage_data(
                 elif r in eligible:
                     r["status"] = "New"
 
+    # Antibody-level weighted average: total consumed / weeks since first open
+    ab_stats: dict[str, dict] = {}
+    for r in result:
+        ab = r["antibody"]
+        if ab not in ab_stats:
+            ab_stats[ab] = {"consumed": 0, "first_opened": None}
+        ab_stats[ab]["consumed"] += r["vials_consumed"]
+        fo = r["_first_opened_dt"]
+        if fo:
+            cur = ab_stats[ab]["first_opened"]
+            if cur is None or fo < cur:
+                ab_stats[ab]["first_opened"] = fo
+
+    ab_avg: dict[str, str] = {}
+    for ab, stats in ab_stats.items():
+        if stats["first_opened"] and stats["consumed"] > 0:
+            weeks = max(1, (now - stats["first_opened"]).days / 7)
+            ab_avg[ab] = f"{stats['consumed'] / weeks:.1f}"
+        else:
+            ab_avg[ab] = ""
+
+    for r in result:
+        r["ab_avg_week"] = ab_avg.get(r["antibody"], "")
+
     # Remove internal fields before returning
     for r in result:
         del r["lot_id"]
         del r["expiration_raw"]
         del r["is_archived"]
         del r["sealed_count"]
+        del r["_first_opened_dt"]
 
     return result
 
