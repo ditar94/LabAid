@@ -551,6 +551,7 @@ export default function ReportsPage() {
 
       const renderTrendTable = (groupRows: any[]) => {
         const totalVials = groupRows[0]?.total_vials ?? 0;
+        const totalWeeks = groupRows[0]?.total_weeks ?? "";
         const totalAvg = groupRows[0]?.total_avg_week ?? "";
         return (
           <div className="table-scroll">
@@ -560,6 +561,7 @@ export default function ReportsPage() {
                   <th>Month</th>
                   <th>Vials Opened</th>
                   <th>Lots Active</th>
+                  <th>Weeks</th>
                   <th>Avg/Wk</th>
                 </tr>
               </thead>
@@ -569,6 +571,7 @@ export default function ReportsPage() {
                     <td>{r.month_label}</td>
                     <td>{r.vials_opened}</td>
                     <td>{r.lots_active}</td>
+                    <td>{r.weeks}</td>
                     <td>{r.avg_week}</td>
                   </tr>
                 ))}
@@ -577,6 +580,7 @@ export default function ReportsPage() {
                     <td>Total</td>
                     <td>{totalVials}</td>
                     <td></td>
+                    <td>{totalWeeks}</td>
                     <td>{totalAvg}</td>
                   </tr>
                 )}

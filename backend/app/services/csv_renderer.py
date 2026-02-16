@@ -45,14 +45,14 @@ def render_usage_csv(data: list[dict], include_antibody: bool = False) -> bytes:
 
 
 def render_usage_trend_csv(data: list[dict], include_antibody: bool = False) -> bytes:
-    headers = ["Month", "Vials Opened", "Lots Active", "Avg/Wk"]
+    headers = ["Month", "Vials Opened", "Lots Active", "Weeks", "Avg/Wk"]
     if include_antibody:
         headers.insert(0, "Antibody")
     return _render(
         headers,
         [([row["antibody"]] if include_antibody else []) + [
             row["month_label"], str(row["vials_opened"]),
-            str(row["lots_active"]), row["avg_week"],
+            str(row["lots_active"]), row["weeks"], row["avg_week"],
         ] for row in data],
     )
 

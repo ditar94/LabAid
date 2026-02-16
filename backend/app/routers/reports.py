@@ -1,7 +1,7 @@
 """Reports router for compliance exports (CSV + PDF downloads and JSON previews)."""
 
 import re
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -68,20 +68,36 @@ def _slug(text: str, max_len: int = 40) -> str:
 
 
 def _date_range_part(date_from: date | None, date_to: date | None) -> str:
-    """Format date range for filename: 'Jan2025-Mar2025' or 'AllTime'."""
+    """Format date range for filename.
+
+    MonthPicker sends date_to as exclusive (1st of next month).
+    Returns: "" (no range), "May2026" (single month), "2026" (full year),
+    or "May2026-Jul2026" (multi-month range).
+    """
+    if not date_from and not date_to:
+        return ""
     months = [
         "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ]
-    if not date_from and not date_to:
-        return "AllTime"
-    if date_from and date_to:
+    # Convert exclusive date_to to inclusive end month
+    end = (date_to - timedelta(days=1)) if date_to else None
+    if date_from and end:
+        # Full year: Jan–Dec of same year
+        if date_from.month == 1 and end.month == 12 and date_from.year == end.year:
+            return str(date_from.year)
+        # Single month
+        if date_from.year == end.year and date_from.month == end.month:
+            return f"{months[date_from.month]}{date_from.year}"
+        # Multi-month range
         f = f"{months[date_from.month]}{date_from.year}"
-        t = f"{months[date_to.month]}{date_to.year}"
-        return f if f == t else f"{f}-{t}"
+        t = f"{months[end.month]}{end.year}"
+        return f"{f}-{t}"
     if date_from:
         return f"{months[date_from.month]}{date_from.year}-Present"
-    return f"Through-{months[date_to.month]}{date_to.year}"  # type: ignore[union-attr]
+    if end:
+        return f"Through-{months[end.month]}{end.year}"
+    return ""
 
 
 def _report_filename(
@@ -89,12 +105,14 @@ def _report_filename(
     date_from: date | None = None, date_to: date | None = None,
     lot_number: str | None = None,
 ) -> str:
-    """Build filename: ReportType_Antibody[_LotXXX]_DateRange.ext"""
+    """Build filename: ReportType_Antibody[_LotXXX][_DateRange].ext"""
     ab_part = "AllAntibodies" if not antibody_name else _slug(antibody_name)
     parts = [report_type, ab_part]
     if lot_number:
         parts.append(f"Lot{_slug(lot_number, 20)}")
-    parts.append(_date_range_part(date_from, date_to))
+    date_part = _date_range_part(date_from, date_to)
+    if date_part:
+        parts.append(date_part)
     return f"{'_'.join(parts)}.{ext}"
 
 

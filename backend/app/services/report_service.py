@@ -376,7 +376,9 @@ def get_usage_trend_data(
     Returns one row per antibody per month. Months with zero usage are included
     so the trend has no gaps.
     """
-    # Resolve the effective date range
+    # Resolve the effective date range.
+    # date_to is normalised to *exclusive* format (first day of the month
+    # after the intended end), matching what MonthPicker sends.
     if not date_from or not date_to:
         mn, mx = get_usage_range(db, lab_id=lab_id, antibody_id=antibody_id)
         if not mn or not mx:
@@ -384,10 +386,11 @@ def get_usage_trend_data(
         if not date_from:
             date_from = mn.date().replace(day=1)
         if not date_to:
-            date_to = mx.date()
+            # Set to first of the month after max date (exclusive format)
+            y, m = mx.date().year, mx.date().month
+            date_to = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
 
-    date_to_exclusive = _make_date_inclusive(date_to)
-
+    # date_to is already exclusive — use directly for SQL filtering
     # Query vials with opened_at in range, joined to lots for filtering
     vials_q = (
         db.query(
@@ -402,8 +405,8 @@ def get_usage_trend_data(
             Vial.opened_at >= date_from,
         )
     )
-    if date_to_exclusive:
-        vials_q = vials_q.filter(Vial.opened_at < date_to_exclusive)
+    if date_to:
+        vials_q = vials_q.filter(Vial.opened_at < date_to)
     if antibody_id:
         vials_q = vials_q.filter(Lot.antibody_id == antibody_id)
 
@@ -430,7 +433,10 @@ def get_usage_trend_data(
         buckets[key]["vials"] += 1
         buckets[key]["lots"].add(lot_id)
 
-    # Generate all months in the range for each antibody (include zero months)
+    # Generate all months in the range for each antibody (include zero months).
+    # iter_end is the last *inclusive* day — subtract 1 from exclusive date_to.
+    iter_end = date_to - timedelta(days=1)
+
     def _iter_months(start: date, end: date):
         y, m = start.year, start.month
         while (y, m) <= (end.year, end.month):
@@ -450,7 +456,7 @@ def get_usage_trend_data(
         ab_total_vials = 0
         ab_rows = []
 
-        for year, month in _iter_months(date_from, date_to):
+        for year, month in _iter_months(date_from, iter_end):
             key = (ab_id, year, month)
             vials_opened = buckets.get(key, {}).get("vials", 0)
             lots_active = len(buckets.get(key, {}).get("lots", set()))
@@ -466,16 +472,18 @@ def get_usage_trend_data(
                 "month_label": f"{month_names[month]} {year}",
                 "vials_opened": vials_opened,
                 "lots_active": lots_active,
+                "weeks": f"{weeks:.2f}",
                 "avg_week": avg_week,
             })
 
         # Compute total row for this antibody
-        total_days = (date_to - date_from).days + 1  # inclusive
+        total_days = (date_to - date_from).days  # date_to is exclusive
         total_weeks = max(1, total_days / 7)
         total_avg = f"{ab_total_vials / total_weeks:.1f}" if ab_total_vials > 0 else "0.0"
 
         for r in ab_rows:
             r["total_vials"] = ab_total_vials
+            r["total_weeks"] = f"{total_weeks:.2f}"
             r["total_avg_week"] = total_avg
 
         result.extend(ab_rows)
