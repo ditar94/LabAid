@@ -72,9 +72,16 @@ jobs:
 
       - name: Start nonprod Cloud SQL instance
         run: |
-          gcloud sql instances patch labaid-db-nonprod \
-            --activation-policy=ALWAYS \
-            --project ${GCP_PROJECT}
+          for i in $(seq 1 10); do
+            if gcloud sql instances patch labaid-db-nonprod \
+              --activation-policy=ALWAYS \
+              --project ${GCP_PROJECT} 2>&1; then
+              echo "Start command succeeded"
+              break
+            fi
+            echo "Attempt $i failed (likely concurrent operation), retrying in 30s..."
+            sleep 30
+          done
 
       - name: Wait for instance to be ready
         run: |
@@ -406,9 +413,16 @@ jobs:
 
       - name: Stop nonprod Cloud SQL instance
         run: |
-          gcloud sql instances patch labaid-db-nonprod \
-            --activation-policy=NEVER \
-            --project ${GCP_PROJECT}
+          for i in $(seq 1 10); do
+            if gcloud sql instances patch labaid-db-nonprod \
+              --activation-policy=NEVER \
+              --project ${GCP_PROJECT} 2>&1; then
+              echo "Stop command succeeded"
+              break
+            fi
+            echo "Attempt $i failed (likely concurrent operation), retrying in 30s..."
+            sleep 30
+          done
 
   # ── Sync main + tag release (auto after production) ─────────────────────────
   sync-main:
