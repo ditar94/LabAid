@@ -8,13 +8,14 @@ import {
   FileText,
   FileSpreadsheet,
   ClipboardList,
+  Activity,
   ShieldCheck,
-  History,
   Download,
+  BarChart3,
 } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 
-type ReportType = "audit-trail" | "lot-lifecycle" | "qc-history" | "qc-verification";
+type ReportType = "lot-activity" | "usage" | "admin-activity" | "audit-trail";
 
 const REPORT_CARDS: {
   type: ReportType;
@@ -22,34 +23,48 @@ const REPORT_CARDS: {
   description: string;
   icon: typeof FileText;
   formats: ("csv" | "pdf")[];
+  needsAntibody: boolean;
+  needsLot: boolean;
 }[] = [
+  {
+    type: "lot-activity",
+    title: "Lot Activity",
+    description:
+      "Per-lot milestones: received, QC, opened dates, vial counts. Select by antibody with optional lot and date range.",
+    icon: Activity,
+    formats: ["csv", "pdf"],
+    needsAntibody: true,
+    needsLot: true,
+  },
+  {
+    type: "usage",
+    title: "Usage Report",
+    description:
+      "Consumption analytics: vials received vs consumed, average usage rate per week, and lot status.",
+    icon: BarChart3,
+    formats: ["csv", "pdf"],
+    needsAntibody: true,
+    needsLot: true,
+  },
+  {
+    type: "admin-activity",
+    title: "Admin Activity",
+    description:
+      "User management, settings changes, support sessions, and other administrative actions.",
+    icon: ShieldCheck,
+    formats: ["csv", "pdf"],
+    needsAntibody: false,
+    needsLot: false,
+  },
   {
     type: "audit-trail",
     title: "Audit Trail Export",
-    description: "Full audit log with user, action, entity, and timestamps. Filterable by date range, entity type, and action.",
+    description:
+      "Full audit log with user, action, entity, and timestamps. Filterable by date range, entity type, and action.",
     icon: ClipboardList,
     formats: ["csv", "pdf"],
-  },
-  {
-    type: "lot-lifecycle",
-    title: "Lot Lifecycle Report",
-    description: "Per-lot timeline from creation through receiving, QC, opening, and depletion. Select by antibody or specific lot.",
-    icon: History,
-    formats: ["csv", "pdf"],
-  },
-  {
-    type: "qc-history",
-    title: "QC History Export",
-    description: "All QC status changes, document uploads, and override events across lots. Filterable by date and antibody.",
-    icon: ShieldCheck,
-    formats: ["csv", "pdf"],
-  },
-  {
-    type: "qc-verification",
-    title: "QC Verification Dossier",
-    description: "Single-lot compliance dossier: lot info, QC approval chain, attached documents, and full audit trail.",
-    icon: FileText,
-    formats: ["pdf"],
+    needsAntibody: false,
+    needsLot: false,
   },
 ];
 
@@ -64,8 +79,13 @@ const ENTITY_TYPE_OPTIONS = [
   { value: "lab", label: "Lab" },
 ];
 
+function fmtDateHint(iso: string | null): string {
+  if (!iso) return "";
+  return iso.slice(0, 10);
+}
+
 export default function ReportsPage() {
-  useAuth(); // ensure user is authenticated
+  const { user } = useAuth();
   const { addToast } = useToast();
 
   const [activeReport, setActiveReport] = useState<ReportType | null>(null);
@@ -83,6 +103,9 @@ export default function ReportsPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
 
+  // Date range hint
+  const [rangeHint, setRangeHint] = useState<{ min: string | null; max: string | null } | null>(null);
+
   const { data: antibodies = [] } = useQuery<Antibody[]>({
     queryKey: ["antibodies"],
     queryFn: () => api.get("/antibodies/").then((r) => r.data),
@@ -91,7 +114,10 @@ export default function ReportsPage() {
 
   const { data: lots = [] } = useQuery<Lot[]>({
     queryKey: ["lots", "by-antibody", filterAntibody],
-    queryFn: () => api.get("/lots/", { params: { antibody_id: filterAntibody, include_archived: "true" } }).then((r) => r.data),
+    queryFn: () =>
+      api
+        .get("/lots/", { params: { antibody_id: filterAntibody, include_archived: "true" } })
+        .then((r) => r.data),
     enabled: !!filterAntibody,
     staleTime: 20_000,
   });
@@ -101,12 +127,38 @@ export default function ReportsPage() {
     setPreview(null);
   }, [activeReport, filterAntibody, filterLot, dateFrom, dateTo, entityType, actionFilter]);
 
+  // Fetch date range hint when report or antibody changes
+  useEffect(() => {
+    setRangeHint(null);
+    if (!activeReport) return;
+
+    let rangeUrl = "";
+    const params: Record<string, string> = {};
+
+    if (activeReport === "lot-activity" || activeReport === "usage") {
+      if (!filterAntibody) return;
+      rangeUrl = `/reports/${activeReport === "usage" ? "lot-activity" : activeReport}/range`;
+      params.antibody_id = filterAntibody;
+    } else if (activeReport === "admin-activity") {
+      rangeUrl = "/reports/admin-activity/range";
+    } else {
+      // audit-trail uses the existing audit range endpoint
+      rangeUrl = "/audit/range";
+    }
+
+    api
+      .get(rangeUrl, { params })
+      .then((res) => setRangeHint(res.data))
+      .catch(() => {});
+  }, [activeReport, filterAntibody]);
+
   const handleCardClick = (type: ReportType) => {
     if (activeReport === type) {
       setActiveReport(null);
     } else {
       setActiveReport(type);
       setPreview(null);
+      setRangeHint(null);
     }
   };
 
@@ -116,25 +168,37 @@ export default function ReportsPage() {
     if (dateTo) params.date_to = dateTo;
     if (entityType && activeReport === "audit-trail") params.entity_type = entityType;
     if (actionFilter && activeReport === "audit-trail") params.action = actionFilter;
-    if (filterAntibody && activeReport !== "audit-trail") params.antibody_id = filterAntibody;
-    if (filterLot && (activeReport === "lot-lifecycle" || activeReport === "qc-verification")) params.lot_id = filterLot;
+    if (
+      filterAntibody &&
+      (activeReport === "lot-activity" || activeReport === "usage")
+    )
+      params.antibody_id = filterAntibody;
+    if (
+      filterLot &&
+      (activeReport === "lot-activity" || activeReport === "usage")
+    )
+      params.lot_id = filterLot;
     return params;
   };
 
+  const validate = (): boolean => {
+    if (
+      (activeReport === "lot-activity" || activeReport === "usage") &&
+      !filterAntibody
+    ) {
+      addToast("Select an antibody", "warning");
+      return false;
+    }
+    return true;
+  };
+
   const handlePreview = async () => {
-    if (!activeReport) return;
-    // Validation
-    if (activeReport === "lot-lifecycle" && !filterAntibody && !filterLot) {
-      addToast("Select an antibody or lot", "warning");
-      return;
-    }
-    if (activeReport === "qc-verification" && !filterLot) {
-      addToast("Select a specific lot", "warning");
-      return;
-    }
+    if (!activeReport || !validate()) return;
     setPreviewLoading(true);
     try {
-      const res = await api.get(`/reports/${activeReport}/preview`, { params: buildParams() });
+      const res = await api.get(`/reports/${activeReport}/preview`, {
+        params: buildParams(),
+      });
       setPreview(res.data);
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Failed to load preview", "danger");
@@ -144,16 +208,7 @@ export default function ReportsPage() {
   };
 
   const handleDownload = async (format: "csv" | "pdf") => {
-    if (!activeReport) return;
-    // Validation
-    if (activeReport === "lot-lifecycle" && !filterAntibody && !filterLot) {
-      addToast("Select an antibody or lot", "warning");
-      return;
-    }
-    if (activeReport === "qc-verification" && !filterLot) {
-      addToast("Select a specific lot", "warning");
-      return;
-    }
+    if (!activeReport || !validate()) return;
     setDownloading(format);
     try {
       const res = await api.get(`/reports/${activeReport}/${format}`, {
@@ -163,95 +218,131 @@ export default function ReportsPage() {
       const contentDisposition = res.headers["content-disposition"] || "";
       const match = contentDisposition.match(/filename="?([^"]+)"?/);
       const filename = match ? match[1] : `report.${format}`;
-      const url = URL.createObjectURL(res.data);
+      const blob = new Blob([res.data], {
+        type: format === "pdf" ? "application/pdf" : "text/csv",
+      });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
       addToast(`Downloaded ${filename}`, "success");
     } catch (err: any) {
-      addToast(err.response?.data?.detail || `Failed to download ${format.toUpperCase()}`, "danger");
+      addToast(
+        err.response?.data?.detail || `Failed to download ${format.toUpperCase()}`,
+        "danger",
+      );
     } finally {
       setDownloading(null);
     }
   };
 
-  const renderConfig = () => {
-    if (!activeReport) return null;
+  const card = activeReport ? REPORT_CARDS.find((c) => c.type === activeReport) : null;
 
-    const needsAntibody = activeReport !== "audit-trail";
-    const needsLot = activeReport === "lot-lifecycle" || activeReport === "qc-verification";
-    const needsDateRange = activeReport !== "qc-verification";
-    const needsEntityType = activeReport === "audit-trail";
-    const lotRequired = activeReport === "qc-verification";
-    const card = REPORT_CARDS.find((c) => c.type === activeReport)!;
+  const renderConfig = () => {
+    if (!activeReport || !card) return null;
+
+    const isAuditTrail = activeReport === "audit-trail";
 
     return (
       <div className="report-config">
         <div className="report-config-filters">
-          {needsDateRange && (
-            <>
-              <label>
-                <span>From</span>
-                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-              </label>
-              <label>
-                <span>To</span>
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-              </label>
-            </>
-          )}
-          {needsEntityType && (
+          {card.needsAntibody && (
             <label>
-              <span>Entity Type</span>
-              <select value={entityType} onChange={(e) => setEntityType(e.target.value)}>
-                {ENTITY_TYPE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </label>
-          )}
-          {needsEntityType && (
-            <label>
-              <span>Action</span>
-              <input
-                type="text"
-                value={actionFilter}
-                onChange={(e) => setActionFilter(e.target.value)}
-                placeholder="e.g. vial.opened"
-              />
-            </label>
-          )}
-          {needsAntibody && (
-            <label>
-              <span>Antibody{!needsLot && " (optional)"}</span>
-              <select value={filterAntibody} onChange={(e) => { setFilterAntibody(e.target.value); setFilterLot(""); }}>
-                <option value="">All antibodies</option>
+              <span>Antibody</span>
+              <select
+                value={filterAntibody}
+                onChange={(e) => {
+                  setFilterAntibody(e.target.value);
+                  setFilterLot("");
+                }}
+              >
+                <option value="">Select antibody...</option>
                 {antibodies.map((ab) => (
-                  <option key={ab.id} value={ab.id}>{ab.target} {ab.fluorochrome}</option>
+                  <option key={ab.id} value={ab.id}>
+                    {ab.target} {ab.fluorochrome}
+                  </option>
                 ))}
               </select>
             </label>
           )}
-          {needsLot && (
+          {card.needsLot && (
             <label>
-              <span>Lot{lotRequired ? " (required)" : ""}</span>
+              <span>Lot (optional)</span>
               <select
                 value={filterLot}
                 onChange={(e) => setFilterLot(e.target.value)}
-                disabled={!filterAntibody && lots.length === 0}
+                disabled={!filterAntibody}
               >
-                <option value="">{filterAntibody ? "All lots" : "Select antibody first"}</option>
+                <option value="">
+                  {filterAntibody ? "All lots" : "Select antibody first"}
+                </option>
                 {lots.map((lot) => (
-                  <option key={lot.id} value={lot.id}>{lot.lot_number}</option>
+                  <option key={lot.id} value={lot.id}>
+                    {lot.lot_number}
+                  </option>
                 ))}
               </select>
             </label>
           )}
+          <label>
+            <span>From</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </label>
+          <label>
+            <span>To</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </label>
+          {isAuditTrail && (
+            <>
+              <label>
+                <span>Entity Type</span>
+                <select
+                  value={entityType}
+                  onChange={(e) => setEntityType(e.target.value)}
+                >
+                  {ENTITY_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Action</span>
+                <input
+                  type="text"
+                  value={actionFilter}
+                  onChange={(e) => setActionFilter(e.target.value)}
+                  placeholder="e.g. vial.opened"
+                />
+              </label>
+            </>
+          )}
         </div>
+        {rangeHint && (rangeHint.min || rangeHint.max) && (
+          <p className="text-muted" style={{ fontSize: "0.8rem", margin: "4px 0 0" }}>
+            Data available: {fmtDateHint(rangeHint.min) || "?"} &ndash;{" "}
+            {fmtDateHint(rangeHint.max) || "?"}
+          </p>
+        )}
         <div className="report-actions">
-          <button className="btn-sm btn-secondary" onClick={handlePreview} disabled={previewLoading}>
+          <button
+            className="btn-sm btn-secondary"
+            onClick={handlePreview}
+            disabled={previewLoading}
+          >
             {previewLoading ? "Loading..." : "Preview"}
           </button>
           {card.formats.map((fmt) => (
@@ -261,8 +352,15 @@ export default function ReportsPage() {
               onClick={() => handleDownload(fmt)}
               disabled={downloading === fmt}
             >
-              <Download size={14} style={{ marginRight: 4, verticalAlign: -2 }} />
-              {downloading === fmt ? "Downloading..." : fmt === "csv" ? "Download CSV" : "Download PDF"}
+              <Download
+                size={14}
+                style={{ marginRight: 4, verticalAlign: -2 }}
+              />
+              {downloading === fmt
+                ? "Downloading..."
+                : fmt === "csv"
+                  ? "Download CSV"
+                  : "Download PDF"}
             </button>
           ))}
         </div>
@@ -271,166 +369,236 @@ export default function ReportsPage() {
   };
 
   const renderPreview = () => {
-    if (!preview) return null;
+    if (!preview || !activeReport) return null;
 
-    // QC Verification has a different shape
-    if (activeReport === "qc-verification") {
-      return (
-        <div className="report-preview">
-          <h3>QC Verification Preview — Lot {preview.lot_number}</h3>
-          <div className="report-preview-meta">
-            <span>Antibody: {preview.antibody}</span>
-            <span>QC Status: {preview.qc_status}</span>
-            <span>Documents: {preview.document_count}</span>
-            <span>Audit Events: {preview.audit_event_count}</span>
-          </div>
-          {preview.qc_history && preview.qc_history.length > 0 && (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Action</th>
-                    <th>User</th>
-                    <th>Note</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.qc_history.map((row: any, i: number) => (
-                    <tr key={i}>
-                      <td>{row.timestamp?.slice(0, 19)}</td>
-                      <td><span className="action-tag action-lot">{row.action}</span></td>
-                      <td>{row.user}</td>
-                      <td>{row.note || "\u2014"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Lot lifecycle preview shows lot-level rows
-    if (activeReport === "lot-lifecycle") {
-      const rows = preview.rows || [];
-      return (
-        <div className="report-preview">
-          <h3>Preview ({preview.total} lot{preview.total !== 1 ? "s" : ""})</h3>
-          {rows.length === 0 ? (
-            <EmptyState icon={FileText} title="No data" description="No lots match the selected filters." />
-          ) : (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Lot</th>
-                    <th>Antibody</th>
-                    <th>Expiration</th>
-                    <th>QC Status</th>
-                    <th>Vials</th>
-                    <th>Events</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row: any, i: number) => (
-                    <tr key={i}>
-                      <td>{row.lot_number}</td>
-                      <td>{row.antibody}</td>
-                      <td>{row.expiration_date || "\u2014"}</td>
-                      <td>{row.qc_status}</td>
-                      <td>S:{row.sealed} O:{row.opened} D:{row.depleted}</td>
-                      <td>{row.event_count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // Audit trail and QC history have flat row lists
     const rows = preview.rows || [];
-    const isQcHistory = activeReport === "qc-history";
-    return (
-      <div className="report-preview">
-        <h3>Preview ({preview.total} row{preview.total !== 1 ? "s" : ""}{preview.total > 25 ? ", showing first 25" : ""})</h3>
-        {rows.length === 0 ? (
-          <EmptyState icon={FileText} title="No data" description="No entries match the selected filters." />
-        ) : (
+    const total: number = preview.total ?? rows.length;
+
+    if (rows.length === 0) {
+      return (
+        <div className="report-preview">
+          <EmptyState
+            icon={FileText}
+            title="No data"
+            description="No entries match the selected filters."
+          />
+        </div>
+      );
+    }
+
+    const heading = `Preview (${total} row${total !== 1 ? "s" : ""}${total > rows.length ? `, showing first ${rows.length}` : ""})`;
+
+    if (activeReport === "lot-activity") {
+      return (
+        <div className="report-preview">
+          <h3>{heading}</h3>
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>Timestamp</th>
-                  {isQcHistory && <th>Lot</th>}
-                  {isQcHistory && <th>Antibody</th>}
-                  <th>Action</th>
-                  <th>User</th>
-                  {!isQcHistory && <th>Entity Type</th>}
-                  <th>Entity</th>
-                  <th>Note</th>
+                  <th>Lot #</th>
+                  <th>Received</th>
+                  <th>Received By</th>
+                  <th>QC Doc</th>
+                  <th>QC Approved</th>
+                  <th>QC Approved By</th>
+                  <th>First Opened</th>
+                  <th>Last Opened</th>
+                  <th>Sealed</th>
+                  <th>Opened</th>
+                  <th>Depleted</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row: any, i: number) => (
+                {rows.map((r: any, i: number) => (
                   <tr key={i}>
-                    <td>{row.timestamp?.slice(0, 19)}</td>
-                    {isQcHistory && <td>{row.lot_number}</td>}
-                    {isQcHistory && <td>{row.antibody}</td>}
-                    <td>
-                      <span className={`action-tag ${
-                        row.action?.startsWith("vial.") || row.action?.startsWith("vials.") ? "action-vial" :
-                        row.action?.startsWith("lot.") ? "action-lot" :
-                        row.action?.startsWith("antibody.") ? "action-antibody" :
-                        row.action?.startsWith("document.") ? "action-lot" :
-                        "action-admin"
-                      }`}>{row.action}</span>
-                    </td>
-                    <td>{row.user}</td>
-                    {!isQcHistory && <td>{row.entity_type}</td>}
-                    <td>{row.entity}</td>
-                    <td>{row.note || "\u2014"}</td>
+                    <td>{r.lot_number}</td>
+                    <td>{r.received || "\u2014"}</td>
+                    <td>{r.received_by || "\u2014"}</td>
+                    <td>{r.qc_doc}</td>
+                    <td>{r.qc_approved || "\u2014"}</td>
+                    <td>{r.qc_approved_by || "\u2014"}</td>
+                    <td>{r.first_opened || "\u2014"}</td>
+                    <td>{r.last_opened || "\u2014"}</td>
+                    <td>{r.sealed}</td>
+                    <td>{r.opened}</td>
+                    <td>{r.depleted}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+      );
+    }
+
+    if (activeReport === "usage") {
+      return (
+        <div className="report-preview">
+          <h3>{heading}</h3>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Lot #</th>
+                  <th>Expiration</th>
+                  <th>Received</th>
+                  <th>Vials Received</th>
+                  <th>Vials Consumed</th>
+                  <th>First Opened</th>
+                  <th>Last Opened</th>
+                  <th>Avg/Week</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r: any, i: number) => (
+                  <tr key={i}>
+                    <td>{r.lot_number}</td>
+                    <td>{r.expiration || "\u2014"}</td>
+                    <td>{r.received || "\u2014"}</td>
+                    <td>{r.vials_received}</td>
+                    <td>{r.vials_consumed}</td>
+                    <td>{r.first_opened || "\u2014"}</td>
+                    <td>{r.last_opened || "\u2014"}</td>
+                    <td>{r.avg_week || "\u2014"}</td>
+                    <td>{r.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeReport === "admin-activity") {
+      return (
+        <div className="report-preview">
+          <h3>{heading}</h3>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Action</th>
+                  <th>Performed By</th>
+                  <th>Target</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r: any, i: number) => (
+                  <tr key={i}>
+                    <td>{r.timestamp?.slice(0, 19)}</td>
+                    <td>
+                      <span className="action-tag action-admin">
+                        {r.action}
+                      </span>
+                    </td>
+                    <td>{r.performed_by}</td>
+                    <td>{r.target}</td>
+                    <td>{r.details || "\u2014"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // audit-trail
+    return (
+      <div className="report-preview">
+        <h3>{heading}</h3>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>User</th>
+                <th>Entity Type</th>
+                <th>Entity</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r: any, i: number) => (
+                <tr key={i}>
+                  <td>{r.timestamp?.slice(0, 19)}</td>
+                  <td>
+                    <span
+                      className={`action-tag ${
+                        r.action?.startsWith("vial.") ||
+                        r.action?.startsWith("vials.")
+                          ? "action-vial"
+                          : r.action?.startsWith("lot.")
+                            ? "action-lot"
+                            : r.action?.startsWith("antibody.")
+                              ? "action-antibody"
+                              : r.action?.startsWith("document.")
+                                ? "action-lot"
+                                : "action-admin"
+                      }`}
+                    >
+                      {r.action}
+                    </span>
+                  </td>
+                  <td>{r.user}</td>
+                  <td>{r.entity_type}</td>
+                  <td>{r.entity}</td>
+                  <td>{r.note || "\u2014"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   };
+
+  // Admin-only reports: hide admin-activity for non-admin roles
+  const visibleCards = REPORT_CARDS.filter((c) => {
+    if (c.type === "admin-activity") {
+      return user?.role === "super_admin" || user?.role === "lab_admin";
+    }
+    return true;
+  });
 
   return (
     <div>
       <div className="page-header">
         <h1>
-          <FileSpreadsheet size={22} style={{ marginRight: 8, verticalAlign: -4 }} />
+          <FileSpreadsheet
+            size={22}
+            style={{ marginRight: 8, verticalAlign: -4 }}
+          />
           Compliance Reports
         </h1>
       </div>
 
       <div className="report-cards">
-        {REPORT_CARDS.map((card) => {
-          const Icon = card.icon;
-          const isActive = activeReport === card.type;
+        {visibleCards.map((c) => {
+          const Icon = c.icon;
+          const isActive = activeReport === c.type;
           return (
             <button
-              key={card.type}
+              key={c.type}
               className={`report-card${isActive ? " report-card-active" : ""}`}
-              onClick={() => handleCardClick(card.type)}
+              onClick={() => handleCardClick(c.type)}
             >
               <Icon size={24} className="report-card-icon" />
               <div className="report-card-content">
-                <div className="report-card-title">{card.title}</div>
-                <div className="report-card-desc">{card.description}</div>
+                <div className="report-card-title">{c.title}</div>
+                <div className="report-card-desc">{c.description}</div>
               </div>
               <div className="report-card-formats">
-                {card.formats.map((f) => (
-                  <span key={f} className="report-format-badge">{f.toUpperCase()}</span>
+                {c.formats.map((f) => (
+                  <span key={f} className="report-format-badge">
+                    {f.toUpperCase()}
+                  </span>
                 ))}
               </div>
             </button>

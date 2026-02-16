@@ -4,20 +4,21 @@ Each function returns structured dicts ready for rendering into CSV or PDF.
 All queries are lab-scoped and read-only.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
+from math import ceil
 from uuid import UUID
 
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 
 from app.models.models import (
     Antibody,
     AuditLog,
-    Lab,
     Lot,
     LotDocument,
     User,
-    UserRole,
     Vial,
+    VialStatus,
 )
 from app.services.audit import batch_resolve_audit_logs
 
@@ -30,6 +31,290 @@ def _resolve_user_map(db: Session, user_ids: set[UUID]) -> dict[UUID, str]:
         return {}
     rows = db.query(User.id, User.full_name).filter(User.id.in_(user_ids)).all()
     return {r.id: r.full_name for r in rows}
+
+
+def _make_date_inclusive(date_to: date | None) -> date | None:
+    """Add 1 day to make the upper bound inclusive (< next day)."""
+    if date_to:
+        return date_to + timedelta(days=1)
+    return None
+
+
+def _fmt_date(dt: datetime | date | None) -> str:
+    if dt is None:
+        return ""
+    if isinstance(dt, datetime):
+        return dt.strftime("%Y-%m-%d")
+    return str(dt)
+
+
+# ── Lot Activity Report ───────────────────────────────────────────────────
+
+
+def get_lot_activity_data(
+    db: Session,
+    *,
+    lab_id: UUID,
+    antibody_id: UUID,
+    lot_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict]:
+    """One row per lot: received, QC, opened milestones + vial counts."""
+    lots_q = db.query(Lot).filter(Lot.lab_id == lab_id, Lot.antibody_id == antibody_id)
+    if lot_id:
+        lots_q = lots_q.filter(Lot.id == lot_id)
+    if date_from:
+        lots_q = lots_q.filter(Lot.created_at >= date_from)
+    if date_to:
+        lots_q = lots_q.filter(Lot.created_at < _make_date_inclusive(date_to))
+    lots = lots_q.order_by(Lot.created_at.desc()).all()
+    if not lots:
+        return []
+
+    lot_ids = [l.id for l in lots]
+
+    # Batch: vials for all lots
+    vials = db.query(Vial).filter(Vial.lot_id.in_(lot_ids)).all()
+    vials_by_lot: dict[UUID, list[Vial]] = {}
+    for v in vials:
+        vials_by_lot.setdefault(v.lot_id, []).append(v)
+
+    # Batch: QC docs exist per lot
+    qc_doc_lot_ids = set(
+        r[0] for r in db.query(LotDocument.lot_id)
+        .filter(LotDocument.lot_id.in_(lot_ids), LotDocument.is_qc_document.is_(True))
+        .distinct()
+        .all()
+    )
+
+    # Batch: received-by user — from audit log vial.received action on each lot
+    received_audit = (
+        db.query(AuditLog.entity_id, AuditLog.user_id)
+        .filter(
+            AuditLog.entity_id.in_(lot_ids),
+            AuditLog.action == "vial.received",
+        )
+        .order_by(AuditLog.created_at.asc())
+        .all()
+    )
+    # First received event per lot
+    received_by_lot: dict[UUID, UUID] = {}
+    for entity_id, user_id in received_audit:
+        if entity_id not in received_by_lot:
+            received_by_lot[entity_id] = user_id
+
+    # Batch: QC approved-by user
+    approver_ids = {l.qc_approved_by for l in lots if l.qc_approved_by}
+    all_user_ids = set(received_by_lot.values()) | approver_ids
+    user_map = _resolve_user_map(db, all_user_ids)
+
+    result = []
+    for lot in lots:
+        lot_vials = vials_by_lot.get(lot.id, [])
+        opened_dates = [v.opened_at for v in lot_vials if v.opened_at]
+        received_dates = [v.received_at for v in lot_vials if v.received_at]
+
+        result.append({
+            "lot_number": lot.lot_number,
+            "received": _fmt_date(min(received_dates)) if received_dates else "",
+            "received_by": user_map.get(received_by_lot.get(lot.id), ""),
+            "qc_doc": "Yes" if lot.id in qc_doc_lot_ids else "No",
+            "qc_approved": _fmt_date(lot.qc_approved_at),
+            "qc_approved_by": user_map.get(lot.qc_approved_by, "") if lot.qc_approved_by else "",
+            "first_opened": _fmt_date(min(opened_dates)) if opened_dates else "",
+            "last_opened": _fmt_date(max(opened_dates)) if opened_dates else "",
+            "sealed": sum(1 for v in lot_vials if v.status == VialStatus.SEALED),
+            "opened": sum(1 for v in lot_vials if v.status == VialStatus.OPENED),
+            "depleted": sum(1 for v in lot_vials if v.status == VialStatus.DEPLETED),
+        })
+
+    return result
+
+
+def get_lot_activity_range(
+    db: Session,
+    *,
+    lab_id: UUID,
+    antibody_id: UUID,
+) -> tuple[datetime | None, datetime | None]:
+    """Min/max lot.created_at for the given antibody."""
+    row = (
+        db.query(sa_func.min(Lot.created_at), sa_func.max(Lot.created_at))
+        .filter(Lot.lab_id == lab_id, Lot.antibody_id == antibody_id)
+        .one()
+    )
+    return row[0], row[1]
+
+
+# ── Usage Report ──────────────────────────────────────────────────────────
+
+
+def get_usage_data(
+    db: Session,
+    *,
+    lab_id: UUID,
+    antibody_id: UUID,
+    lot_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict]:
+    """Consumption analytics: one row per lot with rate and status."""
+    lots_q = db.query(Lot).filter(Lot.lab_id == lab_id, Lot.antibody_id == antibody_id)
+    if lot_id:
+        lots_q = lots_q.filter(Lot.id == lot_id)
+    if date_from:
+        lots_q = lots_q.filter(Lot.created_at >= date_from)
+    if date_to:
+        lots_q = lots_q.filter(Lot.created_at < _make_date_inclusive(date_to))
+    lots = lots_q.order_by(Lot.created_at.desc()).all()
+    if not lots:
+        return []
+
+    lot_ids = [l.id for l in lots]
+    vials = db.query(Vial).filter(Vial.lot_id.in_(lot_ids)).all()
+    vials_by_lot: dict[UUID, list[Vial]] = {}
+    for v in vials:
+        vials_by_lot.setdefault(v.lot_id, []).append(v)
+
+    now = datetime.now(timezone.utc)
+    result = []
+    for lot in lots:
+        lot_vials = vials_by_lot.get(lot.id, [])
+        total = len(lot_vials)
+        consumed = sum(1 for v in lot_vials if v.status in (VialStatus.OPENED, VialStatus.DEPLETED))
+        opened_dates = [v.opened_at for v in lot_vials if v.opened_at]
+        depleted_dates = [v.depleted_at for v in lot_vials if v.depleted_at]
+        received_dates = [v.received_at for v in lot_vials if v.received_at]
+
+        first_opened = min(opened_dates) if opened_dates else None
+        last_opened = max(opened_dates) if opened_dates else None
+
+        # Avg consumption per week
+        avg_week = ""
+        if first_opened and consumed > 0:
+            end_point = max(depleted_dates) if depleted_dates else now
+            weeks = max(1, (end_point - first_opened).days / 7)
+            avg_week = f"{consumed / weeks:.1f}"
+
+        # Status
+        sealed = sum(1 for v in lot_vials if v.status == VialStatus.SEALED)
+        opened_count = sum(1 for v in lot_vials if v.status == VialStatus.OPENED)
+        if lot.is_archived:
+            status = "Archived"
+        elif sealed == 0 and opened_count == 0 and total > 0:
+            status = "Depleted"
+        elif total == 0:
+            status = "Empty"
+        else:
+            status = "Active"
+
+        result.append({
+            "lot_number": lot.lot_number,
+            "expiration": _fmt_date(lot.expiration_date),
+            "received": _fmt_date(min(received_dates)) if received_dates else "",
+            "vials_received": total,
+            "vials_consumed": consumed,
+            "first_opened": _fmt_date(first_opened),
+            "last_opened": _fmt_date(last_opened),
+            "avg_week": avg_week,
+            "status": status,
+        })
+
+    return result
+
+
+# ── Admin Activity Report ─────────────────────────────────────────────────
+
+ADMIN_ACTIONS = [
+    "user.created",
+    "user.role_changed",
+    "user.updated",
+    "user.password_reset",
+    "user.password_changed",
+    "user.password_set_via_invite",
+    "lab.settings_updated",
+    "lab.suspended",
+    "lab.reactivated",
+    "lab.billing_updated",
+    "support.impersonate_start",
+    "support.impersonate_end",
+    "fluorochrome.updated",
+    "fluorochrome.archived",
+    "storage_unit.created",
+    "storage_unit.deleted",
+]
+
+ACTION_LABELS = {
+    "user.created": "User Created",
+    "user.role_changed": "Role Changed",
+    "user.updated": "User Updated",
+    "user.password_reset": "Password Reset",
+    "user.password_changed": "Password Changed",
+    "user.password_set_via_invite": "Invite Accepted",
+    "lab.settings_updated": "Settings Updated",
+    "lab.suspended": "Lab Suspended",
+    "lab.reactivated": "Lab Reactivated",
+    "lab.billing_updated": "Billing Updated",
+    "support.impersonate_start": "Support Session Started",
+    "support.impersonate_end": "Support Session Ended",
+    "fluorochrome.updated": "Fluorochrome Updated",
+    "fluorochrome.archived": "Fluorochrome Archived",
+    "storage_unit.created": "Storage Unit Created",
+    "storage_unit.deleted": "Storage Unit Deleted",
+}
+
+
+def get_admin_activity_data(
+    db: Session,
+    *,
+    lab_id: UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict]:
+    """Admin/settings audit events with human-readable labels."""
+    q = db.query(AuditLog).filter(
+        AuditLog.lab_id == lab_id,
+        AuditLog.action.in_(ADMIN_ACTIONS),
+    )
+    if date_from:
+        q = q.filter(AuditLog.created_at >= date_from)
+    if date_to:
+        q = q.filter(AuditLog.created_at < _make_date_inclusive(date_to))
+
+    logs = q.order_by(AuditLog.created_at.desc()).limit(MAX_AUDIT_ROWS).all()
+    if not logs:
+        return []
+
+    user_map = _resolve_user_map(db, {log.user_id for log in logs})
+    labels_map, _ = batch_resolve_audit_logs(db, logs)
+
+    return [
+        {
+            "timestamp": log.created_at.isoformat() if log.created_at else "",
+            "action": ACTION_LABELS.get(log.action, log.action),
+            "performed_by": user_map.get(log.user_id, str(log.user_id)),
+            "target": labels_map.get(log.entity_id, str(log.entity_id)),
+            "details": log.note or "",
+        }
+        for log in logs
+    ]
+
+
+def get_admin_activity_range(
+    db: Session,
+    *,
+    lab_id: UUID,
+) -> tuple[datetime | None, datetime | None]:
+    row = (
+        db.query(sa_func.min(AuditLog.created_at), sa_func.max(AuditLog.created_at))
+        .filter(AuditLog.lab_id == lab_id, AuditLog.action.in_(ADMIN_ACTIONS))
+        .one()
+    )
+    return row[0], row[1]
+
+
+# ── Audit Trail Export ────────────────────────────────────────────────────
 
 
 def get_audit_trail_data(
@@ -47,7 +332,7 @@ def get_audit_trail_data(
     if date_from:
         q = q.filter(AuditLog.created_at >= date_from)
     if date_to:
-        q = q.filter(AuditLog.created_at < date_to)
+        q = q.filter(AuditLog.created_at < _make_date_inclusive(date_to))
     if entity_type:
         q = q.filter(AuditLog.entity_type == entity_type)
     if action:
@@ -76,275 +361,3 @@ def get_audit_trail_data(
         }
         for log in logs
     ]
-
-
-def get_lot_lifecycle_data(
-    db: Session,
-    *,
-    lab_id: UUID,
-    lot_id: UUID | None = None,
-    antibody_id: UUID | None = None,
-) -> list[dict]:
-    """Fetch per-lot lifecycle timeline: created -> received -> opened -> depleted."""
-    lots_q = db.query(Lot).filter(Lot.lab_id == lab_id)
-    if lot_id:
-        lots_q = lots_q.filter(Lot.id == lot_id)
-    elif antibody_id:
-        lots_q = lots_q.filter(Lot.antibody_id == antibody_id)
-    else:
-        return []
-
-    lots = lots_q.order_by(Lot.created_at.desc()).all()
-    if not lots:
-        return []
-
-    # Preload antibodies
-    ab_ids = {l.antibody_id for l in lots if l.antibody_id}
-    ab_map: dict[UUID, Antibody] = {}
-    if ab_ids:
-        rows = db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all()
-        ab_map = {a.id: a for a in rows}
-
-    # Preload vials for all lots
-    lot_ids = [l.id for l in lots]
-    vials = db.query(Vial).filter(Vial.lot_id.in_(lot_ids)).all()
-    vials_by_lot: dict[UUID, list[Vial]] = {}
-    for v in vials:
-        vials_by_lot.setdefault(v.lot_id, []).append(v)
-
-    # Preload QC-related audit entries for these lots
-    related_ids: list[UUID] = list(lot_ids)
-    vial_ids = [v.id for v in vials]
-    related_ids.extend(vial_ids)
-    doc_ids_q = db.query(LotDocument.id).filter(LotDocument.lot_id.in_(lot_ids)).all()
-    doc_ids = [r[0] for r in doc_ids_q]
-    related_ids.extend(doc_ids)
-
-    audit_logs = (
-        db.query(AuditLog)
-        .filter(AuditLog.lab_id == lab_id, AuditLog.entity_id.in_(related_ids))
-        .order_by(AuditLog.created_at.asc())
-        .limit(MAX_AUDIT_ROWS)
-        .all()
-    )
-    user_ids = {a.user_id for a in audit_logs}
-    user_map = _resolve_user_map(db, user_ids)
-
-    # Group audit events by lot
-    audit_by_lot: dict[UUID, list] = {}
-    # Map vial_id -> lot_id
-    vial_lot_map = {v.id: v.lot_id for v in vials}
-    # Map doc_id -> lot_id
-    doc_lot_map = {d_id: None for d_id in doc_ids}
-    for doc_row in db.query(LotDocument.id, LotDocument.lot_id).filter(LotDocument.id.in_(doc_ids)).all():
-        doc_lot_map[doc_row.id] = doc_row.lot_id
-
-    for a in audit_logs:
-        owner_lot_id = None
-        if a.entity_id in {l.id for l in lots}:
-            owner_lot_id = a.entity_id
-        elif a.entity_id in vial_lot_map:
-            owner_lot_id = vial_lot_map[a.entity_id]
-        elif a.entity_id in doc_lot_map:
-            owner_lot_id = doc_lot_map[a.entity_id]
-        if owner_lot_id:
-            audit_by_lot.setdefault(owner_lot_id, []).append(a)
-
-    result = []
-    for lot in lots:
-        ab = ab_map.get(lot.antibody_id) if lot.antibody_id else None
-        lot_vials = vials_by_lot.get(lot.id, [])
-        events = []
-        for a in audit_by_lot.get(lot.id, []):
-            events.append({
-                "timestamp": a.created_at.isoformat() if a.created_at else "",
-                "action": a.action,
-                "user": user_map.get(a.user_id, str(a.user_id)),
-                "note": a.note or "",
-                "support": "Yes" if a.is_support_action else "No",
-            })
-
-        result.append({
-            "lot_number": lot.lot_number,
-            "antibody": f"{ab.target} {ab.fluorochrome}" if ab else "N/A",
-            "expiration_date": str(lot.expiration_date) if lot.expiration_date else "",
-            "qc_status": lot.qc_status.value if lot.qc_status else "",
-            "is_archived": lot.is_archived,
-            "created_at": lot.created_at.isoformat() if lot.created_at else "",
-            "total_vials": len(lot_vials),
-            "sealed": sum(1 for v in lot_vials if v.status and v.status.value == "sealed"),
-            "opened": sum(1 for v in lot_vials if v.status and v.status.value == "opened"),
-            "depleted": sum(1 for v in lot_vials if v.status and v.status.value == "depleted"),
-            "events": events,
-        })
-
-    return result
-
-
-def get_qc_history_data(
-    db: Session,
-    *,
-    lab_id: UUID,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    antibody_id: UUID | None = None,
-) -> list[dict]:
-    """Fetch QC-related audit events: approvals, failures, doc uploads, overrides."""
-    qc_actions = [
-        "lot.qc_approved",
-        "lot.qc_pending",
-        "lot.qc_failed",
-        "document.uploaded",
-        "document.updated",
-        "document.deleted",
-    ]
-
-    q = (
-        db.query(AuditLog)
-        .filter(AuditLog.lab_id == lab_id, AuditLog.action.in_(qc_actions))
-    )
-
-    if date_from:
-        q = q.filter(AuditLog.created_at >= date_from)
-    if date_to:
-        q = q.filter(AuditLog.created_at < date_to)
-
-    if antibody_id:
-        # Scope to lots for this antibody
-        lot_ids = [r[0] for r in db.query(Lot.id).filter(Lot.antibody_id == antibody_id, Lot.lab_id == lab_id).all()]
-        if not lot_ids:
-            return []
-        doc_ids = [r[0] for r in db.query(LotDocument.id).filter(LotDocument.lot_id.in_(lot_ids)).all()]
-        related = list(lot_ids) + doc_ids
-        q = q.filter(AuditLog.entity_id.in_(related))
-
-    logs = q.order_by(AuditLog.created_at.desc()).limit(MAX_AUDIT_ROWS).all()
-    if not logs:
-        return []
-
-    user_map = _resolve_user_map(db, {log.user_id for log in logs})
-    labels_map, lineage_map = batch_resolve_audit_logs(db, logs)
-
-    # Resolve lot number + antibody for each entry
-    lot_ids_needed = set()
-    for log in logs:
-        lin = lineage_map.get(log.entity_id, {})
-        if lin.get("lot_id"):
-            lot_ids_needed.add(lin["lot_id"])
-    lot_map: dict[UUID, Lot] = {}
-    if lot_ids_needed:
-        rows = db.query(Lot).filter(Lot.id.in_(lot_ids_needed)).all()
-        lot_map = {l.id: l for l in rows}
-    ab_ids_needed = {lot_map[lid].antibody_id for lid in lot_ids_needed if lid in lot_map and lot_map[lid].antibody_id}
-    ab_map: dict[UUID, Antibody] = {}
-    if ab_ids_needed:
-        rows = db.query(Antibody).filter(Antibody.id.in_(ab_ids_needed)).all()
-        ab_map = {a.id: a for a in rows}
-
-    result = []
-    for log in logs:
-        lin = lineage_map.get(log.entity_id, {})
-        lot = lot_map.get(lin.get("lot_id")) if lin.get("lot_id") else None
-        ab = ab_map.get(lot.antibody_id) if lot and lot.antibody_id else None
-        result.append({
-            "timestamp": log.created_at.isoformat() if log.created_at else "",
-            "lot_number": lot.lot_number if lot else "",
-            "antibody": f"{ab.target} {ab.fluorochrome}" if ab else "",
-            "action": log.action,
-            "user": user_map.get(log.user_id, str(log.user_id)),
-            "entity": labels_map.get(log.entity_id, str(log.entity_id)),
-            "note": log.note or "",
-            "support": "Yes" if log.is_support_action else "No",
-        })
-
-    return result
-
-
-def get_qc_verification_data(
-    db: Session,
-    *,
-    lab_id: UUID,
-    lot_id: UUID,
-) -> dict | None:
-    """Build a single-lot QC verification dossier."""
-    lot = db.query(Lot).filter(Lot.id == lot_id, Lot.lab_id == lab_id).first()
-    if not lot:
-        return None
-
-    ab = db.query(Antibody).filter(Antibody.id == lot.antibody_id).first() if lot.antibody_id else None
-
-    # Documents
-    docs = db.query(LotDocument).filter(LotDocument.lot_id == lot_id).order_by(LotDocument.created_at.asc()).all()
-    doc_user_ids = {d.user_id for d in docs}
-    doc_user_map = _resolve_user_map(db, doc_user_ids)
-
-    # All audit entries for this lot + its vials + its docs
-    related_ids: list[UUID] = [lot_id]
-    vial_ids = [r[0] for r in db.query(Vial.id).filter(Vial.lot_id == lot_id).all()]
-    related_ids.extend(vial_ids)
-    doc_ids = [d.id for d in docs]
-    related_ids.extend(doc_ids)
-
-    audit_logs = (
-        db.query(AuditLog)
-        .filter(AuditLog.lab_id == lab_id, AuditLog.entity_id.in_(related_ids))
-        .order_by(AuditLog.created_at.asc())
-        .limit(MAX_AUDIT_ROWS)
-        .all()
-    )
-    audit_user_ids = {a.user_id for a in audit_logs}
-    audit_user_map = _resolve_user_map(db, audit_user_ids)
-
-    # QC approver
-    approver = None
-    if lot.qc_approved_by:
-        u = db.query(User).filter(User.id == lot.qc_approved_by).first()
-        if u:
-            approver = u.full_name
-
-    # Filter QC-specific events
-    qc_events = []
-    for a in audit_logs:
-        if a.action in ("lot.qc_approved", "lot.qc_pending", "lot.qc_failed",
-                        "document.uploaded", "document.updated", "document.deleted"):
-            qc_events.append({
-                "timestamp": a.created_at.isoformat() if a.created_at else "",
-                "action": a.action,
-                "user": audit_user_map.get(a.user_id, str(a.user_id)),
-                "note": a.note or "",
-                "support": "Yes" if a.is_support_action else "No",
-            })
-
-    return {
-        "lot_number": lot.lot_number,
-        "antibody": f"{ab.target} {ab.fluorochrome}" if ab else "N/A",
-        "vendor": ab.vendor if ab else "",
-        "catalog_number": ab.catalog_number if ab else "",
-        "expiration_date": str(lot.expiration_date) if lot.expiration_date else "",
-        "qc_status": lot.qc_status.value if lot.qc_status else "",
-        "qc_approved_by": approver or "",
-        "qc_approved_at": lot.qc_approved_at.isoformat() if lot.qc_approved_at else "",
-        "created_at": lot.created_at.isoformat() if lot.created_at else "",
-        "is_archived": lot.is_archived,
-        "documents": [
-            {
-                "file_name": d.file_name,
-                "is_qc_document": d.is_qc_document,
-                "description": d.description or "",
-                "uploaded_by": doc_user_map.get(d.user_id, str(d.user_id)),
-                "uploaded_at": d.created_at.isoformat() if d.created_at else "",
-            }
-            for d in docs
-        ],
-        "qc_history": qc_events,
-        "full_audit_trail": [
-            {
-                "timestamp": a.created_at.isoformat() if a.created_at else "",
-                "action": a.action,
-                "user": audit_user_map.get(a.user_id, str(a.user_id)),
-                "note": a.note or "",
-                "support": "Yes" if a.is_support_action else "No",
-            }
-            for a in audit_logs
-        ],
-    }

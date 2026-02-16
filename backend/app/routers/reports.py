@@ -12,25 +12,28 @@ from app.middleware.auth import require_role
 from app.models.models import Lab, User, UserRole
 from app.services.csv_renderer import (
     render_audit_trail_csv,
-    render_lot_lifecycle_csv,
-    render_qc_history_csv,
+    render_lot_activity_csv,
+    render_usage_csv,
+    render_admin_activity_csv,
 )
 from app.services.pdf_renderer import (
     render_audit_trail_pdf,
-    render_lot_lifecycle_pdf,
-    render_qc_history_pdf,
-    render_qc_verification_pdf,
+    render_lot_activity_pdf,
+    render_usage_pdf,
+    render_admin_activity_pdf,
 )
 from app.services.report_service import (
     get_audit_trail_data,
-    get_lot_lifecycle_data,
-    get_qc_history_data,
-    get_qc_verification_data,
+    get_lot_activity_data,
+    get_lot_activity_range,
+    get_usage_data,
+    get_admin_activity_data,
+    get_admin_activity_range,
 )
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
-PREVIEW_LIMIT = 25
+PREVIEW_LIMIT = 50
 
 
 def _lab_slug(db: Session, lab_id: UUID) -> str:
@@ -49,7 +52,210 @@ def _today() -> str:
     return date.today().isoformat()
 
 
-# ── Audit Trail ────────────────────────────────────────────────────────────
+def _stream_csv(csv_bytes: bytes, filename: str):
+    return StreamingResponse(
+        iter([csv_bytes]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _stream_pdf(pdf_bytes: bytes, filename: str):
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Lot Activity ──────────────────────────────────────────────────────────
+
+
+@router.get("/lot-activity/range")
+def lot_activity_range(
+    antibody_id: UUID = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    mn, mx = get_lot_activity_range(db, lab_id=current_user.lab_id, antibody_id=antibody_id)
+    return {
+        "min": mn.isoformat() if mn else None,
+        "max": mx.isoformat() if mx else None,
+    }
+
+
+@router.get("/lot-activity/preview")
+def lot_activity_preview(
+    antibody_id: UUID = Query(...),
+    lot_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_lot_activity_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
+    )
+    return {"rows": data[:PREVIEW_LIMIT], "total": len(data)}
+
+
+@router.get("/lot-activity/csv")
+def lot_activity_csv(
+    antibody_id: UUID = Query(...),
+    lot_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_lot_activity_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
+    )
+    slug = _lab_slug(db, current_user.lab_id)
+    return _stream_csv(render_lot_activity_csv(data), f"lot-activity_{slug}_{_today()}.csv")
+
+
+@router.get("/lot-activity/pdf")
+def lot_activity_pdf(
+    antibody_id: UUID = Query(...),
+    lot_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_lot_activity_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
+    )
+    lab_name = _lab_name(db, current_user.lab_id)
+    slug = _lab_slug(db, current_user.lab_id)
+    return _stream_pdf(
+        render_lot_activity_pdf(data, lab_name, pulled_by=current_user.full_name),
+        f"lot-activity_{slug}_{_today()}.pdf",
+    )
+
+
+# ── Usage Report ──────────────────────────────────────────────────────────
+
+
+@router.get("/usage/preview")
+def usage_preview(
+    antibody_id: UUID = Query(...),
+    lot_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_usage_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
+    )
+    return {"rows": data[:PREVIEW_LIMIT], "total": len(data)}
+
+
+@router.get("/usage/csv")
+def usage_csv(
+    antibody_id: UUID = Query(...),
+    lot_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_usage_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
+    )
+    slug = _lab_slug(db, current_user.lab_id)
+    return _stream_csv(render_usage_csv(data), f"usage-report_{slug}_{_today()}.csv")
+
+
+@router.get("/usage/pdf")
+def usage_pdf(
+    antibody_id: UUID = Query(...),
+    lot_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
+):
+    data = get_usage_data(
+        db, lab_id=current_user.lab_id, antibody_id=antibody_id,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
+    )
+    lab_name = _lab_name(db, current_user.lab_id)
+    slug = _lab_slug(db, current_user.lab_id)
+    return _stream_pdf(
+        render_usage_pdf(data, lab_name, pulled_by=current_user.full_name),
+        f"usage-report_{slug}_{_today()}.pdf",
+    )
+
+
+# ── Admin Activity ────────────────────────────────────────────────────────
+
+
+@router.get("/admin-activity/range")
+def admin_activity_range(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+):
+    mn, mx = get_admin_activity_range(db, lab_id=current_user.lab_id)
+    return {
+        "min": mn.isoformat() if mn else None,
+        "max": mx.isoformat() if mx else None,
+    }
+
+
+@router.get("/admin-activity/preview")
+def admin_activity_preview(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+):
+    data = get_admin_activity_data(
+        db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
+    )
+    return {"rows": data[:PREVIEW_LIMIT], "total": len(data)}
+
+
+@router.get("/admin-activity/csv")
+def admin_activity_csv(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+):
+    data = get_admin_activity_data(
+        db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
+    )
+    slug = _lab_slug(db, current_user.lab_id)
+    return _stream_csv(render_admin_activity_csv(data), f"admin-activity_{slug}_{_today()}.csv")
+
+
+@router.get("/admin-activity/pdf")
+def admin_activity_pdf(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+):
+    data = get_admin_activity_data(
+        db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
+    )
+    lab_name = _lab_name(db, current_user.lab_id)
+    slug = _lab_slug(db, current_user.lab_id)
+    return _stream_pdf(
+        render_admin_activity_pdf(data, lab_name, pulled_by=current_user.full_name),
+        f"admin-activity_{slug}_{_today()}.pdf",
+    )
+
+
+# ── Audit Trail ───────────────────────────────────────────────────────────
 
 
 @router.get("/audit-trail/preview")
@@ -61,7 +267,10 @@ def audit_trail_preview(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
-    data = get_audit_trail_data(db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to, entity_type=entity_type, action=action)
+    data = get_audit_trail_data(
+        db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
+        entity_type=entity_type, action=action,
+    )
     return {"rows": data[:PREVIEW_LIMIT], "total": len(data)}
 
 
@@ -74,15 +283,12 @@ def audit_trail_csv(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
-    data = get_audit_trail_data(db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to, entity_type=entity_type, action=action)
-    csv_bytes = render_audit_trail_csv(data)
-    slug = _lab_slug(db, current_user.lab_id)
-    filename = f"audit-trail_{slug}_{_today()}.csv"
-    return StreamingResponse(
-        iter([csv_bytes]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    data = get_audit_trail_data(
+        db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
+        entity_type=entity_type, action=action,
     )
+    slug = _lab_slug(db, current_user.lab_id)
+    return _stream_csv(render_audit_trail_csv(data), f"audit-trail_{slug}_{_today()}.csv")
 
 
 @router.get("/audit-trail/pdf")
@@ -94,169 +300,13 @@ def audit_trail_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
-    data = get_audit_trail_data(db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to, entity_type=entity_type, action=action)
+    data = get_audit_trail_data(
+        db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to,
+        entity_type=entity_type, action=action,
+    )
     lab_name = _lab_name(db, current_user.lab_id)
-    pdf_bytes = render_audit_trail_pdf(data, lab_name)
     slug = _lab_slug(db, current_user.lab_id)
-    filename = f"audit-trail_{slug}_{_today()}.pdf"
-    return StreamingResponse(
-        iter([pdf_bytes]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-# ── Lot Lifecycle ──────────────────────────────────────────────────────────
-
-
-@router.get("/lot-lifecycle/preview")
-def lot_lifecycle_preview(
-    lot_id: UUID | None = None,
-    antibody_id: UUID | None = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
-):
-    if not lot_id and not antibody_id:
-        raise HTTPException(status_code=400, detail="Provide lot_id or antibody_id")
-    data = get_lot_lifecycle_data(db, lab_id=current_user.lab_id, lot_id=lot_id, antibody_id=antibody_id)
-    # Flatten for preview: show lot-level info only (events are nested)
-    preview = []
-    for lot in data[:PREVIEW_LIMIT]:
-        preview.append({k: v for k, v in lot.items() if k != "events"})
-        preview[-1]["event_count"] = len(lot["events"])
-    return {"rows": preview, "total": len(data)}
-
-
-@router.get("/lot-lifecycle/csv")
-def lot_lifecycle_csv(
-    lot_id: UUID | None = None,
-    antibody_id: UUID | None = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
-):
-    if not lot_id and not antibody_id:
-        raise HTTPException(status_code=400, detail="Provide lot_id or antibody_id")
-    data = get_lot_lifecycle_data(db, lab_id=current_user.lab_id, lot_id=lot_id, antibody_id=antibody_id)
-    csv_bytes = render_lot_lifecycle_csv(data)
-    slug = _lab_slug(db, current_user.lab_id)
-    filename = f"lot-lifecycle_{slug}_{_today()}.csv"
-    return StreamingResponse(
-        iter([csv_bytes]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.get("/lot-lifecycle/pdf")
-def lot_lifecycle_pdf(
-    lot_id: UUID | None = None,
-    antibody_id: UUID | None = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
-):
-    if not lot_id and not antibody_id:
-        raise HTTPException(status_code=400, detail="Provide lot_id or antibody_id")
-    data = get_lot_lifecycle_data(db, lab_id=current_user.lab_id, lot_id=lot_id, antibody_id=antibody_id)
-    lab_name = _lab_name(db, current_user.lab_id)
-    pdf_bytes = render_lot_lifecycle_pdf(data, lab_name)
-    slug = _lab_slug(db, current_user.lab_id)
-    filename = f"lot-lifecycle_{slug}_{_today()}.pdf"
-    return StreamingResponse(
-        iter([pdf_bytes]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-# ── QC History ─────────────────────────────────────────────────────────────
-
-
-@router.get("/qc-history/preview")
-def qc_history_preview(
-    date_from: date | None = None,
-    date_to: date | None = None,
-    antibody_id: UUID | None = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
-):
-    data = get_qc_history_data(db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to, antibody_id=antibody_id)
-    return {"rows": data[:PREVIEW_LIMIT], "total": len(data)}
-
-
-@router.get("/qc-history/csv")
-def qc_history_csv(
-    date_from: date | None = None,
-    date_to: date | None = None,
-    antibody_id: UUID | None = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
-):
-    data = get_qc_history_data(db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to, antibody_id=antibody_id)
-    csv_bytes = render_qc_history_csv(data)
-    slug = _lab_slug(db, current_user.lab_id)
-    filename = f"qc-history_{slug}_{_today()}.csv"
-    return StreamingResponse(
-        iter([csv_bytes]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.get("/qc-history/pdf")
-def qc_history_pdf(
-    date_from: date | None = None,
-    date_to: date | None = None,
-    antibody_id: UUID | None = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
-):
-    data = get_qc_history_data(db, lab_id=current_user.lab_id, date_from=date_from, date_to=date_to, antibody_id=antibody_id)
-    lab_name = _lab_name(db, current_user.lab_id)
-    pdf_bytes = render_qc_history_pdf(data, lab_name)
-    slug = _lab_slug(db, current_user.lab_id)
-    filename = f"qc-history_{slug}_{_today()}.pdf"
-    return StreamingResponse(
-        iter([pdf_bytes]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-# ── QC Verification (PDF only) ────────────────────────────────────────────
-
-
-@router.get("/qc-verification/preview")
-def qc_verification_preview(
-    lot_id: UUID = Query(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
-):
-    data = get_qc_verification_data(db, lab_id=current_user.lab_id, lot_id=lot_id)
-    if not data:
-        raise HTTPException(status_code=404, detail="Lot not found")
-    # Return subset for preview
-    preview = {k: v for k, v in data.items() if k not in ("full_audit_trail",)}
-    preview["qc_history"] = data["qc_history"][:PREVIEW_LIMIT]
-    preview["document_count"] = len(data["documents"])
-    preview["audit_event_count"] = len(data["full_audit_trail"])
-    return preview
-
-
-@router.get("/qc-verification/pdf")
-def qc_verification_pdf(
-    lot_id: UUID = Query(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
-):
-    data = get_qc_verification_data(db, lab_id=current_user.lab_id, lot_id=lot_id)
-    if not data:
-        raise HTTPException(status_code=404, detail="Lot not found")
-    lab_name = _lab_name(db, current_user.lab_id)
-    pdf_bytes = render_qc_verification_pdf(data, lab_name)
-    slug = _lab_slug(db, current_user.lab_id)
-    filename = f"qc-verification_{slug}_{data['lot_number']}_{_today()}.pdf"
-    return StreamingResponse(
-        iter([pdf_bytes]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    return _stream_pdf(
+        render_audit_trail_pdf(data, lab_name, pulled_by=current_user.full_name),
+        f"audit-trail_{slug}_{_today()}.pdf",
     )

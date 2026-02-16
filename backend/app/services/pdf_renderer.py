@@ -8,10 +8,11 @@ from fpdf import FPDF
 class LabAidPDF(FPDF):
     """Base PDF class with branded header and footer."""
 
-    def __init__(self, title: str, lab_name: str):
+    def __init__(self, title: str, lab_name: str, pulled_by: str = ""):
         super().__init__(orientation="L", unit="mm", format="A4")
         self.report_title = title
         self.lab_name = lab_name
+        self.pulled_by = pulled_by
         self.generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         self.set_auto_page_break(auto=True, margin=20)
 
@@ -20,7 +21,11 @@ class LabAidPDF(FPDF):
         self.cell(0, 8, self.report_title, new_x="LMARGIN", new_y="NEXT")
         self.set_font("Helvetica", "", 9)
         self.set_text_color(100, 100, 100)
-        self.cell(0, 5, f"Lab: {self.lab_name}  |  Generated: {self.generated_at}", new_x="LMARGIN", new_y="NEXT")
+        parts = [f"Lab: {self.lab_name}"]
+        if self.pulled_by:
+            parts.append(f"Pulled by: {self.pulled_by}")
+        parts.append(f"Generated: {self.generated_at}")
+        self.cell(0, 5, "  |  ".join(parts), new_x="LMARGIN", new_y="NEXT")
         self.set_text_color(0, 0, 0)
         self.ln(3)
 
@@ -40,16 +45,13 @@ class LabAidPDF(FPDF):
     def _table_row(self, values: list[str], widths: list[int]):
         self.set_font("Helvetica", "", 7)
         max_h = 7
-        # Calculate needed height for multi-line cells
         line_heights = []
         for val, w in zip(values, widths):
-            # Approximate number of lines needed
             text_w = self.get_string_width(val)
             lines = max(1, int(text_w / (w - 2)) + 1)
             line_heights.append(lines * 4)
         row_h = max(max_h, max(line_heights))
 
-        # Check if we need a page break
         if self.get_y() + row_h > self.h - 20:
             self.add_page()
 
@@ -62,203 +64,79 @@ class LabAidPDF(FPDF):
         self.set_y(y_start + row_h)
 
 
-def render_audit_trail_pdf(data: list[dict], lab_name: str) -> bytes:
-    pdf = LabAidPDF("Audit Trail Report", lab_name)
+def _render_table(title: str, lab_name: str, pulled_by: str,
+                  columns: list[tuple[str, int]], data: list[dict],
+                  row_fn) -> bytes:
+    """Shared helper to render a flat table PDF."""
+    pdf = LabAidPDF(title, lab_name, pulled_by)
     pdf.alias_nb_pages()
     pdf.add_page()
-
-    columns = [
-        ("Timestamp", 42),
-        ("User", 35),
-        ("Action", 35),
-        ("Entity Type", 25),
-        ("Entity", 70),
-        ("Note", 55),
-        ("Support", 15),
-    ]
-
     pdf._table_header(columns)
     widths = [c[1] for c in columns]
-
     for row in data:
-        pdf._table_row(
-            [row["timestamp"][:19], row["user"], row["action"],
-             row["entity_type"], row["entity"], row["note"], row["support"]],
-            widths,
-        )
-
+        pdf._table_row(row_fn(row), widths)
     return pdf.output()
 
 
-def render_lot_lifecycle_pdf(data: list[dict], lab_name: str) -> bytes:
-    pdf = LabAidPDF("Lot Lifecycle Report", lab_name)
-    pdf.alias_nb_pages()
-    pdf.add_page()
-
-    for lot in data:
-        # Lot header
-        pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(0, 7, f"Lot {lot['lot_number']} — {lot['antibody']}", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "", 8)
-        status_parts = [
-            f"QC: {lot['qc_status']}",
-            f"Expires: {lot['expiration_date'] or 'N/A'}",
-            f"Created: {lot['created_at'][:10]}",
-            f"Vials: {lot['total_vials']} (S:{lot['sealed']} O:{lot['opened']} D:{lot['depleted']})",
-        ]
-        if lot["is_archived"]:
-            status_parts.append("ARCHIVED")
-        pdf.cell(0, 5, "  |  ".join(status_parts), new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(2)
-
-        # Events table
-        if lot["events"]:
-            columns = [
-                ("Timestamp", 42),
-                ("Action", 45),
-                ("User", 45),
-                ("Note", 110),
-                ("Support", 15),
-            ]
-            pdf._table_header(columns)
-            widths = [c[1] for c in columns]
-            for ev in lot["events"]:
-                pdf._table_row(
-                    [ev["timestamp"][:19], ev["action"], ev["user"], ev["note"], ev["support"]],
-                    widths,
-                )
-        else:
-            pdf.set_font("Helvetica", "I", 8)
-            pdf.cell(0, 5, "No audit events recorded.", new_x="LMARGIN", new_y="NEXT")
-
-        pdf.ln(5)
-
-    return pdf.output()
-
-
-def render_qc_history_pdf(data: list[dict], lab_name: str) -> bytes:
-    pdf = LabAidPDF("QC History Report", lab_name)
-    pdf.alias_nb_pages()
-    pdf.add_page()
-
+def render_lot_activity_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
     columns = [
-        ("Timestamp", 42),
-        ("Lot", 30),
-        ("Antibody", 40),
-        ("Action", 35),
-        ("User", 35),
-        ("Entity", 50),
-        ("Note", 35),
-        ("Support", 15),
+        ("Lot #", 28), ("Received", 22), ("Received By", 30),
+        ("QC Doc", 14), ("QC Approved", 22), ("QC Approved By", 30),
+        ("First Opened", 22), ("Last Opened", 22),
+        ("Sealed", 16), ("Opened", 16), ("Depleted", 16),
     ]
-
-    pdf._table_header(columns)
-    widths = [c[1] for c in columns]
-
-    for row in data:
-        pdf._table_row(
-            [row["timestamp"][:19], row["lot_number"], row["antibody"],
-             row["action"], row["user"], row["entity"], row["note"], row["support"]],
-            widths,
-        )
-
-    return pdf.output()
+    return _render_table(
+        "Lot Activity Report", lab_name, pulled_by, columns, data,
+        lambda r: [
+            r["lot_number"], r["received"], r["received_by"],
+            r["qc_doc"], r["qc_approved"], r["qc_approved_by"],
+            r["first_opened"], r["last_opened"],
+            str(r["sealed"]), str(r["opened"]), str(r["depleted"]),
+        ],
+    )
 
 
-def render_qc_verification_pdf(data: dict, lab_name: str) -> bytes:
-    pdf = LabAidPDF("QC Verification Dossier", lab_name)
-    pdf.alias_nb_pages()
-    pdf.add_page()
-
-    # Lot information header
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, f"Lot {data['lot_number']}", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 9)
-
-    info_lines = [
-        f"Antibody: {data['antibody']}",
-        f"Vendor: {data['vendor']}  |  Catalog: {data['catalog_number']}",
-        f"Expiration: {data['expiration_date'] or 'N/A'}",
-        f"QC Status: {data['qc_status'].upper()}" + (f"  —  Approved by: {data['qc_approved_by']}" if data['qc_approved_by'] else ""),
-        f"QC Approved At: {data['qc_approved_at'][:19] if data['qc_approved_at'] else 'N/A'}",
-        f"Created: {data['created_at'][:10]}  |  Archived: {'Yes' if data['is_archived'] else 'No'}",
+def render_usage_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
+    columns = [
+        ("Lot #", 30), ("Expiration", 22), ("Received", 22),
+        ("Vials Received", 25), ("Vials Consumed", 25),
+        ("First Opened", 24), ("Last Opened", 24),
+        ("Avg/Week", 20), ("Status", 22),
     ]
-    for line in info_lines:
-        pdf.cell(0, 5, line, new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(5)
+    return _render_table(
+        "Usage Report", lab_name, pulled_by, columns, data,
+        lambda r: [
+            r["lot_number"], r["expiration"], r["received"],
+            str(r["vials_received"]), str(r["vials_consumed"]),
+            r["first_opened"], r["last_opened"],
+            r["avg_week"], r["status"],
+        ],
+    )
 
-    # Documents section
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 7, "Attached Documents", new_x="LMARGIN", new_y="NEXT")
 
-    if data["documents"]:
-        doc_cols = [
-            ("File Name", 70),
-            ("QC Document", 25),
-            ("Description", 80),
-            ("Uploaded By", 45),
-            ("Uploaded At", 42),
-        ]
-        pdf._table_header(doc_cols)
-        doc_widths = [c[1] for c in doc_cols]
-        for doc in data["documents"]:
-            pdf._table_row(
-                [doc["file_name"], "Yes" if doc["is_qc_document"] else "No",
-                 doc["description"], doc["uploaded_by"], doc["uploaded_at"][:19] if doc["uploaded_at"] else ""],
-                doc_widths,
-            )
-    else:
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.cell(0, 5, "No documents attached.", new_x="LMARGIN", new_y="NEXT")
+def render_admin_activity_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
+    columns = [
+        ("Timestamp", 42), ("Action", 40), ("Performed By", 40),
+        ("Target", 60), ("Details", 75),
+    ]
+    return _render_table(
+        "Admin Activity Report", lab_name, pulled_by, columns, data,
+        lambda r: [
+            r["timestamp"][:19], r["action"], r["performed_by"],
+            r["target"], r["details"],
+        ],
+    )
 
-    pdf.ln(5)
 
-    # QC History section
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 7, "QC History", new_x="LMARGIN", new_y="NEXT")
-
-    if data["qc_history"]:
-        qc_cols = [
-            ("Timestamp", 42),
-            ("Action", 45),
-            ("User", 45),
-            ("Note", 110),
-            ("Support", 15),
-        ]
-        pdf._table_header(qc_cols)
-        qc_widths = [c[1] for c in qc_cols]
-        for ev in data["qc_history"]:
-            pdf._table_row(
-                [ev["timestamp"][:19], ev["action"], ev["user"], ev["note"], ev["support"]],
-                qc_widths,
-            )
-    else:
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.cell(0, 5, "No QC events recorded.", new_x="LMARGIN", new_y="NEXT")
-
-    pdf.ln(5)
-
-    # Full audit trail
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 7, "Complete Audit Trail", new_x="LMARGIN", new_y="NEXT")
-
-    if data["full_audit_trail"]:
-        trail_cols = [
-            ("Timestamp", 42),
-            ("Action", 45),
-            ("User", 45),
-            ("Note", 110),
-            ("Support", 15),
-        ]
-        pdf._table_header(trail_cols)
-        trail_widths = [c[1] for c in trail_cols]
-        for ev in data["full_audit_trail"]:
-            pdf._table_row(
-                [ev["timestamp"][:19], ev["action"], ev["user"], ev["note"], ev["support"]],
-                trail_widths,
-            )
-    else:
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.cell(0, 5, "No audit events recorded.", new_x="LMARGIN", new_y="NEXT")
-
-    return pdf.output()
+def render_audit_trail_pdf(data: list[dict], lab_name: str, pulled_by: str = "") -> bytes:
+    columns = [
+        ("Timestamp", 42), ("User", 35), ("Action", 35),
+        ("Entity Type", 25), ("Entity", 70), ("Note", 55), ("Support", 15),
+    ]
+    return _render_table(
+        "Audit Trail Report", lab_name, pulled_by, columns, data,
+        lambda r: [
+            r["timestamp"][:19], r["user"], r["action"],
+            r["entity_type"], r["entity"], r["note"], r["support"],
+        ],
+    )

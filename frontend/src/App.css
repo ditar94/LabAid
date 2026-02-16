@@ -6479,6 +6479,7 @@ textarea:focus-visible {
   border-radius: var(--radius-lg, 10px);
   cursor: pointer;
   text-align: left;
+  color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 

@@ -4,71 +4,55 @@ import csv
 import io
 
 
+def _render(headers: list[str], rows: list[list[str]]) -> bytes:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    return buf.getvalue().encode("utf-8")
+
+
+def render_lot_activity_csv(data: list[dict]) -> bytes:
+    return _render(
+        ["Lot #", "Received", "Received By", "QC Doc", "QC Approved",
+         "QC Approved By", "First Opened", "Last Opened", "Sealed", "Opened", "Depleted"],
+        [[
+            row["lot_number"], row["received"], row["received_by"],
+            row["qc_doc"], row["qc_approved"], row["qc_approved_by"],
+            row["first_opened"], row["last_opened"],
+            str(row["sealed"]), str(row["opened"]), str(row["depleted"]),
+        ] for row in data],
+    )
+
+
+def render_usage_csv(data: list[dict]) -> bytes:
+    return _render(
+        ["Lot #", "Expiration", "Received", "Vials Received", "Vials Consumed",
+         "First Opened", "Last Opened", "Avg/Week", "Status"],
+        [[
+            row["lot_number"], row["expiration"], row["received"],
+            str(row["vials_received"]), str(row["vials_consumed"]),
+            row["first_opened"], row["last_opened"],
+            row["avg_week"], row["status"],
+        ] for row in data],
+    )
+
+
+def render_admin_activity_csv(data: list[dict]) -> bytes:
+    return _render(
+        ["Timestamp", "Action", "Performed By", "Target", "Details"],
+        [[
+            row["timestamp"], row["action"], row["performed_by"],
+            row["target"], row["details"],
+        ] for row in data],
+    )
+
+
 def render_audit_trail_csv(data: list[dict]) -> bytes:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["Timestamp", "User", "Action", "Entity Type", "Entity", "Note", "Support Action"])
-    for row in data:
-        writer.writerow([
-            row["timestamp"],
-            row["user"],
-            row["action"],
-            row["entity_type"],
-            row["entity"],
-            row["note"],
-            row["support"],
-        ])
-    return buf.getvalue().encode("utf-8")
-
-
-def render_lot_lifecycle_csv(data: list[dict]) -> bytes:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "Lot Number", "Antibody", "Expiration", "QC Status", "Archived",
-        "Created At", "Total Vials", "Sealed", "Opened", "Depleted",
-        "Event Timestamp", "Event Action", "Event User", "Event Note", "Support",
-    ])
-    for lot in data:
-        if lot["events"]:
-            for i, ev in enumerate(lot["events"]):
-                if i == 0:
-                    writer.writerow([
-                        lot["lot_number"], lot["antibody"], lot["expiration_date"],
-                        lot["qc_status"], "Yes" if lot["is_archived"] else "No",
-                        lot["created_at"], lot["total_vials"], lot["sealed"],
-                        lot["opened"], lot["depleted"],
-                        ev["timestamp"], ev["action"], ev["user"], ev["note"], ev["support"],
-                    ])
-                else:
-                    writer.writerow([
-                        "", "", "", "", "", "", "", "", "", "",
-                        ev["timestamp"], ev["action"], ev["user"], ev["note"], ev["support"],
-                    ])
-        else:
-            writer.writerow([
-                lot["lot_number"], lot["antibody"], lot["expiration_date"],
-                lot["qc_status"], "Yes" if lot["is_archived"] else "No",
-                lot["created_at"], lot["total_vials"], lot["sealed"],
-                lot["opened"], lot["depleted"],
-                "", "", "", "", "",
-            ])
-    return buf.getvalue().encode("utf-8")
-
-
-def render_qc_history_csv(data: list[dict]) -> bytes:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["Timestamp", "Lot", "Antibody", "Action", "User", "Entity", "Note", "Support"])
-    for row in data:
-        writer.writerow([
-            row["timestamp"],
-            row["lot_number"],
-            row["antibody"],
-            row["action"],
-            row["user"],
-            row["entity"],
-            row["note"],
-            row["support"],
-        ])
-    return buf.getvalue().encode("utf-8")
+    return _render(
+        ["Timestamp", "User", "Action", "Entity Type", "Entity", "Note", "Support Action"],
+        [[
+            row["timestamp"], row["user"], row["action"],
+            row["entity_type"], row["entity"], row["note"], row["support"],
+        ] for row in data],
+    )
