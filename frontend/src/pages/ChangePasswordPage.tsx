@@ -31,7 +31,7 @@ export default function ChangePasswordPage() {
     try {
       await api.post("/auth/change-password", { new_password: newPassword });
       await refreshUser();
-      navigate("/");
+      navigate("/dashboard");
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to change password");
     }
@@ -124,7 +124,7 @@ export default function ChangePasswordPage() {
           <p className="login-footer">You can change your password later in settings</p>
         ) : (
           <p className="login-footer">
-            <Link to="/">Cancel</Link>
+            <Link to="/dashboard">Cancel</Link>
           </p>
         )}
       </div>

@@ -103,7 +103,8 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/receive" element={<Navigate to="/scan-search" replace />} />
           <Route path="/scan" element={<Navigate to="/scan-search" replace />} />

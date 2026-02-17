@@ -10,7 +10,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   // Already authenticated (e.g. page refresh while logged in) — go to dashboard
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,7 +24,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
       preloadAppChunks();
-      navigate("/");
+      navigate("/dashboard");
     } catch (err: any) {
       if (err?.response?.status === 429) {
         setError("Too many login attempts. Please wait a minute and try again.");

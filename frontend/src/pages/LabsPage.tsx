@@ -79,7 +79,7 @@ export default function LabsPage() {
     setEnteringLabId(labId);
     try {
       await startImpersonation(labId);
-      navigate("/");
+      navigate("/dashboard");
     } catch (err: any) {
       const detail = err.response?.data?.detail || "Failed to enter lab";
       addToast(detail, "danger");

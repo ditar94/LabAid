@@ -37,7 +37,7 @@ export default function SetPasswordPage() {
       // Password set successfully — try to auto-login via cookie
       try {
         await refreshUser();
-        navigate("/");
+        navigate("/dashboard");
       } catch {
         // Cookie may not propagate through Firebase Hosting — redirect to login
         navigate("/login");

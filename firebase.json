@@ -25,7 +25,7 @@
         },
         {
           "source": "**",
-          "destination": "/index.html"
+          "destination": "/app.html"
         }
       ]
     },
@@ -54,7 +54,7 @@
         },
         {
           "source": "**",
-          "destination": "/index.html"
+          "destination": "/app.html"
         }
       ]
     },
@@ -83,7 +83,7 @@
         },
         {
           "source": "**",
-          "destination": "/index.html"
+          "destination": "/app.html"
         }
       ]
     }

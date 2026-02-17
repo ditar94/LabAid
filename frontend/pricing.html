@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pricing — LabAid</title>
+  <meta name="description" content="Simple, transparent pricing for flow cytometry inventory management. Start your 14-day free trial today." />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #1e293b;
+      background: #f4f6fb;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+    :root {
+      --indigo-400: #818cf8;
+      --indigo-500: #6366f1;
+      --indigo-600: #4f46e5;
+      --indigo-700: #4338ca;
+      --navy-900: #080b16;
+      --navy-800: #0f172a;
+      --navy-700: #1e293b;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-400: #94a3b8;
+      --slate-500: #64748b;
+      --light-bg: #f4f6fb;
+      --white: #ffffff;
+      --container: min(1200px, 90vw);
+    }
+
+    @keyframes orbFloat1 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(30px, -40px) scale(1.05); }
+      66% { transform: translate(-20px, 20px) scale(0.95); }
+    }
+    @keyframes orbFloat2 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(-40px, 30px) scale(0.95); }
+      66% { transform: translate(25px, -25px) scale(1.08); }
+    }
+    @keyframes heroEnter {
+      from { opacity: 0; transform: translateY(40px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(32px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== NAV ===== */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 1rem 0;
+      transition: background 0.4s, box-shadow 0.4s, padding 0.4s;
+    }
+    .nav.scrolled {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 24px rgba(0, 0, 0, 0.04);
+      padding: 0.6rem 0;
+    }
+    .nav-inner {
+      width: var(--container);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .nav-logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--indigo-500), var(--indigo-700));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 12px rgba(99, 102, 241, 0.3);
+    }
+    .nav-logo-icon svg { width: 20px; height: 20px; }
+    .nav-logo-text {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--white);
+      transition: color 0.4s;
+    }
+    .nav.scrolled .nav-logo-text { color: var(--navy-700); }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+    .nav-link {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--slate-400);
+      transition: color 0.25s;
+    }
+    .nav-link:hover { color: var(--white); }
+    .nav.scrolled .nav-link { color: var(--slate-500); }
+    .nav.scrolled .nav-link:hover { color: var(--indigo-600); }
+    .nav-login {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--white);
+      background: var(--indigo-500);
+      padding: 0.5rem 1.25rem;
+      border-radius: 100px;
+      transition: background 0.25s, transform 0.25s, box-shadow 0.25s;
+    }
+    .nav-login:hover {
+      background: var(--indigo-600);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+    }
+
+    /* ===== HERO ===== */
+    .pricing-hero {
+      position: relative;
+      padding: 10rem 0 6rem;
+      background: var(--navy-900);
+      overflow: hidden;
+      text-align: center;
+    }
+    .pricing-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(circle, rgba(99, 102, 241, 0.12) 1px, transparent 1px);
+      background-size: 32px 32px;
+      z-index: 1;
+    }
+    .pricing-hero::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 200px;
+      background: linear-gradient(to bottom, transparent, var(--light-bg));
+      z-index: 2;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.3;
+      will-change: transform;
+    }
+    .orb-1 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.6), rgba(99, 102, 241, 0) 70%);
+      top: 5%;
+      left: 20%;
+      animation: orbFloat1 14s ease-in-out infinite;
+    }
+    .orb-2 {
+      width: 350px;
+      height: 350px;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.5), rgba(139, 92, 246, 0) 70%);
+      top: 20%;
+      right: 15%;
+      animation: orbFloat2 18s ease-in-out infinite;
+    }
+    .pricing-hero-content {
+      position: relative;
+      z-index: 3;
+      animation: heroEnter 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .pricing-hero-label {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--indigo-400);
+      margin-bottom: 0.75rem;
+    }
+    .pricing-hero h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.035em;
+      color: var(--white);
+      margin-bottom: 1rem;
+    }
+    .pricing-hero p {
+      font-size: clamp(1rem, 2vw, 1.15rem);
+      color: var(--slate-400);
+      max-width: 520px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ===== PRICING CARDS ===== */
+    .pricing-section {
+      padding: 0 0 clamp(4rem, 10vw, 8rem);
+      background: var(--light-bg);
+      margin-top: -2rem;
+      position: relative;
+      z-index: 3;
+    }
+    .pricing-grid {
+      width: var(--container);
+      max-width: 880px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+      animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+    }
+    @media (max-width: 768px) {
+      .pricing-grid { grid-template-columns: 1fr; }
+    }
+    .pricing-card {
+      background: var(--white);
+      border-radius: 20px;
+      padding: 2.5rem;
+      border: 1px solid var(--slate-200);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s;
+    }
+    .pricing-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
+    }
+    .pricing-card.featured {
+      border-color: rgba(99, 102, 241, 0.25);
+      box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.1), 0 8px 32px rgba(99, 102, 241, 0.08);
+      position: relative;
+    }
+    .pricing-card.featured::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--indigo-500), var(--indigo-400));
+      border-radius: 20px 20px 0 0;
+    }
+    .pricing-popular {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--indigo-500);
+      background: rgba(99, 102, 241, 0.08);
+      padding: 0.3rem 0.75rem;
+      border-radius: 100px;
+      margin-bottom: 1.25rem;
+      width: fit-content;
+    }
+    .pricing-card h3 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--navy-700);
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .pricing-card .pricing-desc {
+      font-size: 0.9rem;
+      color: var(--slate-500);
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+    .pricing-amount {
+      display: flex;
+      align-items: baseline;
+      gap: 0.35rem;
+      margin-bottom: 0.25rem;
+    }
+    .pricing-amount .price {
+      font-size: 2.75rem;
+      font-weight: 800;
+      color: var(--navy-700);
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+    .pricing-amount .period {
+      font-size: 0.9rem;
+      color: var(--slate-400);
+      font-weight: 500;
+    }
+    .pricing-billed {
+      font-size: 0.8rem;
+      color: var(--slate-400);
+      margin-bottom: 2rem;
+    }
+    .pricing-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+      flex: 1;
+    }
+    .pricing-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      font-size: 0.88rem;
+      color: var(--navy-700);
+      line-height: 1.5;
+    }
+    .pricing-features li svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .check-indigo { color: var(--indigo-500); }
+    .check-slate { color: var(--slate-400); }
+    .btn-primary-pricing {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.85rem 2rem;
+      background: linear-gradient(135deg, var(--indigo-500), var(--indigo-600));
+      color: var(--white);
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 12px;
+      transition: transform 0.25s, box-shadow 0.25s;
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+      width: 100%;
+    }
+    .btn-primary-pricing:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.45);
+    }
+    .btn-outline-pricing {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.85rem 2rem;
+      background: transparent;
+      color: var(--navy-700);
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 12px;
+      border: 1px solid var(--slate-200);
+      transition: border-color 0.25s, transform 0.25s, background 0.25s;
+      width: 100%;
+    }
+    .btn-outline-pricing:hover {
+      border-color: var(--indigo-500);
+      transform: translateY(-2px);
+      background: rgba(99, 102, 241, 0.04);
+    }
+
+    /* ===== TRIAL CALLOUT ===== */
+    .trial-callout {
+      width: var(--container);
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 2.5rem;
+      background: var(--white);
+      border-radius: 20px;
+      border: 1px solid var(--slate-200);
+      text-align: center;
+      animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+    }
+    .trial-callout h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--navy-700);
+      margin-bottom: 0.35rem;
+    }
+    .trial-callout p {
+      font-size: 0.92rem;
+      color: var(--slate-500);
+      margin-bottom: 1.25rem;
+    }
+    .trial-callout a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--indigo-500);
+      transition: color 0.25s;
+    }
+    .trial-callout a:hover { color: var(--indigo-600); }
+    .trial-callout a svg { width: 16px; height: 16px; }
+
+    /* ===== FAQ ===== */
+    .faq {
+      padding: clamp(4rem, 10vw, 6rem) 0;
+      background: var(--light-bg);
+    }
+    .faq-container {
+      width: var(--container);
+      max-width: 680px;
+      margin: 0 auto;
+    }
+    .faq-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    .faq-header h2 {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800;
+      color: var(--navy-700);
+      letter-spacing: -0.03em;
+    }
+    .faq-item {
+      padding: 1.5rem 0;
+      border-bottom: 1px solid var(--slate-200);
+    }
+    .faq-item:first-child { border-top: 1px solid var(--slate-200); }
+    .faq-question {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--navy-700);
+      margin-bottom: 0.5rem;
+    }
+    .faq-answer {
+      font-size: 0.88rem;
+      color: var(--slate-500);
+      line-height: 1.7;
+    }
+
+    /* ===== FOOTER ===== */
+    .footer {
+      background: var(--navy-800);
+      padding: 3.5rem 0 2rem;
+    }
+    .footer-inner {
+      width: var(--container);
+      margin: 0 auto;
+    }
+    .footer-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 2rem;
+      flex-wrap: wrap;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .footer-brand-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--indigo-500), var(--indigo-700));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .footer-brand-icon svg { width: 17px; height: 17px; }
+    .footer-brand-text {
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: var(--white);
+      letter-spacing: -0.02em;
+    }
+    .footer-brand-sub {
+      font-size: 0.8rem;
+      color: var(--slate-400);
+      margin-top: 0.15rem;
+    }
+    .footer-links {
+      display: flex;
+      gap: 2.5rem;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--slate-400);
+      transition: color 0.25s;
+    }
+    .footer-links a:hover { color: var(--white); }
+    .footer-bottom {
+      padding-top: 1.5rem;
+      font-size: 0.8rem;
+      color: rgba(148, 163, 184, 0.5);
+    }
+
+    /* ===== REDUCED MOTION ===== */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ===== MOBILE ===== */
+    @media (max-width: 640px) {
+      .nav-links { gap: 1rem; }
+      .nav-link { display: none; }
+      .pricing-card { padding: 2rem; }
+      .pricing-amount .price { font-size: 2.2rem; }
+      .footer-top { flex-direction: column; gap: 1.5rem; }
+      .footer-links { gap: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo">
+        <div class="nav-logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/>
+            <path d="M8.5 2h7"/><path d="M7 16.5h10"/>
+          </svg>
+        </div>
+        <span class="nav-logo-text">LabAid</span>
+      </a>
+      <div class="nav-links">
+        <a href="/" class="nav-link">Home</a>
+        <a href="/login" class="nav-login">Log In</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="pricing-hero">
+    <div class="orb orb-1" aria-hidden="true"></div>
+    <div class="orb orb-2" aria-hidden="true"></div>
+
+    <div class="pricing-hero-content">
+      <span class="pricing-hero-label">Pricing</span>
+      <h1>Simple, transparent pricing</h1>
+      <p>One plan with everything your lab needs. No hidden fees, no per-user charges, no surprises.</p>
+    </div>
+  </section>
+
+  <!-- PRICING CARDS -->
+  <section class="pricing-section">
+    <div class="pricing-grid">
+      <!-- Standard Plan -->
+      <div class="pricing-card featured">
+        <span class="pricing-popular">Most popular</span>
+        <h3>Standard</h3>
+        <p class="pricing-desc">Everything you need to manage reagent inventory for your flow cytometry lab.</p>
+        <div class="pricing-amount">
+          <span class="price">$3,000</span>
+          <span class="period">/year</span>
+        </div>
+        <p class="pricing-billed">Billed annually. Includes the entire lab.</p>
+        <ul class="pricing-features">
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            Unlimited users
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            Barcode scanning on any device
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            Full vial lifecycle tracking
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            FEFO logic &amp; expiration alerts
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            Visual storage grid mapping
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            Immutable audit trail
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            Compliance reports &amp; PDF export
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            QC document management
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            Role-based access control
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
+            Email support
+          </li>
+        </ul>
+        <a href="mailto:sales@labaid.io?subject=Free%20Trial%20Request" class="btn-primary-pricing">
+          Start Free Trial
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <!-- Enterprise Plan -->
+      <div class="pricing-card">
+        <h3>Enterprise</h3>
+        <p class="pricing-desc">For large hospital labs and multi-site institutions with advanced requirements.</p>
+        <div class="pricing-amount">
+          <span class="price" style="font-size: 2rem;">Custom</span>
+        </div>
+        <p class="pricing-billed">Tailored to your organization's needs.</p>
+        <ul class="pricing-features">
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            Everything in Standard, plus:
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            SSO / SAML authentication
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            Custom LIS integrations
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            Multi-site / multi-lab management
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            Dedicated onboarding &amp; training
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            Priority support
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            Custom SLA
+          </li>
+        </ul>
+        <a href="mailto:sales@labaid.io?subject=Enterprise%20Inquiry" class="btn-outline-pricing">
+          Contact Sales
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <!-- Trial Callout -->
+    <div class="trial-callout" style="margin-top: 1.5rem;">
+      <h3>Try LabAid free for 14 days</h3>
+      <p>No credit card required. We'll set up your lab and get you started in minutes.</p>
+      <a href="mailto:sales@labaid.io?subject=Free%20Trial%20Request">
+        Get started
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq">
+    <div class="faq-container">
+      <div class="faq-header">
+        <h2>Frequently asked questions</h2>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">How does the free trial work?</div>
+        <div class="faq-answer">Email us and we'll create your lab within one business day. You get full access to all Standard features for 14 days. No credit card required to start.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">Is there a per-user fee?</div>
+        <div class="faq-answer">No. The Standard plan includes unlimited users for your lab. Everyone from lab directors to technicians can access the system at no extra cost.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">Can I pay monthly instead of annually?</div>
+        <div class="faq-answer">We currently only offer annual billing. This keeps things simple and gives you the best value for your lab.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">What happens after my trial ends?</div>
+        <div class="faq-answer">We'll send you a payment link before your trial expires. If you don't subscribe, your lab will be read-only — no data is ever deleted.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">Do you offer discounts for academic labs?</div>
+        <div class="faq-answer">Yes — contact us to discuss academic pricing for university and research institution labs.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-top">
+        <div>
+          <div class="footer-brand">
+            <div class="footer-brand-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/>
+                <path d="M8.5 2h7"/><path d="M7 16.5h10"/>
+              </svg>
+            </div>
+            <div>
+              <div class="footer-brand-text">LabAid</div>
+              <div class="footer-brand-sub">Laboratory Inventory Management</div>
+            </div>
+          </div>
+        </div>
+        <div class="footer-links">
+          <a href="/">Home</a>
+          <a href="/terms">Terms</a>
+          <a href="/login">Log In</a>
+          <a href="mailto:sales@labaid.io">Contact</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        &copy; 2026 LabAid. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const nav = document.getElementById('nav');
+    const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 40);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  </script>
+</body>
+</html>

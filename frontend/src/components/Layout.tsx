@@ -50,7 +50,7 @@ export default function Layout() {
 
   const handleExitImpersonation = async () => {
     await endImpersonation();
-    navigate("/");
+    navigate("/dashboard");
   };
 
   const isSuperAdmin = user?.role === "super_admin";
@@ -188,7 +188,7 @@ export default function Layout() {
           </div>
         )}
         <div className="nav-links">
-          <NavLink to="/" onClick={handleNavClick} onMouseEnter={prefetchDashboard}>
+          <NavLink to="/dashboard" onClick={handleNavClick} onMouseEnter={prefetchDashboard}>
             <LayoutDashboard className="nav-icon" />
             Dashboard
             {pendingRequestCount > 0 && <span className="nav-badge">{pendingRequestCount}</span>}
@@ -314,7 +314,7 @@ export default function Layout() {
         <Outlet />
       </main>
       <nav className="bottom-nav">
-        <NavLink to="/" end className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
+        <NavLink to="/dashboard" end className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
           <LayoutDashboard className="nav-icon" />
           <span>Dashboard</span>
         </NavLink>

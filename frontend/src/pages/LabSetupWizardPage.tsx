@@ -64,10 +64,10 @@ export default function LabSetupWizardPage() {
         setup_complete: true,
       });
       await refreshUser();
-      navigate("/");
+      navigate("/dashboard");
     } catch {
       // Still navigate — settings are best-effort
-      navigate("/");
+      navigate("/dashboard");
     }
   };
 
@@ -85,7 +85,7 @@ export default function LabSetupWizardPage() {
       await api.patch(`/labs/${user!.lab_id}/settings`, { setup_complete: true });
       await refreshUser();
     } catch { /* ignore */ }
-    navigate("/");
+    navigate("/dashboard");
   };
 
   return (
@@ -168,7 +168,7 @@ export default function LabSetupWizardPage() {
               <ArrowLeft size={16} /> Back
             </button>
           ) : (
-            <button type="button" className="btn-link" onClick={isRerun ? () => navigate("/") : handleSkip}>
+            <button type="button" className="btn-link" onClick={isRerun ? () => navigate("/dashboard") : handleSkip}>
               {isRerun ? "Cancel" : "Skip setup"}
             </button>
           )}
