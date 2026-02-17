@@ -3,6 +3,7 @@
     {
       "site": "labaid-prod",
       "public": "frontend/dist",
+      "cleanUrls": true,
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "headers": [
         {
@@ -32,6 +33,7 @@
     {
       "site": "labaid-staging",
       "public": "frontend/dist",
+      "cleanUrls": true,
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "headers": [
         {
@@ -61,6 +63,7 @@
     {
       "site": "labaid-beta",
       "public": "frontend/dist",
+      "cleanUrls": true,
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "headers": [
         {
