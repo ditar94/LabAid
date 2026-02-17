@@ -205,9 +205,12 @@ class LotDocument(Base):
     is_qc_document = Column(Boolean, default=False, nullable=False, server_default="false")
     storage_class = Column(String(20), nullable=True, server_default="hot")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False, server_default="false")
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     lot = relationship("Lot", back_populates="documents")
-    user = relationship("User")
+    user = relationship("User", foreign_keys=[user_id])
 
 
 class Vial(Base):

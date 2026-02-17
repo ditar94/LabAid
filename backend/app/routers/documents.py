@@ -7,6 +7,7 @@ import uuid as uuid_mod
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 from starlette.responses import FileResponse, RedirectResponse
 
@@ -202,7 +203,10 @@ def get_lot_documents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    q = db.query(LotDocument).filter(LotDocument.lot_id == lot_id)
+    q = db.query(LotDocument).filter(
+        LotDocument.lot_id == lot_id,
+        LotDocument.is_deleted == False,  # noqa: E712
+    )
     if current_user.role != UserRole.SUPER_ADMIN:
         q = q.filter(LotDocument.lab_id == current_user.lab_id)
     docs = q.all()
@@ -215,7 +219,10 @@ def get_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    q = db.query(LotDocument).filter(LotDocument.id == document_id)
+    q = db.query(LotDocument).filter(
+        LotDocument.id == document_id,
+        LotDocument.is_deleted == False,  # noqa: E712
+    )
     if current_user.role != UserRole.SUPER_ADMIN:
         q = q.filter(LotDocument.lab_id == current_user.lab_id)
     doc = q.first()
@@ -257,7 +264,10 @@ def update_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
-    q = db.query(LotDocument).filter(LotDocument.id == document_id)
+    q = db.query(LotDocument).filter(
+        LotDocument.id == document_id,
+        LotDocument.is_deleted == False,  # noqa: E712
+    )
     if current_user.role != UserRole.SUPER_ADMIN:
         q = q.filter(LotDocument.lab_id == current_user.lab_id)
     doc = q.first()
@@ -312,7 +322,10 @@ def delete_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
-    q = db.query(LotDocument).filter(LotDocument.id == document_id)
+    q = db.query(LotDocument).filter(
+        LotDocument.id == document_id,
+        LotDocument.is_deleted == False,  # noqa: E712
+    )
     if current_user.role != UserRole.SUPER_ADMIN:
         q = q.filter(LotDocument.lab_id == current_user.lab_id)
     doc = q.first()
@@ -321,19 +334,9 @@ def delete_document(
 
     before = _snapshot_document(doc)
 
-    if object_storage.enabled and not doc.file_path.startswith("uploads"):
-        try:
-            object_storage.delete(doc.file_path)
-        except Exception:
-            logger.exception("Failed to delete document from object storage: %s", doc.file_path)
-            raise HTTPException(status_code=502, detail="Failed to delete file from object storage")
-    else:
-        if os.path.exists(doc.file_path):
-            try:
-                os.remove(doc.file_path)
-            except OSError:
-                logger.exception("Failed to delete local document file: %s", doc.file_path)
-                raise HTTPException(status_code=500, detail="Failed to delete local file")
+    doc.is_deleted = True
+    doc.deleted_at = sa_func.now()
+    doc.deleted_by = current_user.id
 
     log_audit(
         db,
@@ -346,6 +349,40 @@ def delete_document(
         note=f"Deleted document: {doc.file_name}",
     )
 
-    db.delete(doc)
     db.commit()
     return {"detail": "Document deleted"}
+
+
+@router.post("/{document_id}/restore")
+def restore_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+):
+    q = db.query(LotDocument).filter(
+        LotDocument.id == document_id,
+        LotDocument.is_deleted == True,  # noqa: E712
+    )
+    if current_user.role != UserRole.SUPER_ADMIN:
+        q = q.filter(LotDocument.lab_id == current_user.lab_id)
+    doc = q.first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Deleted document not found")
+
+    doc.is_deleted = False
+    doc.deleted_at = None
+    doc.deleted_by = None
+
+    log_audit(
+        db,
+        lab_id=doc.lab_id,
+        user_id=current_user.id,
+        action="document.restored",
+        entity_type="lot",
+        entity_id=doc.lot_id,
+        after_state=_snapshot_document(doc),
+        note=f"Restored document: {doc.file_name}",
+    )
+
+    db.commit()
+    return {"detail": "Document restored"}

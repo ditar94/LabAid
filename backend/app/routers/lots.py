@@ -76,7 +76,11 @@ def list_lots(
     qc_doc_lot_ids = {
         r[0]
         for r in db.query(LotDocument.lot_id)
-        .filter(LotDocument.lot_id.in_(lot_ids), LotDocument.is_qc_document.is_(True))
+        .filter(
+            LotDocument.lot_id.in_(lot_ids),
+            LotDocument.is_qc_document.is_(True),
+            LotDocument.is_deleted == False,  # noqa: E712
+        )
         .distinct()
         .all()
     }

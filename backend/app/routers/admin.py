@@ -1,4 +1,6 @@
 import logging
+import os
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -16,6 +18,7 @@ from app.models.models import (
     UserRole,
     Vial,
 )
+from app.services.audit import log_audit
 from app.services.object_storage import object_storage
 
 logger = logging.getLogger(__name__)
@@ -84,7 +87,10 @@ def check_integrity(
     if object_storage.enabled:
         s3_docs = (
             db.query(LotDocument.id, LotDocument.file_path)
-            .filter(~LotDocument.file_path.startswith("uploads"))
+            .filter(
+                ~LotDocument.file_path.startswith("uploads"),
+                LotDocument.is_deleted == False,  # noqa: E712
+            )
             .all()
         )
         for doc_id, key in s3_docs:
@@ -101,7 +107,10 @@ def check_integrity(
     # 7. Documents missing metadata (uploaded before checksum tracking)
     docs_without_checksum = (
         db.query(func.count(LotDocument.id))
-        .filter(LotDocument.checksum_sha256.is_(None))
+        .filter(
+            LotDocument.checksum_sha256.is_(None),
+            LotDocument.is_deleted == False,  # noqa: E712
+        )
         .scalar()
     )
     checks["documents_without_checksum"] = docs_without_checksum
@@ -117,3 +126,59 @@ def check_integrity(
         "status": "issues_found" if has_issues else "ok",
         "checks": checks,
     }
+
+
+@router.post("/purge-deleted-documents")
+def purge_deleted_documents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    """Hard-delete documents that were soft-deleted more than 90 days ago."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    docs = (
+        db.query(LotDocument)
+        .filter(
+            LotDocument.is_deleted == True,  # noqa: E712
+            LotDocument.deleted_at < cutoff,
+        )
+        .all()
+    )
+
+    purged = 0
+    errors = []
+    for doc in docs:
+        # Delete blob from storage
+        if object_storage.enabled and not doc.file_path.startswith("uploads"):
+            try:
+                object_storage.delete(doc.file_path)
+            except Exception:
+                logger.exception("Failed to purge blob: %s", doc.file_path)
+                errors.append(str(doc.id))
+                continue
+        else:
+            if os.path.exists(doc.file_path):
+                try:
+                    os.remove(doc.file_path)
+                except OSError:
+                    logger.exception("Failed to purge local file: %s", doc.file_path)
+                    errors.append(str(doc.id))
+                    continue
+
+        log_audit(
+            db,
+            lab_id=doc.lab_id,
+            user_id=current_user.id,
+            action="document.purged",
+            entity_type="lot",
+            entity_id=doc.lot_id,
+            before_state={"document_id": str(doc.id), "file_name": doc.file_name},
+            note=f"Purged soft-deleted document: {doc.file_name}",
+        )
+        db.delete(doc)
+        purged += 1
+
+    db.commit()
+    result = {"detail": f"Purged {purged} documents"}
+    if errors:
+        result["errors"] = errors
+    return result

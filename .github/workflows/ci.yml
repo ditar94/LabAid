@@ -53,3 +53,77 @@ jobs:
 
       - name: TypeScript check
         run: npx tsc --noEmit -p tsconfig.app.json
+
+  terraform-validate:
+    name: Terraform Safety Check
+    if: contains(github.event.pull_request.title, 'terraform') || contains(github.event.pull_request.title, 'infra')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.5"
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Terraform init
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan (beta)
+        id: plan
+        run: |
+          terraform plan \
+            -var-file=environments/beta.tfvars \
+            -out=tfplan.binary \
+            -detailed-exitcode \
+            || true
+          terraform show -json tfplan.binary > tfplan.json
+
+      - name: Check for destructive actions on stateful resources
+        run: |
+          PROTECTED_TYPES='["google_sql_database_instance", "google_sql_database", "google_sql_user", "google_storage_bucket"]'
+
+          DESTROYS=$(python3 -c "
+          import json
+          with open('tfplan.json') as f:
+              plan = json.load(f)
+          protected = json.loads('$PROTECTED_TYPES')
+          found = []
+          for c in plan.get('resource_changes', []):
+              if c.get('type') in protected:
+                  actions = c.get('change', {}).get('actions', [])
+                  if 'delete' in actions:
+                      found.append(f\"  DESTROY: {c['address']} (actions: {'+'.join(actions)})\")
+          if found:
+              print('BLOCKED')
+              for line in found:
+                  print(line)
+          " 2>/dev/null || true)
+
+          if echo "$DESTROYS" | grep -q "^BLOCKED"; then
+            echo ""
+            echo "::error::Terraform plan would DESTROY protected stateful resources!"
+            echo ""
+            echo "$DESTROYS"
+            echo ""
+            echo "If you renamed a resource key, use: terraform state mv OLD NEW"
+            echo "See docs/DISASTER_RECOVERY.md for Terraform safety rules."
+            exit 1
+          fi
+
+          echo "No destructive actions on protected resources."

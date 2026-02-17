@@ -6,7 +6,7 @@
 
 | Metric | Target | Current Capability |
 |--------|--------|--------------------|
-| **RPO** (max data loss) | 15 minutes | 7-day PITR with WAL archiving (continuous) |
+| **RPO** (max data loss) | 15 minutes | 14-day PITR with WAL archiving (continuous) |
 | **RTO** (max downtime) | 4 hours | Cloud SQL restore ~20 min, Cloud Run redeploy ~5 min |
 
 ## Backup Configuration
@@ -17,8 +17,8 @@
 - **Nonprod instance**: `labaid-db-nonprod` (PostgreSQL 16, `us-central1`, ZONAL)
 - **Databases**: `labaid` (prod, on `labaid-db-prod`), `labaid_beta` (on `labaid-db-nonprod`)
 - **Automated backups**: Daily at 03:00 UTC
-- **Retention**: 7 most recent backups
-- **Point-in-time recovery (PITR)**: Enabled, 7-day WAL retention
+- **Retention**: 14 most recent backups
+- **Point-in-time recovery (PITR)**: Enabled, 14-day WAL retention
 - **Transaction log storage**: Cloud Storage (external to instance)
 - **Maintenance window**: Sunday 04:00 UTC
 - **Deletion protection**: Enabled
@@ -172,7 +172,7 @@ SELECT status, COUNT(*) FROM vials GROUP BY status;
 
 ## Restore Test Procedure
 
-Run quarterly. Record results below.
+Run quarterly. Record results below. An automated script is available at `scripts/restore_drill.sh` — it performs steps 1-5 and outputs results for the test history table.
 
 1. Create a PITR clone: `gcloud sql instances clone labaid-db-prod labaid-db-test-restore --point-in-time="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" --project=labaid-prod`
 2. Connect to the clone via Cloud SQL Proxy
@@ -200,6 +200,18 @@ The original `labaid-db` instance (containing all beta data) was destroyed when 
 **Root cause**: Renaming a Terraform resource key without running `terraform state mv` first.
 
 **Data lost**: All beta users, labs, antibodies, lots, vials, and audit history.
+
+### Prevention
+
+**Always use `scripts/tf-apply.sh` instead of raw `terraform apply`.** The wrapper runs `terraform plan`, parses the JSON output, and blocks apply if any Cloud SQL instance, database, user, or storage bucket would be destroyed or replaced. This is the single most effective safeguard against accidental data loss from Terraform.
+
+```bash
+./scripts/tf-apply.sh beta.tfvars        # beta (default)
+./scripts/tf-apply.sh prod.tfvars        # production
+./scripts/tf-apply.sh staging.tfvars     # staging
+```
+
+PRs with Terraform changes also run a CI safety check (`.github/workflows/ci.yml` → `terraform-validate` job).
 
 ### Rules
 
