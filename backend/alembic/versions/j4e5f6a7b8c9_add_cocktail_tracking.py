@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 
 
 revision: str = "j4e5f6a7b8c9"
@@ -47,8 +48,8 @@ def upgrade() -> None:
     op.create_index("ix_cocktail_recipe_components_recipe_id", "cocktail_recipe_components", ["recipe_id"])
 
     # ── cocktail_lots ─────────────────────────────────────────────────────
-    cocktail_lot_status = sa.Enum("active", "depleted", "archived", name="cocktaillotstatus")
-    qc_status = sa.Enum("pending", "approved", "failed", name="qcstatus", create_type=False)
+    cocktail_lot_status = PG_ENUM("active", "depleted", "archived", name="cocktaillotstatus", create_type=True)
+    qc_status = PG_ENUM("pending", "approved", "failed", name="qcstatus", create_type=False)
 
     op.create_table(
         "cocktail_lots",
@@ -123,7 +124,7 @@ def downgrade() -> None:
     op.drop_index("ix_cocktail_lots_vendor_barcode", table_name="cocktail_lots")
     op.drop_index("ix_cocktail_lots_lab_recipe", table_name="cocktail_lots")
     op.drop_table("cocktail_lots")
-    sa.Enum(name="cocktaillotstatus").drop(op.get_bind(), checkfirst=True)
+    PG_ENUM(name="cocktaillotstatus").drop(op.get_bind(), checkfirst=True)
     op.drop_index("ix_cocktail_recipe_components_recipe_id", table_name="cocktail_recipe_components")
     op.drop_table("cocktail_recipe_components")
     op.drop_index("ix_cocktail_recipes_lab_id", table_name="cocktail_recipes")
