@@ -845,3 +845,7 @@ class CocktailLotStoreRequest(BaseModel):
 class CocktailRecipeWithLots(CocktailRecipeOut):
     lots: list[CocktailLotWithDetails] = []
     active_lot_count: int = 0
+
+
+# Rebuild forward references now that all classes are defined
+ScanLookupResult.model_rebuild()
