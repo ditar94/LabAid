@@ -27,6 +27,7 @@ export interface LabSettings {
   qc_doc_required?: boolean;
   support_access_enabled?: boolean;
   storage_enabled?: boolean;
+  cocktails_enabled?: boolean;
   setup_complete?: boolean;
   billing_status?: BillingStatus;
   is_active?: boolean;
@@ -195,14 +196,17 @@ export interface OlderLotSummary {
 }
 
 export interface ScanLookupResult {
-  lot: Lot;
-  antibody: Antibody;
+  lot?: Lot;
+  antibody?: Antibody;
   vials: Vial[];
   opened_vials: Vial[];
   storage_grids: StorageGrid[];
   qc_warning: string | null;
   older_lots?: OlderLotSummary[];
   is_current_lot?: boolean;
+  is_cocktail?: boolean;
+  cocktail_lot?: CocktailLot;
+  cocktail_recipe?: CocktailRecipe;
 }
 
 export interface GUDIDDevice {
@@ -385,4 +389,80 @@ export interface LotRequest {
   reviewed_at: string | null;
   rejection_note: string | null;
   created_at: string;
+}
+
+// ── Cocktail Tracking ─────────────────────────────────────────────────────
+
+export type CocktailLotStatus = "active" | "depleted" | "archived";
+
+export interface CocktailRecipeComponent {
+  id: string;
+  antibody_id: string;
+  antibody_target: string | null;
+  antibody_fluorochrome: string | null;
+  volume_ul: number | null;
+  ordinal: number;
+}
+
+export interface CocktailRecipe {
+  id: string;
+  lab_id: string;
+  name: string;
+  description: string | null;
+  shelf_life_days: number;
+  max_renewals: number | null;
+  is_active: boolean;
+  components: CocktailRecipeComponent[];
+  created_at: string;
+}
+
+export interface CocktailLotSource {
+  id: string;
+  component_id: string;
+  source_lot_id: string;
+  source_lot_number: string | null;
+  antibody_target: string | null;
+  antibody_fluorochrome: string | null;
+}
+
+export interface CocktailLotDocument {
+  id: string;
+  cocktail_lot_id: string;
+  file_name: string;
+  description: string | null;
+  is_qc_document: boolean;
+  created_at: string;
+}
+
+export interface CocktailLot {
+  id: string;
+  recipe_id: string;
+  lab_id: string;
+  lot_number: string;
+  vendor_barcode: string | null;
+  preparation_date: string;
+  expiration_date: string;
+  status: CocktailLotStatus;
+  qc_status: QCStatus;
+  qc_approved_by: string | null;
+  qc_approved_at: string | null;
+  created_by: string | null;
+  renewal_count: number;
+  last_renewed_at: string | null;
+  location_cell_id: string | null;
+  is_archived: boolean;
+  archive_note: string | null;
+  created_at: string;
+  recipe_name?: string;
+  sources?: CocktailLotSource[];
+  documents?: CocktailLotDocument[];
+  has_qc_document?: boolean;
+  storage_unit_name?: string | null;
+  storage_cell_label?: string | null;
+  created_by_name?: string | null;
+}
+
+export interface CocktailRecipeWithLots extends CocktailRecipe {
+  lots: CocktailLot[];
+  active_lot_count: number;
 }

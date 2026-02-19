@@ -15,6 +15,10 @@ from sqlalchemy.orm import Session
 from app.models.models import (
     Antibody,
     AuditLog,
+    CocktailLot,
+    CocktailLotSource,
+    CocktailRecipe,
+    CocktailRecipeComponent,
     Lot,
     LotDocument,
     User,
@@ -514,6 +518,8 @@ ADMIN_ACTIONS = [
     "fluorochrome.archived",
     "storage_unit.created",
     "storage_unit.deleted",
+    "cocktail_recipe.created",
+    "cocktail_recipe.updated",
 ]
 
 ACTION_LABELS = {
@@ -533,6 +539,8 @@ ACTION_LABELS = {
     "fluorochrome.archived": "Fluorochrome Archived",
     "storage_unit.created": "Storage Unit Created",
     "storage_unit.deleted": "Storage Unit Deleted",
+    "cocktail_recipe.created": "Cocktail Recipe Created",
+    "cocktail_recipe.updated": "Cocktail Recipe Updated",
 }
 
 
@@ -632,3 +640,115 @@ def get_audit_trail_data(
         }
         for log in logs
     ]
+
+
+# ── Cocktail Lot Report ─────────────────────────────────────────────────
+
+
+def get_cocktail_lot_data(
+    db: Session,
+    *,
+    lab_id: UUID,
+    recipe_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict]:
+    """One row per cocktail lot: recipe, dates, QC, renewal, status, components."""
+    q = db.query(CocktailLot).filter(CocktailLot.lab_id == lab_id)
+    if recipe_id:
+        q = q.filter(CocktailLot.recipe_id == recipe_id)
+    if date_from:
+        q = q.filter(CocktailLot.preparation_date >= date_from)
+    if date_to:
+        q = q.filter(CocktailLot.preparation_date < _make_date_inclusive(date_to))
+    lots = q.order_by(CocktailLot.preparation_date.desc()).all()
+    if not lots:
+        return []
+
+    lot_ids = [cl.id for cl in lots]
+    recipe_ids = list({cl.recipe_id for cl in lots})
+
+    # Batch: recipes
+    recipes = db.query(CocktailRecipe).filter(CocktailRecipe.id.in_(recipe_ids)).all()
+    recipe_map = {r.id: r for r in recipes}
+
+    # Batch: components per recipe
+    components = (
+        db.query(CocktailRecipeComponent)
+        .filter(CocktailRecipeComponent.recipe_id.in_(recipe_ids))
+        .order_by(CocktailRecipeComponent.ordinal)
+        .all()
+    )
+    comps_by_recipe: dict[UUID, list] = {}
+    for c in components:
+        comps_by_recipe.setdefault(c.recipe_id, []).append(c)
+
+    # Batch: sources
+    sources = db.query(CocktailLotSource).filter(CocktailLotSource.cocktail_lot_id.in_(lot_ids)).all()
+    sources_by_lot: dict[UUID, list] = {}
+    for s in sources:
+        sources_by_lot.setdefault(s.cocktail_lot_id, []).append(s)
+
+    # Batch: source lot numbers
+    source_lot_ids = list({s.source_lot_id for s in sources})
+    source_lots = {}
+    if source_lot_ids:
+        rows = db.query(Lot.id, Lot.lot_number).filter(Lot.id.in_(source_lot_ids)).all()
+        source_lots = {r.id: r.lot_number for r in rows}
+
+    # Batch: antibody names for components
+    ab_ids = {c.antibody_id for c in components}
+    ab_map = _antibody_name_map(db, ab_ids)
+
+    # Batch: QC approver names
+    approver_ids = {cl.qc_approved_by for cl in lots if cl.qc_approved_by}
+    creator_ids = {cl.created_by for cl in lots if cl.created_by}
+    user_map = _resolve_user_map(db, approver_ids | creator_ids)
+
+    result = []
+    for cl in lots:
+        recipe = recipe_map.get(cl.recipe_id)
+        recipe_name = recipe.name if recipe else ""
+        lot_sources = sources_by_lot.get(cl.id, [])
+
+        # Build components detail: "AbName → LotXXX" per line
+        comps = comps_by_recipe.get(cl.recipe_id, [])
+        comp_details = []
+        for comp in comps:
+            ab_name = ab_map.get(comp.antibody_id, "?")
+            # Find matching source for this component
+            src = next((s for s in lot_sources if s.component_id == comp.id), None)
+            src_lot = source_lots.get(src.source_lot_id, "?") if src else "—"
+            comp_details.append(f"{ab_name} -> {src_lot}")
+
+        result.append({
+            "recipe_name": recipe_name,
+            "lot_number": cl.lot_number,
+            "preparation_date": _fmt_date(cl.preparation_date),
+            "expiration_date": _fmt_date(cl.expiration_date),
+            "qc_status": cl.qc_status.value if cl.qc_status else "",
+            "qc_approved_by": user_map.get(cl.qc_approved_by, "") if cl.qc_approved_by else "",
+            "renewal_count": cl.renewal_count,
+            "status": cl.status.value if cl.status else "",
+            "created_by": user_map.get(cl.created_by, "") if cl.created_by else "",
+            "components": "; ".join(comp_details),
+        })
+
+    return result
+
+
+def get_cocktail_lot_range(
+    db: Session,
+    *,
+    lab_id: UUID,
+    recipe_id: UUID | None = None,
+) -> tuple[datetime | None, datetime | None]:
+    """Min/max cocktail_lot.preparation_date."""
+    q = db.query(
+        sa_func.min(CocktailLot.preparation_date),
+        sa_func.max(CocktailLot.preparation_date),
+    ).filter(CocktailLot.lab_id == lab_id)
+    if recipe_id:
+        q = q.filter(CocktailLot.recipe_id == recipe_id)
+    row = q.one()
+    return row[0], row[1]

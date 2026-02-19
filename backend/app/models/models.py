@@ -72,6 +72,12 @@ class BillingStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class CocktailLotStatus(str, enum.Enum):
+    ACTIVE = "active"
+    DEPLETED = "depleted"
+    ARCHIVED = "archived"
+
+
 # ── Models ─────────────────────────────────────────────────────────────────
 
 
@@ -91,6 +97,7 @@ class Lab(Base):
     antibodies = relationship("Antibody", back_populates="lab")
     storage_units = relationship("StorageUnit", back_populates="lab")
     fluorochromes = relationship("Fluorochrome", back_populates="lab")
+    cocktail_recipes = relationship("CocktailRecipe", back_populates="lab")
 
 
 class Fluorochrome(Base):
@@ -356,3 +363,119 @@ class LotRequest(Base):
     lab = relationship("Lab")
     submitter = relationship("User", foreign_keys=[user_id])
     reviewer = relationship("User", foreign_keys=[reviewed_by])
+
+
+# ── Cocktail Tracking ─────────────────────────────────────────────────────
+
+
+class CocktailRecipe(Base):
+    __tablename__ = "cocktail_recipes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    name = Column(String(300), nullable=False)
+    description = Column(Text, nullable=True)
+    shelf_life_days = Column(Integer, nullable=False)
+    max_renewals = Column(Integer, nullable=True)  # null = unlimited
+    is_active = Column(Boolean, default=True, nullable=False, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    lab = relationship("Lab", back_populates="cocktail_recipes")
+    components = relationship(
+        "CocktailRecipeComponent", back_populates="recipe",
+        cascade="all, delete-orphan", order_by="CocktailRecipeComponent.ordinal",
+    )
+    lots = relationship("CocktailLot", back_populates="recipe")
+
+
+class CocktailRecipeComponent(Base):
+    __tablename__ = "cocktail_recipe_components"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recipe_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_recipes.id", ondelete="CASCADE"), nullable=False)
+    antibody_id = Column(UUID(as_uuid=True), ForeignKey("antibodies.id"), nullable=False)
+    volume_ul = Column(Integer, nullable=True)
+    ordinal = Column(Integer, nullable=False, default=0)
+
+    recipe = relationship("CocktailRecipe", back_populates="components")
+    antibody = relationship("Antibody")
+
+
+class CocktailLot(Base):
+    __tablename__ = "cocktail_lots"
+    __table_args__ = (
+        Index("ix_cocktail_lots_lab_recipe", "lab_id", "recipe_id"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recipe_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_recipes.id"), nullable=False)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    lot_number = Column(String(100), nullable=False)
+    vendor_barcode = Column(String(255), nullable=True)
+    preparation_date = Column(Date, nullable=False)
+    expiration_date = Column(Date, nullable=False)
+    status = Column(
+        Enum(CocktailLotStatus, values_callable=lambda e: [x.value for x in e]),
+        nullable=False, default=CocktailLotStatus.ACTIVE,
+    )
+    qc_status = Column(
+        Enum(QCStatus, values_callable=lambda e: [x.value for x in e]),
+        nullable=False, default=QCStatus.PENDING,
+    )
+    qc_approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    qc_approved_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    renewal_count = Column(Integer, nullable=False, default=0, server_default="0")
+    last_renewed_at = Column(DateTime(timezone=True), nullable=True)
+    location_cell_id = Column(UUID(as_uuid=True), ForeignKey("storage_cells.id"), nullable=True)
+    is_archived = Column(Boolean, default=False, nullable=False, server_default="false")
+    archive_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    recipe = relationship("CocktailRecipe", back_populates="lots")
+    lab = relationship("Lab")
+    qc_approver = relationship("User", foreign_keys=[qc_approved_by])
+    creator = relationship("User", foreign_keys=[created_by])
+    location_cell = relationship("StorageCell")
+    source_lots = relationship(
+        "CocktailLotSource", back_populates="cocktail_lot",
+        cascade="all, delete-orphan",
+    )
+    documents = relationship("CocktailLotDocument", back_populates="cocktail_lot")
+
+
+class CocktailLotSource(Base):
+    __tablename__ = "cocktail_lot_sources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    cocktail_lot_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_lots.id", ondelete="CASCADE"), nullable=False)
+    component_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_recipe_components.id"), nullable=False)
+    source_lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False)
+
+    cocktail_lot = relationship("CocktailLot", back_populates="source_lots")
+    component = relationship("CocktailRecipeComponent")
+    source_lot = relationship("Lot")
+
+
+class CocktailLotDocument(Base):
+    __tablename__ = "cocktail_lot_documents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    cocktail_lot_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_lots.id"), nullable=False)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    file_size = Column(BigInteger, nullable=True)
+    content_type = Column(String(100), nullable=True)
+    checksum_sha256 = Column(String(64), nullable=True)
+    description = Column(String(500), nullable=True)
+    is_qc_document = Column(Boolean, default=False, nullable=False, server_default="false")
+    storage_class = Column(String(20), nullable=True, server_default="hot")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False, server_default="false")
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    cocktail_lot = relationship("CocktailLot", back_populates="documents")
+    user = relationship("User", foreign_keys=[user_id])

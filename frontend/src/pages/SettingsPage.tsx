@@ -102,6 +102,24 @@ export default function SettingsPage() {
         />
       </div>
 
+      <div className="setting-row">
+        <div className="setting-label">
+          <div className="setting-title">Cocktail tracking</div>
+          <div className="setting-desc">Enable cocktail recipe management and lot preparation</div>
+        </div>
+        <ToggleSwitch
+          checked={labSettings.cocktails_enabled === true}
+          onChange={async () => {
+            const enabling = labSettings.cocktails_enabled !== true;
+            await updateSetting({ cocktails_enabled: enabling });
+            addToast(
+              enabling ? "Cocktail tracking enabled" : "Cocktail tracking disabled",
+              "success"
+            );
+          }}
+        />
+      </div>
+
       {user.role === "lab_admin" && (
         <button
           type="button"

@@ -48,6 +48,9 @@ def batch_resolve_audit_logs(
     """
     from app.models.models import (
         Antibody,
+        CocktailLot,
+        CocktailLotDocument,
+        CocktailRecipe,
         Fluorochrome,
         Lab,
         Lot,
@@ -230,6 +233,57 @@ def batch_resolve_audit_logs(
                 else:
                     lineage[log.entity_id] = {"lot_id": None, "antibody_id": None}
 
+    # ── Cocktail recipes ──
+    cr_ids = ids_by_type.get("cocktail_recipe", set())
+    if cr_ids:
+        rows = db.query(CocktailRecipe).filter(CocktailRecipe.id.in_(cr_ids)).all()
+        for r in rows:
+            labels[r.id] = r.name
+            lineage[r.id] = {"lot_id": None, "antibody_id": None}
+
+    # ── Cocktail lots ──
+    cl_ids = ids_by_type.get("cocktail_lot", set())
+    if cl_ids:
+        cl_rows = db.query(CocktailLot).filter(CocktailLot.id.in_(cl_ids)).all()
+        cl_recipe_ids = {c.recipe_id for c in cl_rows} - cr_ids
+        if cl_recipe_ids:
+            extra_recipes = db.query(CocktailRecipe).filter(CocktailRecipe.id.in_(cl_recipe_ids)).all()
+        else:
+            extra_recipes = []
+        cr_map = {r.id: r for r in extra_recipes}
+        # Also include recipes already loaded above
+        for r_id in cr_ids:
+            if r_id in labels and r_id not in cr_map:
+                recipe_obj = db.query(CocktailRecipe).filter(CocktailRecipe.id == r_id).first()
+                if recipe_obj:
+                    cr_map[r_id] = recipe_obj
+        for cl in cl_rows:
+            recipe = cr_map.get(cl.recipe_id)
+            if recipe:
+                labels[cl.id] = f"{recipe.name} — Lot {cl.lot_number}"
+            else:
+                labels[cl.id] = f"Cocktail Lot {cl.lot_number}"
+            lineage[cl.id] = {"lot_id": None, "antibody_id": None}
+
+    # ── Cocktail lot documents ──
+    cld_ids = ids_by_type.get("cocktail_document", set())
+    if cld_ids:
+        cld_rows = db.query(CocktailLotDocument).filter(CocktailLotDocument.id.in_(cld_ids)).all()
+        cld_lot_ids = {d.cocktail_lot_id for d in cld_rows}
+        needed_cl_ids = cld_lot_ids - cl_ids
+        if needed_cl_ids:
+            extra_cls = db.query(CocktailLot).filter(CocktailLot.id.in_(needed_cl_ids)).all()
+        else:
+            extra_cls = []
+        cl_map = {c.id: c for c in extra_cls}
+        for d in cld_rows:
+            cl = cl_map.get(d.cocktail_lot_id)
+            if cl:
+                labels[d.id] = f"Cocktail Lot {cl.lot_number}"
+            else:
+                labels[d.id] = d.file_name
+            lineage[d.id] = {"lot_id": None, "antibody_id": None}
+
     return labels, lineage
 
 
@@ -313,4 +367,32 @@ def snapshot_lot(lot) -> dict:
         "qc_status": lot.qc_status.value if lot.qc_status else None,
         "qc_approved_by": str(lot.qc_approved_by) if lot.qc_approved_by else None,
         "is_archived": lot.is_archived,
+    }
+
+
+def snapshot_cocktail_recipe(recipe) -> dict:
+    return {
+        "id": str(recipe.id),
+        "name": recipe.name,
+        "shelf_life_days": recipe.shelf_life_days,
+        "max_renewals": recipe.max_renewals,
+        "is_active": recipe.is_active,
+        "components": [
+            {"antibody_id": str(c.antibody_id), "volume_ul": c.volume_ul, "ordinal": c.ordinal}
+            for c in (recipe.components or [])
+        ],
+    }
+
+
+def snapshot_cocktail_lot(lot) -> dict:
+    return {
+        "id": str(lot.id),
+        "lot_number": lot.lot_number,
+        "recipe_id": str(lot.recipe_id),
+        "expiration_date": str(lot.expiration_date) if lot.expiration_date else None,
+        "status": lot.status.value if lot.status else None,
+        "qc_status": lot.qc_status.value if lot.qc_status else None,
+        "renewal_count": lot.renewal_count,
+        "is_archived": lot.is_archived,
+        "location_cell_id": str(lot.location_cell_id) if lot.location_cell_id else None,
     }

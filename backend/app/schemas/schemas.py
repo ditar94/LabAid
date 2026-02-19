@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, model_validator
 
-from app.models.models import Designation, LotRequestStatus, QCStatus, TicketStatus, UserRole, VialStatus
+from app.models.models import CocktailLotStatus, Designation, LotRequestStatus, QCStatus, TicketStatus, UserRole, VialStatus
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────
@@ -114,6 +114,7 @@ class LabSettingsUpdate(BaseModel):
     qc_doc_required: bool | None = None
     support_access_enabled: bool | None = None
     storage_enabled: bool | None = None
+    cocktails_enabled: bool | None = None
     setup_complete: bool | None = None
     billing_url: str | None = None
 
@@ -493,14 +494,18 @@ class OlderLotSummary(BaseModel):
 
 
 class ScanLookupResult(BaseModel):
-    lot: LotOut
-    antibody: AntibodyOut
-    vials: list[VialOut]
+    lot: LotOut | None = None
+    antibody: AntibodyOut | None = None
+    vials: list[VialOut] = []
     opened_vials: list[VialOut] = []
     storage_grids: list[StorageGridOut] = []
     qc_warning: str | None = None
     older_lots: list[OlderLotSummary] = []
     is_current_lot: bool = False
+    # Cocktail fields (populated when is_cocktail=True)
+    is_cocktail: bool = False
+    cocktail_lot: "CocktailLotWithDetails | None" = None
+    cocktail_recipe: "CocktailRecipeOut | None" = None
 
 
 class ScanEnrichRequest(BaseModel):
@@ -690,3 +695,153 @@ class LotRequestOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Cocktail Recipes ──────────────────────────────────────────────────────
+
+
+class CocktailRecipeComponentBase(BaseModel):
+    antibody_id: UUID
+    volume_ul: int | None = None
+    ordinal: int = 0
+
+
+class CocktailRecipeComponentOut(CocktailRecipeComponentBase):
+    id: UUID
+    antibody_target: str | None = None
+    antibody_fluorochrome: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class CocktailRecipeCreate(BaseModel):
+    name: str
+    description: str | None = None
+    shelf_life_days: int
+    max_renewals: int | None = None
+    components: list[CocktailRecipeComponentBase]
+
+
+class CocktailRecipeUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    shelf_life_days: int | None = None
+    max_renewals: int | None = None
+    is_active: bool | None = None
+    components: list[CocktailRecipeComponentBase] | None = None
+
+
+class CocktailRecipeOut(BaseModel):
+    id: UUID
+    lab_id: UUID
+    name: str
+    description: str | None
+    shelf_life_days: int
+    max_renewals: int | None
+    is_active: bool
+    components: list[CocktailRecipeComponentOut] = []
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Cocktail Lots ─────────────────────────────────────────────────────────
+
+
+class CocktailLotSourceCreate(BaseModel):
+    component_id: UUID
+    source_lot_id: UUID
+
+
+class CocktailLotSourceOut(BaseModel):
+    id: UUID
+    component_id: UUID
+    source_lot_id: UUID
+    source_lot_number: str | None = None
+    antibody_target: str | None = None
+    antibody_fluorochrome: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class CocktailLotCreate(BaseModel):
+    recipe_id: UUID
+    lot_number: str
+    vendor_barcode: str | None = None
+    preparation_date: date
+    expiration_date: date | None = None  # auto-calc if not provided
+    sources: list[CocktailLotSourceCreate]
+
+
+class CocktailLotOut(BaseModel):
+    id: UUID
+    recipe_id: UUID
+    lab_id: UUID
+    lot_number: str
+    vendor_barcode: str | None
+    preparation_date: date
+    expiration_date: date
+    status: CocktailLotStatus
+    qc_status: QCStatus
+    qc_approved_by: UUID | None
+    qc_approved_at: datetime | None
+    created_by: UUID | None
+    renewal_count: int
+    last_renewed_at: datetime | None
+    location_cell_id: UUID | None
+    is_archived: bool
+    archive_note: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CocktailLotDocumentOut(BaseModel):
+    id: UUID
+    cocktail_lot_id: UUID
+    file_name: str
+    file_size: int | None = None
+    content_type: str | None = None
+    checksum_sha256: str | None = None
+    description: str | None = None
+    is_qc_document: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CocktailLotDocumentUpdate(BaseModel):
+    description: str | None = None
+    is_qc_document: bool | None = None
+
+
+class CocktailLotWithDetails(CocktailLotOut):
+    recipe_name: str | None = None
+    sources: list[CocktailLotSourceOut] = []
+    documents: list[CocktailLotDocumentOut] = []
+    has_qc_document: bool = False
+    storage_unit_name: str | None = None
+    storage_cell_label: str | None = None
+    created_by_name: str | None = None
+
+
+class CocktailLotUpdateQC(BaseModel):
+    qc_status: QCStatus
+
+
+class CocktailLotArchiveRequest(BaseModel):
+    note: str | None = None
+
+
+class CocktailLotStoreRequest(BaseModel):
+    cell_id: UUID
+
+
+class CocktailRecipeWithLots(CocktailRecipeOut):
+    lots: list[CocktailLotWithDetails] = []
+    active_lot_count: int = 0

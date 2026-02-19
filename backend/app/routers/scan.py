@@ -5,12 +5,18 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.models import Antibody, Lot, QCStatus, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus
+from app.models.models import (
+    Antibody, CocktailLot, CocktailLotSource, CocktailRecipe, CocktailRecipeComponent,
+    Lot, QCStatus, StorageCell, StorageUnit, User, UserRole, Vial, VialStatus,
+)
 from app.routers.storage import build_grid_cells
 from sqlalchemy import func as sa_func
 
 from app.schemas.schemas import (
     AntibodyOut,
+    CocktailLotSourceOut,
+    CocktailLotWithDetails,
+    CocktailRecipeOut,
     GUDIDDevice,
     LotOut,
     OlderLotSummary,
@@ -56,6 +62,83 @@ def scan_lookup(
         lot = q2.first()
 
     if not lot:
+        # Try cocktail lot lookup before returning 404
+        cl_q = db.query(CocktailLot).filter(CocktailLot.vendor_barcode == body.barcode)
+        if target_lab_id:
+            cl_q = cl_q.filter(CocktailLot.lab_id == target_lab_id)
+        cocktail_lot = cl_q.first()
+        if not cocktail_lot:
+            cl_q2 = db.query(CocktailLot).filter(CocktailLot.lot_number == body.barcode)
+            if target_lab_id:
+                cl_q2 = cl_q2.filter(CocktailLot.lab_id == target_lab_id)
+            cocktail_lot = cl_q2.first()
+
+        if cocktail_lot:
+            recipe = db.query(CocktailRecipe).filter(CocktailRecipe.id == cocktail_lot.recipe_id).first()
+            sources = db.query(CocktailLotSource).filter(CocktailLotSource.cocktail_lot_id == cocktail_lot.id).all()
+
+            # Resolve source details — load ALL recipe components (for recipe_out enrichment too)
+            components = db.query(CocktailRecipeComponent).filter(
+                CocktailRecipeComponent.recipe_id == cocktail_lot.recipe_id
+            ).order_by(CocktailRecipeComponent.ordinal).all()
+            comp_map = {c.id: c for c in components}
+            source_lot_ids = [s.source_lot_id for s in sources]
+            source_lots = {l.id: l for l in db.query(Lot).filter(Lot.id.in_(source_lot_ids)).all()} if source_lot_ids else {}
+            ab_ids = {c.antibody_id for c in components}
+            abs_map = {a.id: a for a in db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all()} if ab_ids else {}
+
+            resolved_sources = []
+            for s in sources:
+                comp = comp_map.get(s.component_id)
+                src_lot = source_lots.get(s.source_lot_id)
+                ab = abs_map.get(comp.antibody_id) if comp else None
+                resolved_sources.append(CocktailLotSourceOut(
+                    id=s.id,
+                    component_id=s.component_id,
+                    source_lot_id=s.source_lot_id,
+                    source_lot_number=src_lot.lot_number if src_lot else None,
+                    antibody_target=ab.target if ab else None,
+                    antibody_fluorochrome=ab.fluorochrome if ab else None,
+                ))
+
+            # Build enriched cocktail lot details
+            cl_details = CocktailLotWithDetails.model_validate(cocktail_lot, from_attributes=True)
+            cl_details.recipe_name = recipe.name if recipe else None
+            cl_details.sources = resolved_sources
+
+            # Resolve storage location
+            if cocktail_lot.location_cell_id:
+                cell = db.query(StorageCell).filter(StorageCell.id == cocktail_lot.location_cell_id).first()
+                if cell:
+                    unit = db.query(StorageUnit).filter(StorageUnit.id == cell.storage_unit_id).first()
+                    cl_details.storage_unit_name = unit.name if unit else None
+                    cl_details.storage_cell_label = cell.label
+
+            # Resolve created_by name
+            if cocktail_lot.created_by:
+                creator = db.query(User.full_name).filter(User.id == cocktail_lot.created_by).first()
+                cl_details.created_by_name = creator.full_name if creator else None
+
+            # Build recipe out with enriched components
+            recipe_out = None
+            if recipe:
+                recipe_out = CocktailRecipeOut.model_validate(recipe, from_attributes=True)
+                for comp_out in recipe_out.components:
+                    ab = abs_map.get(comp_out.antibody_id)
+                    if ab:
+                        comp_out.antibody_target = ab.target
+                        comp_out.antibody_fluorochrome = ab.fluorochrome
+
+            return ScanLookupResult(
+                is_cocktail=True,
+                cocktail_lot=cl_details,
+                cocktail_recipe=recipe_out,
+                vials=[],
+                opened_vials=[],
+                storage_grids=[],
+                qc_warning=None,
+            )
+
         raise HTTPException(status_code=404, detail="No lot found for this barcode")
 
     antibody = db.query(Antibody).filter(Antibody.id == lot.antibody_id).first()

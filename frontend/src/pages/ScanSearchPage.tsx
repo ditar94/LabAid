@@ -26,6 +26,7 @@ import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { useToast } from "../context/ToastContext";
 import { useViewPreference } from "../hooks/useViewPreference";
+import { FlaskConical } from "lucide-react";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { lotSummaryToLot } from "../utils/lotAdapters";
 import AntibodyForm, { NEW_FLUORO_VALUE, EMPTY_AB_FORM } from "../components/AntibodyForm";
@@ -292,12 +293,12 @@ export default function ScanSearchPage() {
         const firstQty = receiveAvailableSlots;
         const secondQty = receiveQty - receiveAvailableSlots;
         await api.post("/vials/receive", {
-          lot_id: result.lot.id,
+          lot_id: result.lot!.id,
           quantity: firstQty,
           storage_unit_id: receiveStorageId,
         });
         await api.post("/vials/receive", {
-          lot_id: result.lot.id,
+          lot_id: result.lot!.id,
           quantity: secondQty,
           storage_unit_id: overflowSecondUnitId,
         });
@@ -305,7 +306,7 @@ export default function ScanSearchPage() {
         addToast(`${receiveQty} vial(s) received (split)`, "success");
       } else if (needsOverflow && overflowMode === "temp") {
         await api.post("/vials/receive", {
-          lot_id: result.lot.id,
+          lot_id: result.lot!.id,
           quantity: receiveQty,
           storage_unit_id: null,
         });
@@ -313,11 +314,11 @@ export default function ScanSearchPage() {
         addToast(`${receiveQty} vial(s) received into temp storage`, "info");
       } else {
         await api.post("/vials/receive", {
-          lot_id: result.lot.id,
+          lot_id: result.lot!.id,
           quantity: receiveQty,
           storage_unit_id: receiveStorageId || null,
         });
-        setMessage(`${receiveQty} vial(s) received for lot ${result.lot.lot_number}.`);
+        setMessage(`${receiveQty} vial(s) received for lot ${result.lot!.lot_number}.`);
         addToast(`${receiveQty} vial(s) received`, "success");
       }
 
@@ -339,8 +340,8 @@ export default function ScanSearchPage() {
     setLoading(true);
     setShowDepleteAllConfirm(false);
     try {
-      const res = await api.post(`/lots/${result.lot.id}/deplete-all`);
-      setMessage(`${res.data.length} vial(s) depleted for lot ${result.lot.lot_number}.`);
+      const res = await api.post(`/lots/${result.lot!.id}/deplete-all`);
+      setMessage(`${res.data.length} vial(s) depleted for lot ${result.lot!.lot_number}.`);
       addToast(`${res.data.length} vial(s) depleted`, "success");
       resetScanState();
       await refreshScan();
@@ -357,8 +358,8 @@ export default function ScanSearchPage() {
     setLoading(true);
     setShowDepleteLotConfirm(false);
     try {
-      const res = await api.post(`/lots/${result.lot.id}/deplete-all-lot`);
-      setMessage(`${res.data.length} vial(s) depleted (entire lot) for lot ${result.lot.lot_number}.`);
+      const res = await api.post(`/lots/${result.lot!.id}/deplete-all-lot`);
+      setMessage(`${res.data.length} vial(s) depleted (entire lot) for lot ${result.lot!.lot_number}.`);
       resetScanState();
       await refreshScan();
     } catch (err: any) {
@@ -772,8 +773,86 @@ export default function ScanSearchPage() {
         </div>
       )}
 
+      {/* ── Cocktail Scan Result ──────────────────────────────────── */}
+      {mode === "scan" && result?.is_cocktail && result.cocktail_lot && (
+        <div className="scan-result-wrapper">
+          <div className="scan-info">
+            <h2>
+              <FlaskConical size={20} style={{ marginRight: 6, verticalAlign: -3 }} />
+              {result.cocktail_recipe?.name || "Cocktail"}
+              <span className="badge" style={{ marginLeft: 8, fontSize: "0.5em", verticalAlign: "middle", background: "#6366f1", color: "#fff" }}>Cocktail</span>
+            </h2>
+            <p>Lot: <strong>{result.cocktail_lot.lot_number}</strong> | QC: <span className={`badge ${result.cocktail_lot.qc_status === "approved" ? "badge-green" : result.cocktail_lot.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>{result.cocktail_lot.qc_status}</span></p>
+            <p>Status: <strong>{result.cocktail_lot.status}</strong> | Renewals: <strong>{result.cocktail_lot.renewal_count}</strong></p>
+            <p>Prepared: <strong>{result.cocktail_lot.preparation_date}</strong> | Expires: <strong>{result.cocktail_lot.expiration_date}</strong></p>
+            {result.cocktail_lot.storage_unit_name && (
+              <p>Stored: <strong>{result.cocktail_lot.storage_unit_name}</strong>{result.cocktail_lot.storage_cell_label && <> / <strong>{result.cocktail_lot.storage_cell_label}</strong></>}</p>
+            )}
+            {result.cocktail_lot.created_by_name && (
+              <p style={{ color: "var(--text-muted)", fontSize: "0.85em" }}>Prepared by: {result.cocktail_lot.created_by_name}</p>
+            )}
+          </div>
+
+          {/* Source traceability */}
+          {result.cocktail_lot.sources && result.cocktail_lot.sources.length > 0 && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <h3 style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>Source Lots</h3>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Antibody</th>
+                      <th>Source Lot</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.cocktail_lot.sources.map((s) => (
+                      <tr key={s.id || s.component_id}>
+                        <td>{[s.antibody_target, s.antibody_fluorochrome].filter(Boolean).join(" - ") || "Unknown"}</td>
+                        <td>
+                          {s.source_lot_number ? (
+                            <button
+                              className="btn-link"
+                              style={{ fontSize: "inherit", padding: 0 }}
+                              onClick={() => { setInput(s.source_lot_number!); handleLookup(s.source_lot_number!); }}
+                            >
+                              {s.source_lot_number}
+                            </button>
+                          ) : "\u2014"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Deplete button for active cocktail lots */}
+          {canReceive && result.cocktail_lot.status === "active" && (
+            <div className="intent-panel" style={{ marginTop: "0.75rem" }}>
+              <button
+                className="btn-red"
+                onClick={async () => {
+                  try {
+                    await api.post(`/cocktails/lots/${result.cocktail_lot!.id}/deplete`);
+                    addToast("Cocktail lot depleted", "success");
+                    handleLookup(input);
+                  } catch (err: any) {
+                    setError(err.response?.data?.detail || "Failed to deplete cocktail lot");
+                  }
+                }}
+                disabled={loading}
+              >
+                Mark as Depleted
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Scan Result ────────────────────────────────────────────── */}
-      {mode === "scan" && result && (
+      {mode === "scan" && result && !result.is_cocktail && result.antibody && result.lot && (
         <div className={`scan-result-wrapper${scanMoveMode ? " move-active" : ""}`}>
           <div className="scan-info">
             <h2>
@@ -811,7 +890,7 @@ export default function ScanSearchPage() {
                     style={{ marginLeft: 8 }}
                     onClick={async () => {
                       try {
-                        await api.patch(`/lots/${result.lot.id}/qc`, { qc_status: "approved" });
+                        await api.patch(`/lots/${result.lot!.id}/qc`, { qc_status: "approved" });
                         handleLookup(input);
                         addToast("QC approved", "success");
                       } catch (err: any) {

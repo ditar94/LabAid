@@ -39,10 +39,21 @@ const ACTION_OPTIONS = [
     { value: "antibody.archived", label: "Ab Archived" },
     { value: "antibody.unarchived", label: "Ab Unarchived" },
   ]},
+  { group: "Cocktails", items: [
+    { value: "cocktail_recipe.created", label: "Recipe Created" },
+    { value: "cocktail_recipe.updated", label: "Recipe Updated" },
+    { value: "cocktail_lot.created", label: "Lot Prepared" },
+    { value: "cocktail_lot.qc_approved", label: "Cocktail QC Approved" },
+    { value: "cocktail_lot.qc_failed", label: "Cocktail QC Failed" },
+    { value: "cocktail_lot.renewed", label: "Cocktail Renewed" },
+    { value: "cocktail_lot.depleted", label: "Cocktail Depleted" },
+    { value: "cocktail_lot.archived", label: "Cocktail Archived" },
+  ]},
   { group: "Other", items: [
     { value: "document.uploaded", label: "Document Uploaded" },
     { value: "document.updated", label: "Document Updated" },
     { value: "document.deleted", label: "Document Deleted" },
+    { value: "cocktail_document.uploaded", label: "Cocktail Doc Uploaded" },
     { value: "user.created", label: "User Created" },
     { value: "user.password_reset", label: "Password Reset" },
     { value: "storage_unit.created", label: "Storage Unit Created" },
@@ -505,6 +516,7 @@ export default function AuditPage() {
                   log.action.startsWith("vial.") || log.action.startsWith("vials.") ? "action-vial" :
                   log.action.startsWith("lot.") ? "action-lot" :
                   log.action.startsWith("antibody.") ? "action-antibody" :
+                  log.action.startsWith("cocktail_lot.") || log.action.startsWith("cocktail_recipe.") || log.action.startsWith("cocktail_document.") ? "action-lot" :
                   log.action.startsWith("user.") || log.action.startsWith("lab.") || log.action.startsWith("storage_unit.") || log.action.startsWith("support.") ? "action-admin" :
                   ""
                 }`}>{log.action}</span>

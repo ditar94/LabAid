@@ -50,6 +50,7 @@ const TicketsPage = lazy(() => import("./pages/TicketsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const GlobalSearchPage = lazy(() => import("./pages/GlobalSearchPage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const CocktailsPage = lazy(() => import("./pages/CocktailsPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -111,6 +112,7 @@ function AppRoutes() {
           <Route path="/search" element={<Navigate to="/scan-search" replace />} />
           <Route path="/scan-search" element={<ScanSearchPage />} />
           <Route path="/storage" element={<StoragePage />} />
+          <Route path="/cocktails" element={<CocktailsPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/users" element={<UsersPage />} />

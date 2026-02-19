@@ -280,3 +280,22 @@ def render_audit_trail_pdf(data: list[dict], lab_name: str,
         ],
         tz=tz,
     )
+
+
+def render_cocktail_lot_pdf(data: list[dict], lab_name: str,
+                             pulled_by: str = "", tz: str | None = None) -> bytes:
+    columns = [
+        ("Lot #", 22), ("Prepared", 18), ("Expires", 18),
+        ("QC", 14), ("QC By", 22), ("Renewals", 14),
+        ("Status", 16), ("Created By", 22), ("Components", 44),
+    ]
+    return _render_grouped_table(
+        "Cocktail Lot Report", lab_name, pulled_by, columns, data,
+        lambda r: [
+            r["lot_number"], r["preparation_date"], r["expiration_date"],
+            r["qc_status"], r["qc_approved_by"], str(r["renewal_count"]),
+            r["status"], r["created_by"], r["components"],
+        ],
+        group_key="recipe_name",
+        tz=tz,
+    )

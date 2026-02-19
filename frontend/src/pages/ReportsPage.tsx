@@ -16,10 +16,11 @@ import {
   ShieldCheck,
   Download,
   BarChart3,
+  FlaskConical,
 } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 
-type ReportType = "lot-activity" | "usage" | "usage-trend" | "admin-activity" | "audit-trail";
+type ReportType = "lot-activity" | "usage" | "usage-trend" | "cocktail-lots" | "admin-activity" | "audit-trail";
 
 const REPORT_CARDS: {
   type: ReportType;
@@ -65,6 +66,17 @@ const REPORT_CARDS: {
     dateLabel: "Usage Date",
   },
   {
+    type: "cocktail-lots",
+    title: "Cocktail Lots",
+    description:
+      "Cocktail lot traceability: recipe, source lots, preparation and expiration dates, QC status, and renewals.",
+    icon: FlaskConical,
+    formats: ["csv", "pdf"],
+    needsAntibody: false,
+    needsLot: false,
+    dateLabel: "Preparation Date",
+  },
+  {
     type: "admin-activity",
     title: "Admin Activity",
     description:
@@ -94,14 +106,18 @@ const ENTITY_TYPE_OPTIONS = [
   { value: "lot", label: "Lot" },
   { value: "antibody", label: "Antibody" },
   { value: "document", label: "Document" },
+  { value: "cocktail_recipe", label: "Cocktail Recipe" },
+  { value: "cocktail_lot", label: "Cocktail Lot" },
+  { value: "cocktail_document", label: "Cocktail Document" },
   { value: "user", label: "User" },
   { value: "storage_unit", label: "Storage Unit" },
   { value: "lab", label: "Lab" },
 ];
 
 export default function ReportsPage() {
-  const { user } = useAuth();
+  const { user, labSettings } = useAuth();
   const { addToast } = useToast();
+  const cocktailsEnabled = labSettings.cocktails_enabled === true;
 
   const [activeReport, setActiveReport] = useState<ReportType | null>(null);
 
@@ -116,6 +132,10 @@ export default function ReportsPage() {
   const [preview, setPreview] = useState<any>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+
+  // Doc export state
+  const [includeDocs, setIncludeDocs] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"zip" | "combined_pdf">("zip");
 
   const { data: antibodies = [] } = useQuery<Antibody[]>({
     queryKey: ["antibodies"],
@@ -225,6 +245,49 @@ export default function ReportsPage() {
     }
   };
 
+  const handleExportWithDocs = async () => {
+    if (!activeReport) return;
+    setDownloading("export");
+    try {
+      const params = buildParams();
+      params.tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      params.format = exportFormat;
+      const res = await api.get(`/reports/${activeReport}/export`, {
+        params,
+        responseType: "blob",
+      });
+      const contentDisposition = res.headers["content-disposition"] || "";
+      const match = contentDisposition.match(/filename="?([^"]+)"?/);
+      const ext = exportFormat === "combined_pdf" ? "pdf" : "zip";
+      const filename = match ? match[1] : `report_with_docs.${ext}`;
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      addToast(`Downloaded ${filename}`, "success");
+    } catch (err: any) {
+      let message = "Failed to export with documents";
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          if (json.detail) message = json.detail;
+        } catch { /* use default message */ }
+      } else if (err.response?.data?.detail) {
+        message = err.response.data.detail;
+      }
+      addToast(message, "danger");
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const supportsExport = activeReport === "lot-activity" || activeReport === "usage" || activeReport === "cocktail-lots";
+
   const card = activeReport ? REPORT_CARDS.find((c) => c.type === activeReport) : null;
 
   const renderConfig = () => {
@@ -331,6 +394,34 @@ export default function ReportsPage() {
                   : "Download PDF"}
             </button>
           ))}
+          {supportsExport && (
+            <>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.85em", color: "var(--text-secondary)", cursor: "pointer", marginLeft: 8 }}>
+                <input type="checkbox" checked={includeDocs} onChange={(e) => setIncludeDocs(e.target.checked)} />
+                Include QC docs
+              </label>
+              {includeDocs && (
+                <>
+                  <select
+                    value={exportFormat}
+                    onChange={(e) => setExportFormat(e.target.value as "zip" | "combined_pdf")}
+                    style={{ fontSize: "0.85em", padding: "2px 4px" }}
+                  >
+                    <option value="zip">ZIP archive</option>
+                    <option value="combined_pdf">Combined PDF</option>
+                  </select>
+                  <button
+                    className="btn-sm btn-green"
+                    onClick={handleExportWithDocs}
+                    disabled={downloading === "export"}
+                  >
+                    <Download size={14} style={{ marginRight: 4, verticalAlign: -2 }} />
+                    {downloading === "export" ? "Exporting..." : "Export with Docs"}
+                  </button>
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
     );
@@ -614,6 +705,61 @@ export default function ReportsPage() {
       );
     }
 
+    if (activeReport === "cocktail-lots") {
+      // Group by recipe name
+      const groups: Record<string, any[]> = {};
+      for (const r of rows) {
+        const rn = r.recipe_name || "Unknown Recipe";
+        (groups[rn] ??= []).push(r);
+      }
+      return (
+        <div className="report-preview">
+          <h3>{heading}</h3>
+          {Object.entries(groups).map(([recipeName, groupRows]) => (
+            <div key={recipeName} style={{ marginBottom: 20 }}>
+              <h4 style={{ fontSize: "0.85rem", margin: "12px 0 6px", color: "var(--text-secondary)" }}>{recipeName}</h4>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Lot #</th>
+                      <th>Prepared</th>
+                      <th>Expires</th>
+                      <th>QC Status</th>
+                      <th>QC By</th>
+                      <th>Renewals</th>
+                      <th>Status</th>
+                      <th>Created By</th>
+                      <th>Components</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupRows.map((r: any, i: number) => (
+                      <tr key={i}>
+                        <td>{r.lot_number}</td>
+                        <td>{r.preparation_date || "\u2014"}</td>
+                        <td>{r.expiration_date || "\u2014"}</td>
+                        <td>
+                          <span className={`badge ${r.qc_status === "approved" ? "badge-green" : r.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>
+                            {r.qc_status}
+                          </span>
+                        </td>
+                        <td>{r.qc_approved_by || "\u2014"}</td>
+                        <td>{r.renewal_count}</td>
+                        <td>{r.status}</td>
+                        <td>{r.created_by || "\u2014"}</td>
+                        <td style={{ fontSize: "0.8em", maxWidth: 200, whiteSpace: "pre-wrap" }}>{r.components || "\u2014"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     if (activeReport === "admin-activity") {
       return (
         <div className="report-preview">
@@ -682,7 +828,9 @@ export default function ReportsPage() {
                               ? "action-antibody"
                               : r.action?.startsWith("document.")
                                 ? "action-lot"
-                                : "action-admin"
+                                : r.action?.startsWith("cocktail_lot.") || r.action?.startsWith("cocktail_recipe.") || r.action?.startsWith("cocktail_document.")
+                                  ? "action-lot"
+                                  : "action-admin"
                       }`}
                     >
                       {r.action}
@@ -701,10 +849,13 @@ export default function ReportsPage() {
     );
   };
 
-  // Admin-only reports: hide admin-activity for non-admin roles
+  // Filter report cards by role and feature flags
   const visibleCards = REPORT_CARDS.filter((c) => {
     if (c.type === "admin-activity") {
       return user?.role === "super_admin" || user?.role === "lab_admin";
+    }
+    if (c.type === "cocktail-lots") {
+      return cocktailsEnabled;
     }
     return true;
   });

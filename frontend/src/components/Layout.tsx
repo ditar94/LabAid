@@ -10,6 +10,7 @@ import {
   ScanLine,
   Package,
   Warehouse,
+  FlaskConical,
   ClipboardList,
   FileSpreadsheet,
   Users,
@@ -61,6 +62,7 @@ export default function Layout() {
   // Lab-specific pages should only show if user has a lab context
   const hasLabContext = !isSuperAdmin || isImpersonating;
   const storageEnabled = labSettings.storage_enabled !== false;
+  const cocktailsEnabled = labSettings.cocktails_enabled === true;
 
   const accountBanner = useMemo(() => {
     if (!hasLabContext) return null;
@@ -207,6 +209,12 @@ export default function Layout() {
                 <NavLink to="/storage" onClick={handleNavClick}>
                   <Warehouse className="nav-icon" />
                   Storage
+                </NavLink>
+              )}
+              {cocktailsEnabled && (
+                <NavLink to="/cocktails" onClick={handleNavClick}>
+                  <FlaskConical className="nav-icon" />
+                  Cocktails
                 </NavLink>
               )}
             </>

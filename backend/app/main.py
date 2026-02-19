@@ -16,7 +16,7 @@ from app.middleware.auth import COOKIE_NAME
 from app.models.models import Lab, UserRole
 from app.routers.auth import _set_auth_cookies
 
-from app.routers import admin, antibodies, audit, auth, bootstrap, lots, lot_requests, reports, scan, search, storage, vials, labs, documents, fluorochromes, tickets
+from app.routers import admin, antibodies, audit, auth, bootstrap, cocktail_documents, cocktails, lots, lot_requests, reports, scan, search, storage, vials, labs, documents, fluorochromes, tickets
 
 # ── Structured JSON logging ──────────────────────────────────────────────
 
@@ -263,6 +263,8 @@ app.include_router(tickets.router)
 app.include_router(search.router)
 app.include_router(lot_requests.router)
 app.include_router(reports.router)
+app.include_router(cocktails.router)
+app.include_router(cocktail_documents.router)
 app.include_router(admin.router)
 
 
