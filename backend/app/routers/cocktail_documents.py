@@ -38,6 +38,7 @@ def _snapshot_document(doc: CocktailLotDocument) -> dict:
         "file_name": doc.file_name,
         "description": doc.description,
         "is_qc_document": doc.is_qc_document,
+        "renewal_number": doc.renewal_number,
     }
 
 
@@ -106,6 +107,7 @@ def upload_cocktail_lot_document(
         checksum_sha256=checksum,
         description=desc,
         is_qc_document=is_qc_document,
+        renewal_number=lot.renewal_count,
     )
     db.add(doc)
     db.flush()

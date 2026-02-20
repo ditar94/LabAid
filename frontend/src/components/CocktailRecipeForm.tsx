@@ -12,6 +12,7 @@ export interface CocktailRecipeFormValues {
 export interface ComponentRow {
   antibody_id: string;
   volume_ul: string;
+  free_text_name: string;
 }
 
 export const EMPTY_RECIPE_FORM: CocktailRecipeFormValues = {
@@ -19,7 +20,7 @@ export const EMPTY_RECIPE_FORM: CocktailRecipeFormValues = {
   description: "",
   shelf_life_days: "30",
   max_renewals: "",
-  components: [{ antibody_id: "", volume_ul: "" }],
+  components: [{ antibody_id: "", volume_ul: "", free_text_name: "" }],
 };
 
 interface Props {
@@ -40,9 +41,12 @@ export function CocktailRecipeForm({
   title = "New Recipe",
 }: Props) {
   const [form, setForm] = useState<CocktailRecipeFormValues>(
-    initialValues || { ...EMPTY_RECIPE_FORM, components: [{ antibody_id: "", volume_ul: "" }] }
+    initialValues || { ...EMPTY_RECIPE_FORM, components: [{ antibody_id: "", volume_ul: "", free_text_name: "" }] }
   );
   const [error, setError] = useState<string | null>(null);
+  const [customModes, setCustomModes] = useState<boolean[]>(
+    () => (initialValues || EMPTY_RECIPE_FORM).components.map((c) => !!c.free_text_name)
+  );
 
   const handleChange = (field: keyof CocktailRecipeFormValues, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -59,8 +63,9 @@ export function CocktailRecipeForm({
   const addComponent = () => {
     setForm((prev) => ({
       ...prev,
-      components: [...prev.components, { antibody_id: "", volume_ul: "" }],
+      components: [...prev.components, { antibody_id: "", volume_ul: "", free_text_name: "" }],
     }));
+    setCustomModes((prev) => [...prev, false]);
   };
 
   const removeComponent = (index: number) => {
@@ -69,6 +74,7 @@ export function CocktailRecipeForm({
       ...prev,
       components: prev.components.filter((_, i) => i !== index),
     }));
+    setCustomModes((prev) => prev.filter((_, i) => i !== index));
   };
 
   const moveComponent = (index: number, direction: "up" | "down") => {
@@ -79,6 +85,33 @@ export function CocktailRecipeForm({
       const temp = updated[index];
       updated[index] = updated[target];
       updated[target] = temp;
+      return { ...prev, components: updated };
+    });
+    setCustomModes((prev) => {
+      const updated = [...prev];
+      const temp = updated[index];
+      updated[index] = updated[target];
+      updated[target] = temp;
+      return updated;
+    });
+  };
+
+  const toggleCustomMode = (index: number) => {
+    setCustomModes((prev) => {
+      const updated = [...prev];
+      updated[index] = !updated[index];
+      return updated;
+    });
+    // Clear the opposite field when toggling
+    setForm((prev) => {
+      const updated = [...prev.components];
+      if (customModes[index]) {
+        // Switching from custom to antibody: clear free_text_name
+        updated[index] = { ...updated[index], free_text_name: "" };
+      } else {
+        // Switching from antibody to custom: clear antibody_id
+        updated[index] = { ...updated[index], antibody_id: "" };
+      }
       return { ...prev, components: updated };
     });
   };
@@ -95,9 +128,9 @@ export function CocktailRecipeForm({
       setError("Shelf life must be at least 1 day.");
       return;
     }
-    const hasEmptyComponent = form.components.some((c) => !c.antibody_id);
+    const hasEmptyComponent = form.components.some((c) => !c.antibody_id && !c.free_text_name.trim());
     if (hasEmptyComponent) {
-      setError("All components must have an antibody selected.");
+      setError("All components must have an antibody selected or a custom name entered.");
       return;
     }
 
@@ -189,21 +222,41 @@ export function CocktailRecipeForm({
                   >
                     {i + 1}
                   </span>
-                  <select
-                    value={comp.antibody_id}
-                    onChange={(e) => handleComponentChange(i, "antibody_id", e.target.value)}
-                    style={{ flex: 2 }}
-                    required
+                  {customModes[i] ? (
+                    <input
+                      type="text"
+                      placeholder="Custom component name..."
+                      value={comp.free_text_name}
+                      onChange={(e) => handleComponentChange(i, "free_text_name", e.target.value)}
+                      style={{ flex: 2 }}
+                      required
+                    />
+                  ) : (
+                    <select
+                      value={comp.antibody_id}
+                      onChange={(e) => handleComponentChange(i, "antibody_id", e.target.value)}
+                      style={{ flex: 2 }}
+                      required
+                    >
+                      <option value="">Select antibody...</option>
+                      {antibodies
+                        .filter((ab) => ab.is_active)
+                        .map((ab) => (
+                          <option key={ab.id} value={ab.id}>
+                            {antibodyLabel(ab)}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    className={`btn-sm ${customModes[i] ? "btn-green" : "btn-secondary"}`}
+                    onClick={() => toggleCustomMode(i)}
+                    title={customModes[i] ? "Switch to antibody selection" : "Switch to custom text"}
+                    style={{ padding: "0.15rem 0.4rem", fontSize: "0.75rem", whiteSpace: "nowrap" }}
                   >
-                    <option value="">Select antibody...</option>
-                    {antibodies
-                      .filter((ab) => ab.is_active)
-                      .map((ab) => (
-                        <option key={ab.id} value={ab.id}>
-                          {antibodyLabel(ab)}
-                        </option>
-                      ))}
-                  </select>
+                    {customModes[i] ? "Ab" : "Custom"}
+                  </button>
                   <input
                     type="number"
                     min="0"

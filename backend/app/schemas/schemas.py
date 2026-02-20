@@ -701,7 +701,8 @@ class LotRequestOut(BaseModel):
 
 
 class CocktailRecipeComponentBase(BaseModel):
-    antibody_id: UUID
+    antibody_id: UUID | None = None
+    free_text_name: str | None = None
     volume_ul: int | None = None
     ordinal: int = 0
 
@@ -710,6 +711,7 @@ class CocktailRecipeComponentOut(CocktailRecipeComponentBase):
     id: UUID
     antibody_target: str | None = None
     antibody_fluorochrome: str | None = None
+    free_text_name: str | None = None
 
     class Config:
         from_attributes = True
@@ -809,6 +811,7 @@ class CocktailLotDocumentOut(BaseModel):
     checksum_sha256: str | None = None
     description: str | None = None
     is_qc_document: bool = False
+    renewal_number: int = 0
     created_at: datetime
 
     class Config:

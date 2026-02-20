@@ -81,9 +81,13 @@ class LabAidPDF(FPDF):
         max_h = 7
         line_heights = []
         for val, w in zip(safe_vals, widths):
-            text_w = self.get_string_width(val)
-            lines = max(1, int(text_w / (w - 2)) + 1)
-            line_heights.append(lines * 4)
+            # Count explicit newlines and width-based wrapping per sub-line
+            sub_lines = val.split("\n") if "\n" in val else [val]
+            total_lines = 0
+            for sub in sub_lines:
+                text_w = self.get_string_width(sub)
+                total_lines += max(1, int(text_w / (w - 2)) + 1)
+            line_heights.append(total_lines * 4)
         row_h = max(max_h, max(line_heights))
 
         if self.get_y() + row_h > self.h - 20:
@@ -285,9 +289,9 @@ def render_audit_trail_pdf(data: list[dict], lab_name: str,
 def render_cocktail_lot_pdf(data: list[dict], lab_name: str,
                              pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
-        ("Lot #", 22), ("Prepared", 18), ("Expires", 18),
-        ("QC", 14), ("QC By", 22), ("Renewals", 14),
-        ("Status", 16), ("Created By", 22), ("Components", 44),
+        ("Lot #", 20), ("Prepared", 18), ("Expires", 18),
+        ("QC", 12), ("QC By", 20), ("Renewals", 12),
+        ("Status", 14), ("Created By", 20), ("Components", 56),
     ]
     return _render_grouped_table(
         "Cocktail Lot Report", lab_name, pulled_by, columns, data,

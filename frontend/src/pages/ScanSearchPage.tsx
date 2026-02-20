@@ -773,6 +773,68 @@ export default function ScanSearchPage() {
         </div>
       )}
 
+      {/* ── Cocktail Recipe Only (no active lot) ───────────────── */}
+      {mode === "scan" && result?.is_cocktail && !result.cocktail_lot && result.cocktail_recipe && (
+        <div className="scan-result-wrapper">
+          <div className="scan-info">
+            <h2>
+              <FlaskConical size={20} style={{ marginRight: 6, verticalAlign: -3 }} />
+              {result.cocktail_recipe.name}
+              <span className="badge" style={{ marginLeft: 8, fontSize: "0.5em", verticalAlign: "middle", background: "#6366f1", color: "#fff" }}>Cocktail</span>
+            </h2>
+            {result.cocktail_recipe.description && (
+              <p className="page-desc">{result.cocktail_recipe.description}</p>
+            )}
+            <p>Shelf Life: <strong>{result.cocktail_recipe.shelf_life_days} days</strong>
+              {result.cocktail_recipe.max_renewals != null && (
+                <> | Max Renewals: <strong>{result.cocktail_recipe.max_renewals}</strong></>
+              )}
+            </p>
+
+            {/* Components */}
+            {result.cocktail_recipe.components.length > 0 && (
+              <div style={{ marginTop: "0.75rem" }}>
+                <h3 style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>Components</h3>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: "2rem" }}>#</th>
+                        <th>Antibody</th>
+                        <th style={{ textAlign: "right" }}>Volume (uL)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.cocktail_recipe.components
+                        .sort((a, b) => a.ordinal - b.ordinal)
+                        .map((comp) => (
+                          <tr key={comp.id}>
+                            <td>{comp.ordinal}</td>
+                            <td>
+                              {comp.antibody_target || comp.antibody_fluorochrome
+                                ? [comp.antibody_target, comp.antibody_fluorochrome].filter(Boolean).join(" - ")
+                                : comp.free_text_name
+                                  ? <em>{comp.free_text_name}</em>
+                                  : "\u2014"}
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              {comp.volume_ul != null ? comp.volume_ul : "\u2014"}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <p className="info" style={{ marginTop: "0.75rem" }}>
+              No active lots for this recipe. Prepare a new lot from the Cocktails page.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Cocktail Scan Result ──────────────────────────────────── */}
       {mode === "scan" && result?.is_cocktail && result.cocktail_lot && (
         <div className="scan-result-wrapper">

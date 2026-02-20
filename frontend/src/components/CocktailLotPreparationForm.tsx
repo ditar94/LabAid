@@ -4,7 +4,7 @@ import type { CocktailRecipe, Lot } from "../api/types";
 
 interface SourceSelection {
   component_id: string;
-  antibody_id: string;
+  antibody_id: string | null;
   source_lot_id: string;
 }
 
@@ -13,7 +13,6 @@ interface Props {
   onSubmit: (values: {
     recipe_id: string;
     lot_number: string;
-    vendor_barcode: string | null;
     preparation_date: string;
     expiration_date: string;
     sources: { component_id: string; source_lot_id: string }[];
@@ -41,24 +40,25 @@ function addDays(dateStr: string, days: number): string {
 
 export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading = false }: Props) {
   const [lotNumber, setLotNumber] = useState("");
-  const [vendorBarcode, setVendorBarcode] = useState("");
   const [preparationDate, setPreparationDate] = useState(todayISO());
   const [expirationDate, setExpirationDate] = useState(addDays(todayISO(), recipe.shelf_life_days));
   const [expirationOverridden, setExpirationOverridden] = useState(false);
   const [sources, setSources] = useState<SourceSelection[]>(
-    recipe.components.map((c) => ({
-      component_id: c.id,
-      antibody_id: c.antibody_id,
-      source_lot_id: "",
-    }))
+    recipe.components
+      .filter((c) => c.antibody_id)
+      .map((c) => ({
+        component_id: c.id,
+        antibody_id: c.antibody_id,
+        source_lot_id: "",
+      }))
   );
   const [lotsPerAntibody, setLotsPerAntibody] = useState<Map<string, Lot[]>>(new Map());
   const [lotsLoading, setLotsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Compute unique antibody IDs to fetch lots for
+  // Compute unique antibody IDs to fetch lots for (skip free text components)
   const uniqueAntibodyIds = useMemo(
-    () => [...new Set(recipe.components.map((c) => c.antibody_id))],
+    () => [...new Set(recipe.components.filter((c) => c.antibody_id).map((c) => c.antibody_id as string))],
     [recipe.components]
   );
 
@@ -132,7 +132,7 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
 
     const missingSources = sources.filter((s) => !s.source_lot_id);
     if (missingSources.length > 0) {
-      setError("All components must have a source lot selected.");
+      setError("All antibody components must have a source lot selected.");
       return;
     }
 
@@ -140,7 +140,6 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
       await onSubmit({
         recipe_id: recipe.id,
         lot_number: lotNumber.trim(),
-        vendor_barcode: vendorBarcode.trim() || null,
         preparation_date: preparationDate,
         expiration_date: expirationDate,
         sources: sources.map((s) => ({
@@ -153,7 +152,7 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
     }
   };
 
-  const formatLotOption = (lot: Lot): string => {
+  const formatLotOption = (lot: Lot, badge?: "Current" | "New"): string => {
     const parts: string[] = [lot.lot_number];
     if (lot.expiration_date) {
       parts.push(`exp ${new Date(lot.expiration_date + "T00:00:00").toLocaleDateString()}`);
@@ -169,7 +168,23 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
     } else if (lot.qc_status === "failed") {
       parts.push("QC Failed");
     }
+    if (badge) {
+      parts.push(badge);
+    }
     return parts.join(" | ");
+  };
+
+  /** Compute FEFO badge for a list of available lots: if 2+ eligible, first = Current, rest = New */
+  const computeLotBadge = (lots: Lot[], lotId: string): "Current" | "New" | undefined => {
+    if (lots.length < 2) return undefined;
+    const sorted = [...lots].sort((a, b) => {
+      if (!a.expiration_date && !b.expiration_date) return 0;
+      if (!a.expiration_date) return 1;
+      if (!b.expiration_date) return -1;
+      return new Date(a.expiration_date + "T00:00:00").getTime() - new Date(b.expiration_date + "T00:00:00").getTime();
+    });
+    if (sorted[0].id === lotId) return "Current";
+    return "New";
   };
 
   return (
@@ -183,24 +198,14 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
           onSubmit={handleSubmit}
           style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
         >
-          <div style={{ display: "flex", gap: "0.75rem" }}>
-            <div className="form-group" style={{ flex: 1 }}>
-              <label>Lot Number</label>
-              <input
-                value={lotNumber}
-                onChange={(e) => setLotNumber(e.target.value)}
-                placeholder="e.g. CKT-2026-001"
-                required
-              />
-            </div>
-            <div className="form-group" style={{ flex: 1 }}>
-              <label>Vendor Barcode (optional)</label>
-              <input
-                value={vendorBarcode}
-                onChange={(e) => setVendorBarcode(e.target.value)}
-                placeholder="Barcode or ID"
-              />
-            </div>
+          <div className="form-group">
+            <label>Lot Number</label>
+            <input
+              value={lotNumber}
+              onChange={(e) => setLotNumber(e.target.value)}
+              placeholder="e.g. CKT-2026-001"
+              required
+            />
           </div>
 
           <div style={{ display: "flex", gap: "0.75rem" }}>
@@ -244,12 +249,17 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
             {lotsLoading && <p className="page-desc">Loading available lots...</p>}
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               {recipe.components.map((comp) => {
-                const label = [comp.antibody_target, comp.antibody_fluorochrome]
-                  .filter(Boolean)
-                  .join(" - ") || "Unknown antibody";
-                const availableLots = (lotsPerAntibody.get(comp.antibody_id) || []).filter(
-                  (l) => !l.is_archived && l.qc_status !== "failed"
-                );
+                const isFreeText = !comp.antibody_id && !!comp.free_text_name;
+                const label = isFreeText
+                  ? comp.free_text_name!
+                  : [comp.antibody_target, comp.antibody_fluorochrome]
+                      .filter(Boolean)
+                      .join(" - ") || "Unknown antibody";
+                const availableLots = isFreeText
+                  ? []
+                  : (lotsPerAntibody.get(comp.antibody_id!) || []).filter(
+                      (l) => !l.is_archived && l.qc_status !== "failed" && (l.vial_counts?.sealed ?? 0) > 0
+                    );
                 const sourceEntry = sources.find((s) => s.component_id === comp.id);
 
                 return (
@@ -274,25 +284,33 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
                     >
                       {comp.ordinal}
                     </span>
-                    <span style={{ flex: 1, fontWeight: 500 }}>{label}</span>
-                    <select
-                      value={sourceEntry?.source_lot_id || ""}
-                      onChange={(e) => handleSourceChange(comp.id, e.target.value)}
-                      style={{ flex: 2 }}
-                      required
-                    >
-                      <option value="">Select lot...</option>
-                      {availableLots.map((lot) => (
-                        <option key={lot.id} value={lot.id}>
-                          {formatLotOption(lot)}
-                        </option>
-                      ))}
-                      {availableLots.length === 0 && !lotsLoading && (
-                        <option value="" disabled>
-                          No lots available
-                        </option>
-                      )}
-                    </select>
+                    <span style={{ flex: 1, fontWeight: 500 }}>
+                      {isFreeText ? <em>{label}</em> : label}
+                    </span>
+                    {isFreeText ? (
+                      <span style={{ flex: 2, color: "var(--text-muted)", fontSize: "0.85em", fontStyle: "italic" }}>
+                        Custom component — no source lot needed
+                      </span>
+                    ) : (
+                      <select
+                        value={sourceEntry?.source_lot_id || ""}
+                        onChange={(e) => handleSourceChange(comp.id, e.target.value)}
+                        style={{ flex: 2 }}
+                        required
+                      >
+                        <option value="">Select lot...</option>
+                        {availableLots.map((lot) => (
+                          <option key={lot.id} value={lot.id}>
+                            {formatLotOption(lot, computeLotBadge(availableLots, lot.id))}
+                          </option>
+                        ))}
+                        {availableLots.length === 0 && !lotsLoading && (
+                          <option value="" disabled>
+                            No lots available
+                          </option>
+                        )}
+                      </select>
+                    )}
                   </div>
                 );
               })}

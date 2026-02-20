@@ -397,9 +397,10 @@ export type CocktailLotStatus = "active" | "depleted" | "archived";
 
 export interface CocktailRecipeComponent {
   id: string;
-  antibody_id: string;
+  antibody_id: string | null;
   antibody_target: string | null;
   antibody_fluorochrome: string | null;
+  free_text_name: string | null;
   volume_ul: number | null;
   ordinal: number;
 }
@@ -431,6 +432,7 @@ export interface CocktailLotDocument {
   file_name: string;
   description: string | null;
   is_qc_document: boolean;
+  renewal_number: number;
   created_at: string;
 }
 

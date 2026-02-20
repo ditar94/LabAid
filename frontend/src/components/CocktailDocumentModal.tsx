@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../api/client";
 import type { CocktailLotDocument } from "../api/types";
 
 interface Props {
   cocktailLotId: string;
+  renewalCount: number;
   isOpen: boolean;
   onClose: () => void;
   onDocumentsChange?: () => void;
 }
 
-export function CocktailDocumentModal({ cocktailLotId, isOpen, onClose, onDocumentsChange }: Props) {
+export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onClose, onDocumentsChange }: Props) {
   const [documents, setDocuments] = useState<CocktailLotDocument[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
@@ -47,6 +48,20 @@ export function CocktailDocumentModal({ cocktailLotId, isOpen, onClose, onDocume
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Group documents by renewal_number, sorted descending (newest period first)
+  const groupedDocs = useMemo(() => {
+    const groups = new Map<number, CocktailLotDocument[]>();
+    for (const doc of documents) {
+      const rn = doc.renewal_number ?? 0;
+      if (!groups.has(rn)) groups.set(rn, []);
+      groups.get(rn)!.push(doc);
+    }
+    // Sort groups descending by renewal number
+    return [...groups.entries()].sort((a, b) => b[0] - a[0]);
+  }, [documents]);
+
+  const hasMultiplePeriods = groupedDocs.length > 1 || (groupedDocs.length === 1 && groupedDocs[0][0] > 0);
 
   if (!isOpen) return null;
 
@@ -138,6 +153,49 @@ export function CocktailDocumentModal({ cocktailLotId, isOpen, onClose, onDocume
     }
   };
 
+  const periodLabel = (rn: number) => {
+    if (rn === 0) return "Initial Preparation";
+    return `Renewal #${rn}`;
+  };
+
+  const renderDocItem = (doc: CocktailLotDocument) => (
+    <div key={doc.id} className="document-item">
+      <a
+        href="#"
+        onClick={(e) => {
+          e.preventDefault();
+          handleDownload(doc.id);
+        }}
+      >
+        {doc.file_name}
+      </a>
+      {doc.is_qc_document && <span className="badge badge-green qc-doc-badge">QC</span>}
+      {doc.description && <span className="document-desc">{doc.description}</span>}
+      <div className="document-item-actions">
+        <button
+          className="btn-sm btn-secondary"
+          type="button"
+          onClick={() => toggleDocumentQc(doc)}
+          disabled={docSavingId === doc.id || docDeletingId === doc.id}
+        >
+          {docSavingId === doc.id
+            ? "Saving..."
+            : doc.is_qc_document
+            ? "Unmark QC"
+            : "Mark as QC"}
+        </button>
+        <button
+          className="btn-sm btn-danger"
+          type="button"
+          onClick={() => deleteDocument(doc)}
+          disabled={docDeletingId === doc.id || docSavingId === doc.id}
+        >
+          {docDeletingId === doc.id ? "Deleting..." : "Delete"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Cocktail Lot Documents">
       <div className="modal-content">
@@ -145,48 +203,42 @@ export function CocktailDocumentModal({ cocktailLotId, isOpen, onClose, onDocume
 
         <div className="document-list">
           {loadingDocs && documents.length === 0 && <p className="page-desc">Loading documents...</p>}
-          {documents.map((doc) => (
-            <div key={doc.id} className="document-item">
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleDownload(doc.id);
-                }}
-              >
-                {doc.file_name}
-              </a>
-              {doc.is_qc_document && <span className="badge badge-green qc-doc-badge">QC</span>}
-              {doc.description && <span className="document-desc">{doc.description}</span>}
-              <div className="document-item-actions">
-                <button
-                  className="btn-sm btn-secondary"
-                  type="button"
-                  onClick={() => toggleDocumentQc(doc)}
-                  disabled={docSavingId === doc.id || docDeletingId === doc.id}
-                >
-                  {docSavingId === doc.id
-                    ? "Saving..."
-                    : doc.is_qc_document
-                    ? "Unmark QC"
-                    : "Mark as QC"}
-                </button>
-                <button
-                  className="btn-sm btn-danger"
-                  type="button"
-                  onClick={() => deleteDocument(doc)}
-                  disabled={docDeletingId === doc.id || docSavingId === doc.id}
-                >
-                  {docDeletingId === doc.id ? "Deleting..." : "Delete"}
-                </button>
-              </div>
-            </div>
-          ))}
+
+          {hasMultiplePeriods
+            ? groupedDocs.map(([rn, docs]) => (
+                <div key={rn} style={{ marginBottom: "0.75rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginBottom: "0.25rem",
+                      paddingBottom: "0.25rem",
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    <strong style={{ fontSize: "0.85rem" }}>{periodLabel(rn)}</strong>
+                    {rn === renewalCount && (
+                      <span className="badge badge-blue" style={{ fontSize: "0.7em" }}>Current</span>
+                    )}
+                  </div>
+                  {docs.map(renderDocItem)}
+                </div>
+              ))
+            : documents.map(renderDocItem)}
+
           {!loadingDocs && documents.length === 0 && <p>No documents uploaded.</p>}
         </div>
 
         <div className="upload-form">
-          <h3>Upload New Document</h3>
+          <h3>
+            Upload New Document
+            {renewalCount > 0 && (
+              <span style={{ fontWeight: 400, fontSize: "0.8em", color: "var(--text-secondary)", marginLeft: 8 }}>
+                (Renewal #{renewalCount})
+              </span>
+            )}
+          </h3>
           <input key={inputKey} type="file" onChange={handleFileChange} />
           <input
             type="text"

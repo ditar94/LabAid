@@ -70,6 +70,17 @@ def create_cocktail_lot(
     db.flush()
 
     # Create source traceability records
+    # Collect component IDs that have sources provided
+    sourced_component_ids = {src["component_id"] for src in sources}
+
+    # Validate that all antibody-based components have sources
+    for comp in recipe.components:
+        if comp.antibody_id and comp.id not in sourced_component_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Component {comp.id} (antibody) requires a source lot selection",
+            )
+
     for src in sources:
         comp = component_map.get(src["component_id"])
         if not comp:

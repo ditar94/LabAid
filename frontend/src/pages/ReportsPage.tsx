@@ -748,7 +748,16 @@ export default function ReportsPage() {
                         <td>{r.renewal_count}</td>
                         <td>{r.status}</td>
                         <td>{r.created_by || "\u2014"}</td>
-                        <td style={{ fontSize: "0.8em", maxWidth: 200, whiteSpace: "pre-wrap" }}>{r.components || "\u2014"}</td>
+                        <td style={{ fontSize: "0.8em", maxWidth: 260, whiteSpace: "pre-line", lineHeight: 1.5 }}>
+                          {r.components
+                            ? r.components.split("\n").map((line: string, j: number) => (
+                                <span key={j}>
+                                  {line}
+                                  {j < r.components.split("\n").length - 1 && <br />}
+                                </span>
+                              ))
+                            : "\u2014"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

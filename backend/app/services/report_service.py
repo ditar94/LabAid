@@ -697,7 +697,7 @@ def get_cocktail_lot_data(
         source_lots = {r.id: r.lot_number for r in rows}
 
     # Batch: antibody names for components
-    ab_ids = {c.antibody_id for c in components}
+    ab_ids = {c.antibody_id for c in components if c.antibody_id}
     ab_map = _antibody_name_map(db, ab_ids)
 
     # Batch: QC approver names
@@ -711,15 +711,28 @@ def get_cocktail_lot_data(
         recipe_name = recipe.name if recipe else ""
         lot_sources = sources_by_lot.get(cl.id, [])
 
-        # Build components detail: "AbName → LotXXX" per line
+        # Build components detail: one line per component
+        # Format: "Name (vol uL) -> LOT" or "Name (vol uL)" for free text without source
         comps = comps_by_recipe.get(cl.recipe_id, [])
         comp_details = []
         for comp in comps:
-            ab_name = ab_map.get(comp.antibody_id, "?")
-            # Find matching source for this component
+            # Component name: antibody name or free text
+            if comp.antibody_id:
+                name = ab_map.get(comp.antibody_id, "?")
+            else:
+                name = comp.free_text_name or "?"
+
+            # Add volume if available
+            if comp.volume_ul is not None:
+                name += f" ({comp.volume_ul} uL)"
+
+            # Find matching source lot for this component
             src = next((s for s in lot_sources if s.component_id == comp.id), None)
-            src_lot = source_lots.get(src.source_lot_id, "?") if src else "—"
-            comp_details.append(f"{ab_name} -> {src_lot}")
+            if src:
+                src_lot = source_lots.get(src.source_lot_id, "?")
+                comp_details.append(f"{name} -> {src_lot}")
+            else:
+                comp_details.append(name)
 
         result.append({
             "recipe_name": recipe_name,
@@ -731,7 +744,7 @@ def get_cocktail_lot_data(
             "renewal_count": cl.renewal_count,
             "status": cl.status.value if cl.status else "",
             "created_by": user_map.get(cl.created_by, "") if cl.created_by else "",
-            "components": "; ".join(comp_details),
+            "components": "\n".join(comp_details),
         })
 
     return result

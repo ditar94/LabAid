@@ -104,7 +104,8 @@ export default function CocktailsPage() {
         shelf_life_days: parseInt(values.shelf_life_days, 10),
         max_renewals: values.max_renewals ? parseInt(values.max_renewals, 10) : null,
         components: values.components.map((c, i) => ({
-          antibody_id: c.antibody_id,
+          antibody_id: c.antibody_id || null,
+          free_text_name: c.free_text_name?.trim() || null,
           volume_ul: c.volume_ul ? parseFloat(c.volume_ul) : null,
           ordinal: i + 1,
         })),
@@ -129,7 +130,8 @@ export default function CocktailsPage() {
         shelf_life_days: parseInt(values.shelf_life_days, 10),
         max_renewals: values.max_renewals ? parseInt(values.max_renewals, 10) : null,
         components: values.components.map((c, i) => ({
-          antibody_id: c.antibody_id,
+          antibody_id: c.antibody_id || null,
+          free_text_name: c.free_text_name?.trim() || null,
           volume_ul: c.volume_ul ? parseFloat(c.volume_ul) : null,
           ordinal: i + 1,
         })),
@@ -159,10 +161,11 @@ export default function CocktailsPage() {
         ? editRecipe.components
             .sort((a, b) => a.ordinal - b.ordinal)
             .map((c) => ({
-              antibody_id: c.antibody_id,
+              antibody_id: c.antibody_id || "",
               volume_ul: c.volume_ul != null ? String(c.volume_ul) : "",
+              free_text_name: c.free_text_name || "",
             }))
-        : [{ antibody_id: "", volume_ul: "" }],
+        : [{ antibody_id: "", volume_ul: "", free_text_name: "" }],
     };
   }, [editRecipe]);
 
@@ -171,7 +174,6 @@ export default function CocktailsPage() {
   const handlePrepareLot = async (values: {
     recipe_id: string;
     lot_number: string;
-    vendor_barcode: string | null;
     preparation_date: string;
     expiration_date: string;
     sources: { component_id: string; source_lot_id: string }[];
@@ -271,6 +273,25 @@ export default function CocktailsPage() {
 
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
+  /** Compute FEFO badges for cocktail lots: among active non-archived lots sorted by expiration, first = Current, rest = New. */
+  const computeLotBadgeMap = (lots: CocktailLot[]): Map<string, "current" | "new"> => {
+    const eligible = lots
+      .filter((l) => !l.is_archived && l.status !== "depleted")
+      .sort((a, b) => {
+        if (!a.expiration_date && !b.expiration_date) return 0;
+        if (!a.expiration_date) return 1;
+        if (!b.expiration_date) return -1;
+        return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
+      });
+    const badgeMap = new Map<string, "current" | "new">();
+    if (eligible.length >= 2) {
+      for (const lot of eligible) {
+        badgeMap.set(lot.id, lot === eligible[0] ? "current" : "new");
+      }
+    }
+    return badgeMap;
+  };
+
   // ── Lot detail panel ───────────────────────────────────────────────
 
   const renderLotDetail = (lot: CocktailLot) => {
@@ -344,24 +365,15 @@ export default function CocktailsPage() {
         {/* Actions */}
         {!isReadOnly && (
           <div className="action-btns" style={{ flexWrap: "wrap" }}>
-            {/* QC actions - supervisor+ only */}
+            {/* QC approve - supervisor+ only */}
             {canEdit && lot.qc_status === "pending" && !lot.is_archived && (
-              <>
-                <button
-                  className="btn-sm btn-green"
-                  onClick={() => handleQC(lot.id, "approved")}
-                  disabled={isLotLoading}
-                >
-                  Approve QC
-                </button>
-                <button
-                  className="btn-sm btn-danger"
-                  onClick={() => handleQC(lot.id, "failed")}
-                  disabled={isLotLoading}
-                >
-                  Fail QC
-                </button>
-              </>
+              <button
+                className="btn-sm btn-green"
+                onClick={() => handleQC(lot.id, "approved")}
+                disabled={isLotLoading}
+              >
+                Approve QC
+              </button>
             )}
 
             {/* Renew - supervisor+ */}
@@ -530,9 +542,13 @@ export default function CocktailsPage() {
                           <tr key={comp.id}>
                             <td>{comp.ordinal}</td>
                             <td>
-                              {[comp.antibody_target, comp.antibody_fluorochrome]
-                                .filter(Boolean)
-                                .join(" - ") || "\u2014"}
+                              {comp.antibody_target || comp.antibody_fluorochrome
+                                ? [comp.antibody_target, comp.antibody_fluorochrome]
+                                    .filter(Boolean)
+                                    .join(" - ")
+                                : comp.free_text_name
+                                  ? <em>{comp.free_text_name}</em>
+                                  : "\u2014"}
                             </td>
                             <td style={{ textAlign: "right" }}>
                               {comp.volume_ul != null ? comp.volume_ul : "\u2014"}
@@ -552,7 +568,9 @@ export default function CocktailsPage() {
                   <p className="page-desc" style={{ marginTop: "0.25rem" }}>
                     No lots prepared yet.
                   </p>
-                ) : isMobile ? (
+                ) : (() => {
+                  const lotBadgeMap = computeLotBadgeMap(recipe.lots);
+                  return isMobile ? (
                   /* Mobile: card layout */
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
                     {recipe.lots.map((lot) => {
@@ -562,6 +580,7 @@ export default function CocktailsPage() {
                           key={lot.id}
                           style={{
                             border: "1px solid var(--border)",
+                            borderLeft: isLotExpanded ? "3px solid var(--primary)" : "1px solid var(--border)",
                             borderRadius: "var(--radius-sm)",
                             overflow: "hidden",
                           }}
@@ -578,7 +597,15 @@ export default function CocktailsPage() {
                             }}
                             onClick={() => setExpandedLotId(isLotExpanded ? null : lot.id)}
                           >
-                            <strong style={{ flex: 1 }}>{lot.lot_number}</strong>
+                            <strong style={{ flex: 1 }}>
+                              {lot.lot_number}
+                              {lotBadgeMap.get(lot.id) === "current" && (
+                                <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
+                              )}
+                              {lotBadgeMap.get(lot.id) === "new" && (
+                                <span className="badge badge-yellow" style={{ marginLeft: 6, fontSize: "0.7em" }}>New</span>
+                              )}
+                            </strong>
                             {qcBadge(lot.qc_status)}
                             {statusBadge(lot)}
                           </div>
@@ -622,13 +649,25 @@ export default function CocktailsPage() {
                         return (
                           <Fragment key={lot.id}>
                             <tr
-                              style={{ cursor: "pointer" }}
-                              className={isLotExpanded ? "active" : ""}
+                              style={{
+                                cursor: "pointer",
+                                background: isLotExpanded ? "var(--bg-secondary)" : undefined,
+                                fontWeight: isLotExpanded ? 600 : undefined,
+                                borderLeft: isLotExpanded ? "3px solid var(--primary)" : "3px solid transparent",
+                              }}
                               onClick={() =>
                                 setExpandedLotId(isLotExpanded ? null : lot.id)
                               }
                             >
-                              <td><strong>{lot.lot_number}</strong></td>
+                              <td>
+                                <strong>{lot.lot_number}</strong>
+                                {lotBadgeMap.get(lot.id) === "current" && (
+                                  <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
+                                )}
+                                {lotBadgeMap.get(lot.id) === "new" && (
+                                  <span className="badge badge-yellow" style={{ marginLeft: 6, fontSize: "0.7em" }}>New</span>
+                                )}
+                              </td>
                               <td>{formatDate(lot.preparation_date)}</td>
                               <td>{formatDate(lot.expiration_date)}</td>
                               <td>{qcBadge(lot.qc_status)}</td>
@@ -647,7 +686,8 @@ export default function CocktailsPage() {
                       })}
                     </tbody>
                   </table>
-                )}
+                );
+                })()}
               </div>
             )}
           </div>
@@ -686,14 +726,18 @@ export default function CocktailsPage() {
         />
       )}
 
-      {docModalLotId && (
-        <CocktailDocumentModal
-          cocktailLotId={docModalLotId}
-          isOpen={true}
-          onClose={() => setDocModalLotId(null)}
-          onDocumentsChange={() => invalidate()}
-        />
-      )}
+      {docModalLotId && (() => {
+        const matchedLot = recipes.flatMap((r) => r.lots).find((l) => l.id === docModalLotId);
+        return (
+          <CocktailDocumentModal
+            cocktailLotId={docModalLotId}
+            renewalCount={matchedLot?.renewal_count ?? 0}
+            isOpen={true}
+            onClose={() => setDocModalLotId(null)}
+            onDocumentsChange={() => invalidate()}
+          />
+        );
+      })()}
 
       {archivePrompt && (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Archive cocktail lot">

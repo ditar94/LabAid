@@ -33,6 +33,12 @@ const STEPS: StepConfig[] = [
     key: "storage_enabled",
   },
   {
+    title: "Cocktail Tracking",
+    description:
+      "Enable cocktail recipe management and lot preparation. Create recipes from multiple antibody components, prepare cocktail lots with full source traceability, and track shelf life and renewals.",
+    key: "cocktails_enabled",
+  },
+  {
     title: "Expiry Warning",
     description:
       "Set how many days before a lot's expiration date it should be flagged as \"expiring soon\" on the dashboard. This gives your team advance notice to plan reorders.",
@@ -50,6 +56,7 @@ export default function LabSetupWizardPage() {
     sealed_counts_only: labSettings.sealed_counts_only ?? false,
     qc_doc_required: labSettings.qc_doc_required ?? false,
     storage_enabled: labSettings.storage_enabled !== false,
+    cocktails_enabled: labSettings.cocktails_enabled ?? false,
     expiry_warn_days: labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_DAYS,
   });
 
@@ -151,7 +158,7 @@ export default function LabSetupWizardPage() {
                 <span className="wizard-toggle-label">
                   {current.key === "sealed_counts_only"
                     ? (settings.sealed_counts_only ? "Sealed counts only" : "Full lifecycle tracking")
-                    : (settings[current.key as keyof typeof settings] ? "Enabled" : "Disabled")}
+                    : ((settings[current.key as keyof typeof settings] as boolean) ? "Enabled" : "Disabled")}
                 </span>
               </div>
             )}

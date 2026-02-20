@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session, subqueryload
 
 from app.core.database import get_db
@@ -59,13 +60,14 @@ def _resolve_lab_id(current_user: User, lab_id: UUID | None = None) -> UUID:
 def _enrich_recipe_out(recipe: CocktailRecipe, ab_map: dict) -> CocktailRecipeOut:
     components = []
     for c in recipe.components:
-        ab = ab_map.get(c.antibody_id)
+        ab = ab_map.get(c.antibody_id) if c.antibody_id else None
         components.append(CocktailRecipeComponentOut(
             id=c.id,
             antibody_id=c.antibody_id,
+            free_text_name=c.free_text_name,
             volume_ul=c.volume_ul,
             ordinal=c.ordinal,
-            antibody_target=ab.target if ab else None,
+            antibody_target=ab.target if ab else (c.free_text_name or None),
             antibody_fluorochrome=ab.fluorochrome if ab else None,
         ))
     return CocktailRecipeOut(
@@ -98,7 +100,7 @@ def _enrich_lot_details(
                     comp = c
                     break
         src_lot = lot_map.get(s.source_lot_id)
-        ab = ab_map.get(comp.antibody_id) if comp else None
+        ab = ab_map.get(comp.antibody_id) if comp and comp.antibody_id else None
         sources.append(CocktailLotSourceOut(
             id=s.id,
             component_id=s.component_id,
@@ -186,7 +188,8 @@ def list_recipes(
     all_ab_ids = set()
     for r in recipes:
         for c in r.components:
-            all_ab_ids.add(c.antibody_id)
+            if c.antibody_id:
+                all_ab_ids.add(c.antibody_id)
     ab_map = {}
     if all_ab_ids:
         abs_ = db.query(Antibody).filter(Antibody.id.in_(all_ab_ids)).all()
@@ -248,19 +251,29 @@ def create_recipe(
     if not body.components:
         raise HTTPException(status_code=400, detail="At least one component is required")
 
-    # Validate all antibody_ids belong to the lab
-    ab_ids = [c.antibody_id for c in body.components]
-    abs_ = db.query(Antibody).filter(
-        Antibody.id.in_(ab_ids), Antibody.lab_id == target_lab_id
-    ).all()
-    ab_map = {a.id: a for a in abs_}
-
+    # Validate: each component must have antibody_id or free_text_name
     for c in body.components:
-        if c.antibody_id not in ab_map:
+        if not c.antibody_id and not c.free_text_name:
             raise HTTPException(
                 status_code=400,
-                detail=f"Antibody {c.antibody_id} not found in lab",
+                detail="Each component must have either antibody_id or free_text_name",
             )
+
+    # Validate antibody_ids belong to the lab (only for components with antibody_id)
+    ab_ids = [c.antibody_id for c in body.components if c.antibody_id]
+    ab_map = {}
+    if ab_ids:
+        abs_ = db.query(Antibody).filter(
+            Antibody.id.in_(ab_ids), Antibody.lab_id == target_lab_id
+        ).all()
+        ab_map = {a.id: a for a in abs_}
+
+        for c in body.components:
+            if c.antibody_id and c.antibody_id not in ab_map:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Antibody {c.antibody_id} not found in lab",
+                )
 
     recipe = CocktailRecipe(
         lab_id=target_lab_id,
@@ -276,6 +289,7 @@ def create_recipe(
         db.add(CocktailRecipeComponent(
             recipe_id=recipe.id,
             antibody_id=c.antibody_id,
+            free_text_name=c.free_text_name,
             volume_ul=c.volume_ul,
             ordinal=c.ordinal,
         ))
@@ -344,19 +358,28 @@ def update_recipe(
 
     ab_map = {}
     if body.components is not None:
-        # Replace components
-        ab_ids = [c.antibody_id for c in body.components]
-        abs_ = db.query(Antibody).filter(
-            Antibody.id.in_(ab_ids), Antibody.lab_id == target_lab_id
-        ).all()
-        ab_map = {a.id: a for a in abs_}
-
+        # Validate: each component must have antibody_id or free_text_name
         for c in body.components:
-            if c.antibody_id not in ab_map:
+            if not c.antibody_id and not c.free_text_name:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Antibody {c.antibody_id} not found in lab",
+                    detail="Each component must have either antibody_id or free_text_name",
                 )
+
+        # Replace components — only validate antibody_ids that are provided
+        ab_ids = [c.antibody_id for c in body.components if c.antibody_id]
+        if ab_ids:
+            abs_ = db.query(Antibody).filter(
+                Antibody.id.in_(ab_ids), Antibody.lab_id == target_lab_id
+            ).all()
+            ab_map = {a.id: a for a in abs_}
+
+            for c in body.components:
+                if c.antibody_id and c.antibody_id not in ab_map:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Antibody {c.antibody_id} not found in lab",
+                    )
 
         # Delete old components
         db.query(CocktailRecipeComponent).filter(
@@ -367,13 +390,14 @@ def update_recipe(
             db.add(CocktailRecipeComponent(
                 recipe_id=recipe.id,
                 antibody_id=c.antibody_id,
+                free_text_name=c.free_text_name,
                 volume_ul=c.volume_ul,
                 ordinal=c.ordinal,
             ))
         db.flush()
     else:
         # Load existing antibodies for enrichment
-        comp_ab_ids = [c.antibody_id for c in recipe.components]
+        comp_ab_ids = [c.antibody_id for c in recipe.components if c.antibody_id]
         if comp_ab_ids:
             abs_ = db.query(Antibody).filter(Antibody.id.in_(comp_ab_ids)).all()
             ab_map = {a.id: a for a in abs_}
@@ -416,7 +440,7 @@ def get_recipe(
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    ab_ids = [c.antibody_id for c in recipe.components]
+    ab_ids = [c.antibody_id for c in recipe.components if c.antibody_id]
     abs_ = db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all() if ab_ids else []
     ab_map = {a.id: a for a in abs_}
 
@@ -463,7 +487,8 @@ def list_lots(
     all_ab_ids = set()
     for r in recipes:
         for c in r.components:
-            all_ab_ids.add(c.antibody_id)
+            if c.antibody_id:
+                all_ab_ids.add(c.antibody_id)
     ab_map = {}
     if all_ab_ids:
         abs_ = db.query(Antibody).filter(Antibody.id.in_(all_ab_ids)).all()
@@ -509,6 +534,17 @@ def prepare_lot(
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
+    # Prevent duplicate lot numbers within the same recipe
+    existing_lot = db.query(CocktailLot).filter(
+        CocktailLot.recipe_id == body.recipe_id,
+        sa_func.lower(CocktailLot.lot_number) == body.lot_number.strip().lower(),
+    ).first()
+    if existing_lot:
+        raise HTTPException(
+            status_code=409,
+            detail="A lot with this number already exists for this recipe",
+        )
+
     sources = [s.model_dump() for s in body.sources]
     lot = create_cocktail_lot(
         db,
@@ -533,7 +569,7 @@ def prepare_lot(
     ).first()
 
     # Build maps for enrichment
-    ab_ids = [c.antibody_id for c in recipe.components]
+    ab_ids = [c.antibody_id for c in recipe.components if c.antibody_id]
     abs_ = db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all() if ab_ids else []
     ab_map = {a.id: a for a in abs_}
 
@@ -575,7 +611,7 @@ def get_lot(
         CocktailRecipe.id == lot.recipe_id
     ).options(subqueryload(CocktailRecipe.components)).first()
 
-    ab_ids = [c.antibody_id for c in recipe.components] if recipe else []
+    ab_ids = [c.antibody_id for c in recipe.components if c.antibody_id] if recipe else []
     abs_ = db.query(Antibody).filter(Antibody.id.in_(ab_ids)).all() if ab_ids else []
     ab_map = {a.id: a for a in abs_}
 

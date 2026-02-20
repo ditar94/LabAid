@@ -393,7 +393,8 @@ class CocktailRecipeComponent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     recipe_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_recipes.id", ondelete="CASCADE"), nullable=False)
-    antibody_id = Column(UUID(as_uuid=True), ForeignKey("antibodies.id"), nullable=False)
+    antibody_id = Column(UUID(as_uuid=True), ForeignKey("antibodies.id"), nullable=True)
+    free_text_name = Column(String(300), nullable=True)
     volume_ul = Column(Integer, nullable=True)
     ordinal = Column(Integer, nullable=False, default=0)
 
@@ -471,6 +472,7 @@ class CocktailLotDocument(Base):
     checksum_sha256 = Column(String(64), nullable=True)
     description = Column(String(500), nullable=True)
     is_qc_document = Column(Boolean, default=False, nullable=False, server_default="false")
+    renewal_number = Column(Integer, nullable=False, server_default="0")
     storage_class = Column(String(20), nullable=True, server_default="hot")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False, nullable=False, server_default="false")
