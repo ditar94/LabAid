@@ -207,6 +207,7 @@ export interface ScanLookupResult {
   is_cocktail?: boolean;
   cocktail_lot?: CocktailLot;
   cocktail_recipe?: CocktailRecipe;
+  older_cocktail_lots?: OlderCocktailLotSummary[];
 }
 
 export interface GUDIDDevice {
@@ -454,6 +455,7 @@ export interface CocktailLot {
   location_cell_id: string | null;
   is_archived: boolean;
   archive_note: string | null;
+  test_count?: number | null;
   created_at: string;
   recipe_name?: string;
   sources?: CocktailLotSource[];
@@ -462,6 +464,16 @@ export interface CocktailLot {
   storage_unit_name?: string | null;
   storage_cell_label?: string | null;
   created_by_name?: string | null;
+}
+
+export interface OlderCocktailLotSummary {
+  id: string;
+  lot_number: string;
+  preparation_date: string;
+  expiration_date: string;
+  qc_status: string;
+  renewal_count: number;
+  test_count?: number | null;
 }
 
 export interface CocktailRecipeWithLots extends CocktailRecipe {

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -381,19 +381,32 @@ def update_recipe(
                         detail=f"Antibody {c.antibody_id} not found in lab",
                     )
 
-        # Delete old components
-        db.query(CocktailRecipeComponent).filter(
-            CocktailRecipeComponent.recipe_id == recipe.id
-        ).delete(synchronize_session="fetch")
+        # Upsert components: update existing (preserving IDs for FK refs),
+        # delete removed, create new
+        existing_by_id = {c.id: c for c in recipe.components}
+        incoming_ids = {c.id for c in body.components if c.id}
 
+        # Delete components that are no longer in the list
+        for old_id, old_comp in existing_by_id.items():
+            if old_id not in incoming_ids:
+                db.delete(old_comp)
+
+        # Update existing or create new
         for c in body.components:
-            db.add(CocktailRecipeComponent(
-                recipe_id=recipe.id,
-                antibody_id=c.antibody_id,
-                free_text_name=c.free_text_name,
-                volume_ul=c.volume_ul,
-                ordinal=c.ordinal,
-            ))
+            if c.id and c.id in existing_by_id:
+                existing = existing_by_id[c.id]
+                existing.antibody_id = c.antibody_id
+                existing.free_text_name = c.free_text_name
+                existing.volume_ul = c.volume_ul
+                existing.ordinal = c.ordinal
+            else:
+                db.add(CocktailRecipeComponent(
+                    recipe_id=recipe.id,
+                    antibody_id=c.antibody_id,
+                    free_text_name=c.free_text_name,
+                    volume_ul=c.volume_ul,
+                    ordinal=c.ordinal,
+                ))
         db.flush()
     else:
         # Load existing antibodies for enrichment
@@ -553,6 +566,7 @@ def prepare_lot(
         vendor_barcode=body.vendor_barcode,
         preparation_date=body.preparation_date,
         expiration_date=body.expiration_date,
+        test_count=body.test_count,
         sources=sources,
         user=current_user,
         lab_id=target_lab_id,
@@ -644,6 +658,14 @@ def update_qc_status(
     ).first()
     if not lot:
         raise HTTPException(status_code=404, detail="Cocktail lot not found")
+
+    # Block approval on expired lots
+    if body.qc_status == QCStatus.APPROVED:
+        if lot.expiration_date and lot.expiration_date < date.today():
+            raise HTTPException(
+                status_code=409,
+                detail="Lot expired, renewal needed",
+            )
 
     # Enforce QC document requirement
     if body.qc_status == QCStatus.APPROVED:

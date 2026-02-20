@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type {
@@ -14,7 +14,9 @@ import EmptyState from "../components/EmptyState";
 import { CocktailRecipeForm, type CocktailRecipeFormValues } from "../components/CocktailRecipeForm";
 import { CocktailLotPreparationForm } from "../components/CocktailLotPreparationForm";
 import { CocktailDocumentModal } from "../components/CocktailDocumentModal";
-import { Beaker } from "lucide-react";
+import { Beaker, Info } from "lucide-react";
+
+const CARD_COLLAPSE_MS = 100;
 
 export default function CocktailsPage() {
   const { user } = useAuth();
@@ -29,6 +31,8 @@ export default function CocktailsPage() {
 
   // State
   const [expandedRecipeId, setExpandedRecipeId] = useState<string | null>(null);
+  const [closingId, setClosingId] = useState<string | null>(null);
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedLotId, setExpandedLotId] = useState<string | null>(null);
   const [showRecipeForm, setShowRecipeForm] = useState(false);
   const [editRecipe, setEditRecipe] = useState<CocktailRecipe | null>(null);
@@ -40,6 +44,8 @@ export default function CocktailsPage() {
   const [archivePrompt, setArchivePrompt] = useState<{ lotId: string; lotNumber: string } | null>(null);
   const [archiveNote, setArchiveNote] = useState("");
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [infoRecipe, setInfoRecipe] = useState<CocktailRecipe | null>(null);
+  const [showInactiveLots, setShowInactiveLots] = useState(false);
 
   // Antibodies for recipe form
   const [antibodies, setAntibodies] = useState<Antibody[]>([]);
@@ -66,6 +72,29 @@ export default function CocktailsPage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["cocktail-recipes"] });
 
+  // Expand/collapse with animation
+  const clearCollapseTimer = useCallback(() => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+  }, []);
+
+  const toggleRecipe = useCallback((recipeId: string) => {
+    if (expandedRecipeId === recipeId) {
+      setClosingId(recipeId);
+      clearCollapseTimer();
+      collapseTimerRef.current = setTimeout(() => {
+        setExpandedRecipeId(null);
+        setClosingId(null);
+      }, CARD_COLLAPSE_MS);
+    } else {
+      clearCollapseTimer();
+      setClosingId(null);
+      setExpandedRecipeId(recipeId);
+    }
+  }, [expandedRecipeId, clearCollapseTimer]);
+
   // Collapse lot detail when switching recipe
   useEffect(() => {
     setExpandedLotId(null);
@@ -75,6 +104,7 @@ export default function CocktailsPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (infoRecipe) { setInfoRecipe(null); return; }
       if (docModalLotId) { setDocModalLotId(null); return; }
       if (archivePrompt) { setArchivePrompt(null); return; }
       if (prepareRecipe) { setPrepareRecipe(null); return; }
@@ -83,7 +113,7 @@ export default function CocktailsPage() {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [docModalLotId, archivePrompt, prepareRecipe, editRecipe, showRecipeForm]);
+  }, [infoRecipe, docModalLotId, archivePrompt, prepareRecipe, editRecipe, showRecipeForm]);
 
   // Sort recipes: active first, then alphabetically
   const sortedRecipes = useMemo(() => {
@@ -93,6 +123,66 @@ export default function CocktailsPage() {
     });
   }, [recipes]);
 
+  // ── Helpers ──────────────────────────────────────────────────────────
+
+  const isCocktailLotInactive = (l: CocktailLot) =>
+    l.is_archived || l.status === "depleted";
+
+  const isExpired = (lot: CocktailLot) =>
+    lot.status !== "depleted" &&
+    !lot.is_archived &&
+    new Date(lot.expiration_date + "T00:00:00") < new Date(new Date().toDateString());
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "\u2014";
+    return new Date(dateStr + "T00:00:00").toLocaleDateString();
+  };
+
+  const formatDateTime = (dateStr: string | null) => {
+    if (!dateStr) return "\u2014";
+    return new Date(dateStr).toLocaleString();
+  };
+
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+  /** Compute FEFO badges: among active non-archived lots sorted by expiration, first = Current, rest = New. */
+  const computeLotBadgeMap = (lots: CocktailLot[]): Map<string, "current" | "new"> => {
+    const eligible = lots
+      .filter((l) => !isCocktailLotInactive(l))
+      .sort((a, b) => {
+        if (!a.expiration_date && !b.expiration_date) return 0;
+        if (!a.expiration_date) return 1;
+        if (!b.expiration_date) return -1;
+        return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
+      });
+    const badgeMap = new Map<string, "current" | "new">();
+    if (eligible.length >= 2) {
+      for (const lot of eligible) {
+        badgeMap.set(lot.id, lot === eligible[0] ? "current" : "new");
+      }
+    }
+    return badgeMap;
+  };
+
+  // ── Render helpers ──────────────────────────────────────────────────
+
+  const qcBadge = (status: string) => {
+    if (status === "approved") return <span className="badge badge-green">Approved</span>;
+    if (status === "failed") return <span className="badge badge-red">Failed</span>;
+    return <span className="badge badge-yellow">Pending QC</span>;
+  };
+
+  const statusBadge = (lot: CocktailLot) => {
+    if (lot.is_archived) return <span className="badge badge-gray">Archived</span>;
+    if (lot.status === "depleted") return <span className="badge badge-red">Depleted</span>;
+    return <span className="badge badge-green">Active</span>;
+  };
+
+  const expiredBadge = (lot: CocktailLot) => {
+    if (isExpired(lot)) return <span className="badge badge-red">Expired</span>;
+    return null;
+  };
+
   // ── Recipe handlers ────────────────────────────────────────────────
 
   const handleCreateRecipe = async (values: CocktailRecipeFormValues) => {
@@ -100,7 +190,6 @@ export default function CocktailsPage() {
     try {
       await api.post("/cocktails/recipes", {
         name: values.name.trim(),
-        description: values.description.trim() || null,
         shelf_life_days: parseInt(values.shelf_life_days, 10),
         max_renewals: values.max_renewals ? parseInt(values.max_renewals, 10) : null,
         components: values.components.map((c, i) => ({
@@ -126,10 +215,10 @@ export default function CocktailsPage() {
     try {
       await api.patch(`/cocktails/recipes/${editRecipe.id}`, {
         name: values.name.trim(),
-        description: values.description.trim() || null,
         shelf_life_days: parseInt(values.shelf_life_days, 10),
         max_renewals: values.max_renewals ? parseInt(values.max_renewals, 10) : null,
         components: values.components.map((c, i) => ({
+          id: c.id || null,
           antibody_id: c.antibody_id || null,
           free_text_name: c.free_text_name?.trim() || null,
           volume_ul: c.volume_ul ? parseFloat(c.volume_ul) : null,
@@ -154,13 +243,13 @@ export default function CocktailsPage() {
     if (!editRecipe) return undefined;
     return {
       name: editRecipe.name,
-      description: editRecipe.description || "",
       shelf_life_days: String(editRecipe.shelf_life_days),
       max_renewals: editRecipe.max_renewals != null ? String(editRecipe.max_renewals) : "",
       components: editRecipe.components.length > 0
         ? editRecipe.components
             .sort((a, b) => a.ordinal - b.ordinal)
             .map((c) => ({
+              id: c.id,
               antibody_id: c.antibody_id || "",
               volume_ul: c.volume_ul != null ? String(c.volume_ul) : "",
               free_text_name: c.free_text_name || "",
@@ -176,6 +265,7 @@ export default function CocktailsPage() {
     lot_number: string;
     preparation_date: string;
     expiration_date: string;
+    test_count?: number;
     sources: { component_id: string; source_lot_id: string }[];
   }) => {
     setPrepareLoading(true);
@@ -247,51 +337,6 @@ export default function CocktailsPage() {
     }
   };
 
-  // ── Render helpers ─────────────────────────────────────────────────
-
-  const qcBadge = (status: string) => {
-    if (status === "approved") return <span className="badge badge-green">Approved</span>;
-    if (status === "failed") return <span className="badge badge-red">Failed</span>;
-    return <span className="badge badge-yellow">Pending QC</span>;
-  };
-
-  const statusBadge = (lot: CocktailLot) => {
-    if (lot.is_archived) return <span className="badge badge-gray">Archived</span>;
-    if (lot.status === "depleted") return <span className="badge badge-red">Depleted</span>;
-    return <span className="badge badge-green">Active</span>;
-  };
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "\u2014";
-    return new Date(dateStr + "T00:00:00").toLocaleDateString();
-  };
-
-  const formatDateTime = (dateStr: string | null) => {
-    if (!dateStr) return "\u2014";
-    return new Date(dateStr).toLocaleString();
-  };
-
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-
-  /** Compute FEFO badges for cocktail lots: among active non-archived lots sorted by expiration, first = Current, rest = New. */
-  const computeLotBadgeMap = (lots: CocktailLot[]): Map<string, "current" | "new"> => {
-    const eligible = lots
-      .filter((l) => !l.is_archived && l.status !== "depleted")
-      .sort((a, b) => {
-        if (!a.expiration_date && !b.expiration_date) return 0;
-        if (!a.expiration_date) return 1;
-        if (!b.expiration_date) return -1;
-        return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
-      });
-    const badgeMap = new Map<string, "current" | "new">();
-    if (eligible.length >= 2) {
-      for (const lot of eligible) {
-        badgeMap.set(lot.id, lot === eligible[0] ? "current" : "new");
-      }
-    }
-    return badgeMap;
-  };
-
   // ── Lot detail panel ───────────────────────────────────────────────
 
   const renderLotDetail = (lot: CocktailLot) => {
@@ -339,6 +384,11 @@ export default function CocktailsPage() {
               <strong>Prepared by:</strong> {lot.created_by_name}
             </span>
           )}
+          {lot.test_count != null && (
+            <span>
+              <strong>Tests:</strong> {lot.test_count}
+            </span>
+          )}
           {lot.storage_unit_name && (
             <span>
               <strong>Location:</strong> {lot.storage_unit_name}
@@ -365,7 +415,6 @@ export default function CocktailsPage() {
         {/* Actions */}
         {!isReadOnly && (
           <div className="action-btns" style={{ flexWrap: "wrap" }}>
-            {/* QC approve - supervisor+ only */}
             {canEdit && lot.qc_status === "pending" && !lot.is_archived && (
               <button
                 className="btn-sm btn-green"
@@ -375,8 +424,6 @@ export default function CocktailsPage() {
                 Approve QC
               </button>
             )}
-
-            {/* Renew - supervisor+ */}
             {canRenew && (
               <button
                 className="btn-sm btn-secondary"
@@ -386,8 +433,6 @@ export default function CocktailsPage() {
                 Renew
               </button>
             )}
-
-            {/* Deplete - tech+ */}
             {canPrepare && lot.status === "active" && !lot.is_archived && (
               <button
                 className="btn-sm btn-danger"
@@ -397,16 +442,12 @@ export default function CocktailsPage() {
                 Deplete
               </button>
             )}
-
-            {/* Documents */}
             <button
               className="btn-sm btn-secondary"
               onClick={() => setDocModalLotId(lot.id)}
             >
               Documents{lot.has_qc_document ? " (QC)" : ""}
             </button>
-
-            {/* Archive - supervisor+ */}
             {canEdit && !lot.is_archived && lot.status !== "depleted" && (
               <button
                 className="btn-sm btn-secondary"
@@ -419,8 +460,6 @@ export default function CocktailsPage() {
                 Archive
               </button>
             )}
-
-            {/* Unarchive */}
             {canEdit && lot.is_archived && (
               <button
                 className="btn-sm btn-secondary"
@@ -433,6 +472,138 @@ export default function CocktailsPage() {
           </div>
         )}
       </div>
+    );
+  };
+
+  // ── Lot list renderer ──────────────────────────────────────────────
+
+  const renderLots = (lotsToRender: CocktailLot[], lotBadgeMap: Map<string, "current" | "new">) => {
+    if (lotsToRender.length === 0) {
+      return <p className="page-desc" style={{ marginTop: "0.25rem" }}>No lots.</p>;
+    }
+
+    if (isMobile) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
+          {lotsToRender.map((lot) => {
+            const isLotExpanded = expandedLotId === lot.id;
+            return (
+              <div
+                key={lot.id}
+                style={{
+                  border: "1px solid var(--border)",
+                  borderLeft: isLotExpanded ? "3px solid var(--primary)" : "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.5rem 0.75rem",
+                    cursor: "pointer",
+                    background: isLotExpanded ? "var(--bg-secondary)" : undefined,
+                  }}
+                  onClick={() => setExpandedLotId(isLotExpanded ? null : lot.id)}
+                >
+                  <strong style={{ flex: 1 }}>
+                    {lot.lot_number}
+                    {lotBadgeMap.get(lot.id) === "current" && (
+                      <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
+                    )}
+                    {lotBadgeMap.get(lot.id) === "new" && (
+                      <span className="badge badge-yellow" style={{ marginLeft: 6, fontSize: "0.7em" }}>New</span>
+                    )}
+                  </strong>
+                  {qcBadge(lot.qc_status)}
+                  {statusBadge(lot)}
+                  {expiredBadge(lot)}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "0.75rem",
+                    padding: "0 0.75rem 0.5rem",
+                    fontSize: "0.85rem",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  <span>Prep: {formatDate(lot.preparation_date)}</span>
+                  <span>Exp: {formatDate(lot.expiration_date)}</span>
+                  {lot.renewal_count > 0 && <span>Renewals: {lot.renewal_count}</span>}
+                  {lot.test_count != null && <span>Tests: {lot.test_count}</span>}
+                </div>
+                {isLotExpanded && renderLotDetail(lot)}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return (
+      <table style={{ width: "100%", marginTop: "0.5rem", fontSize: "0.85rem" }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left" }}>Lot #</th>
+            <th style={{ textAlign: "left" }}>Prepared</th>
+            <th style={{ textAlign: "left" }}>Expires</th>
+            <th style={{ textAlign: "left" }}>QC</th>
+            <th style={{ textAlign: "left" }}>Status</th>
+            <th style={{ textAlign: "right" }}>Renewals</th>
+            <th style={{ textAlign: "right" }}>Tests</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lotsToRender.map((lot) => {
+            const isLotExpanded = expandedLotId === lot.id;
+            return (
+              <Fragment key={lot.id}>
+                <tr
+                  style={{
+                    cursor: "pointer",
+                    background: isLotExpanded ? "var(--bg-secondary)" : undefined,
+                    fontWeight: isLotExpanded ? 600 : undefined,
+                    borderLeft: isLotExpanded ? "3px solid var(--primary)" : "3px solid transparent",
+                  }}
+                  onClick={() => setExpandedLotId(isLotExpanded ? null : lot.id)}
+                >
+                  <td>
+                    <strong>{lot.lot_number}</strong>
+                    {lotBadgeMap.get(lot.id) === "current" && (
+                      <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
+                    )}
+                    {lotBadgeMap.get(lot.id) === "new" && (
+                      <span className="badge badge-yellow" style={{ marginLeft: 6, fontSize: "0.7em" }}>New</span>
+                    )}
+                  </td>
+                  <td>{formatDate(lot.preparation_date)}</td>
+                  <td>{formatDate(lot.expiration_date)}</td>
+                  <td>
+                    {qcBadge(lot.qc_status)}
+                    {" "}
+                    {expiredBadge(lot)}
+                  </td>
+                  <td>{statusBadge(lot)}</td>
+                  <td style={{ textAlign: "right" }}>{lot.renewal_count}</td>
+                  <td style={{ textAlign: "right" }}>{lot.test_count != null ? lot.test_count : "\u2014"}</td>
+                </tr>
+                {isLotExpanded && (
+                  <tr>
+                    <td colSpan={7} style={{ padding: 0 }}>
+                      {renderLotDetail(lot)}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     );
   };
 
@@ -461,24 +632,42 @@ export default function CocktailsPage() {
 
       {sortedRecipes.map((recipe) => {
         const isExpanded = expandedRecipeId === recipe.id;
+        const isCollapsing = closingId === recipe.id;
+        const isOpen = isExpanded || isCollapsing;
         const componentLabel = recipe.components.length === 1
           ? "1 component"
           : `${recipe.components.length} components`;
 
+        const allLots = recipe.lots;
+        const activeLots = allLots.filter((l) => !isCocktailLotInactive(l));
+        const inactiveLots = allLots.filter((l) => isCocktailLotInactive(l));
+        const lotBadgeMap = computeLotBadgeMap(allLots);
+
         return (
           <div key={recipe.id} className="card" style={{ marginBottom: "0.75rem" }}>
-            {/* Recipe header (collapsed view) */}
+            {/* Recipe header */}
             <div
               className="card-header"
               style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}
-              onClick={() => setExpandedRecipeId(isExpanded ? null : recipe.id)}
+              onClick={() => toggleRecipe(recipe.id)}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                 <strong>{recipe.name}</strong>
                 {!recipe.is_active && <span className="badge badge-gray">Inactive</span>}
+                <button
+                  className="btn-sm btn-secondary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setInfoRecipe(recipe);
+                  }}
+                  title="View recipe details"
+                  style={{ padding: "0.1rem 0.3rem", lineHeight: 1 }}
+                >
+                  <Info size={14} />
+                </button>
                 <span className="badge badge-gray">{componentLabel}</span>
                 <span className="badge badge-green">
-                  {recipe.active_lot_count} active lot{recipe.active_lot_count === 1 ? "" : "s"}
+                  {activeLots.length} active lot{activeLots.length === 1 ? "" : "s"}
                 </span>
                 <span className="badge badge-yellow">
                   {recipe.shelf_life_days}d shelf life
@@ -490,20 +679,13 @@ export default function CocktailsPage() {
                 )}
               </div>
               <span style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                {isExpanded ? "Collapse" : "Expand"}
+                {isOpen ? "Collapse" : "Expand"}
               </span>
             </div>
 
             {/* Expanded content */}
-            {isExpanded && (
+            {isOpen && (
               <div className="card-body">
-                {/* Recipe description */}
-                {recipe.description && (
-                  <p className="page-desc" style={{ marginBottom: "0.75rem" }}>
-                    {recipe.description}
-                  </p>
-                )}
-
                 {/* Action buttons for recipe */}
                 <div className="action-btns" style={{ marginBottom: "0.75rem", flexWrap: "wrap" }}>
                   {canEdit && (
@@ -524,170 +706,33 @@ export default function CocktailsPage() {
                   )}
                 </div>
 
-                {/* Component table */}
-                <div style={{ marginBottom: "1rem" }}>
-                  <strong style={{ fontSize: "0.9rem" }}>Components</strong>
-                  <table style={{ width: "100%", marginTop: "0.25rem", fontSize: "0.85rem" }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: "left", width: "2rem" }}>#</th>
-                        <th style={{ textAlign: "left" }}>Antibody</th>
-                        <th style={{ textAlign: "right" }}>Volume (uL)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recipe.components
-                        .sort((a, b) => a.ordinal - b.ordinal)
-                        .map((comp) => (
-                          <tr key={comp.id}>
-                            <td>{comp.ordinal}</td>
-                            <td>
-                              {comp.antibody_target || comp.antibody_fluorochrome
-                                ? [comp.antibody_target, comp.antibody_fluorochrome]
-                                    .filter(Boolean)
-                                    .join(" - ")
-                                : comp.free_text_name
-                                  ? <em>{comp.free_text_name}</em>
-                                  : "\u2014"}
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              {comp.volume_ul != null ? comp.volume_ul : "\u2014"}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Lots */}
+                {/* Active lots */}
                 <strong style={{ fontSize: "0.9rem" }}>
-                  Lots ({recipe.lots.length})
+                  Active Lots ({activeLots.length})
                 </strong>
 
-                {recipe.lots.length === 0 ? (
+                {activeLots.length === 0 ? (
                   <p className="page-desc" style={{ marginTop: "0.25rem" }}>
-                    No lots prepared yet.
+                    No active lots.
                   </p>
-                ) : (() => {
-                  const lotBadgeMap = computeLotBadgeMap(recipe.lots);
-                  return isMobile ? (
-                  /* Mobile: card layout */
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
-                    {recipe.lots.map((lot) => {
-                      const isLotExpanded = expandedLotId === lot.id;
-                      return (
-                        <div
-                          key={lot.id}
-                          style={{
-                            border: "1px solid var(--border)",
-                            borderLeft: isLotExpanded ? "3px solid var(--primary)" : "1px solid var(--border)",
-                            borderRadius: "var(--radius-sm)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                              padding: "0.5rem 0.75rem",
-                              cursor: "pointer",
-                              background: isLotExpanded ? "var(--bg-secondary)" : undefined,
-                            }}
-                            onClick={() => setExpandedLotId(isLotExpanded ? null : lot.id)}
-                          >
-                            <strong style={{ flex: 1 }}>
-                              {lot.lot_number}
-                              {lotBadgeMap.get(lot.id) === "current" && (
-                                <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
-                              )}
-                              {lotBadgeMap.get(lot.id) === "new" && (
-                                <span className="badge badge-yellow" style={{ marginLeft: 6, fontSize: "0.7em" }}>New</span>
-                              )}
-                            </strong>
-                            {qcBadge(lot.qc_status)}
-                            {statusBadge(lot)}
-                          </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: "0.75rem",
-                              padding: "0 0.75rem 0.5rem",
-                              fontSize: "0.85rem",
-                              color: "var(--text-secondary)",
-                            }}
-                          >
-                            <span>Prep: {formatDate(lot.preparation_date)}</span>
-                            <span>Exp: {formatDate(lot.expiration_date)}</span>
-                            {lot.renewal_count > 0 && (
-                              <span>Renewals: {lot.renewal_count}</span>
-                            )}
-                          </div>
-                          {isLotExpanded && renderLotDetail(lot)}
-                        </div>
-                      );
-                    })}
-                  </div>
                 ) : (
-                  /* Desktop: table layout */
-                  <table style={{ width: "100%", marginTop: "0.5rem", fontSize: "0.85rem" }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: "left" }}>Lot #</th>
-                        <th style={{ textAlign: "left" }}>Prepared</th>
-                        <th style={{ textAlign: "left" }}>Expires</th>
-                        <th style={{ textAlign: "left" }}>QC</th>
-                        <th style={{ textAlign: "left" }}>Status</th>
-                        <th style={{ textAlign: "right" }}>Renewals</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recipe.lots.map((lot) => {
-                        const isLotExpanded = expandedLotId === lot.id;
-                        return (
-                          <Fragment key={lot.id}>
-                            <tr
-                              style={{
-                                cursor: "pointer",
-                                background: isLotExpanded ? "var(--bg-secondary)" : undefined,
-                                fontWeight: isLotExpanded ? 600 : undefined,
-                                borderLeft: isLotExpanded ? "3px solid var(--primary)" : "3px solid transparent",
-                              }}
-                              onClick={() =>
-                                setExpandedLotId(isLotExpanded ? null : lot.id)
-                              }
-                            >
-                              <td>
-                                <strong>{lot.lot_number}</strong>
-                                {lotBadgeMap.get(lot.id) === "current" && (
-                                  <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
-                                )}
-                                {lotBadgeMap.get(lot.id) === "new" && (
-                                  <span className="badge badge-yellow" style={{ marginLeft: 6, fontSize: "0.7em" }}>New</span>
-                                )}
-                              </td>
-                              <td>{formatDate(lot.preparation_date)}</td>
-                              <td>{formatDate(lot.expiration_date)}</td>
-                              <td>{qcBadge(lot.qc_status)}</td>
-                              <td>{statusBadge(lot)}</td>
-                              <td style={{ textAlign: "right" }}>{lot.renewal_count}</td>
-                            </tr>
-                            {isLotExpanded && (
-                              <tr>
-                                <td colSpan={6} style={{ padding: 0 }}>
-                                  {renderLotDetail(lot)}
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                );
-                })()}
+                  renderLots(activeLots, lotBadgeMap)
+                )}
+
+                {/* Inactive lots toggle */}
+                {inactiveLots.length > 0 && (
+                  <div style={{ marginTop: "1rem" }}>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.85rem", cursor: "pointer", color: "var(--text-secondary)" }}>
+                      <input
+                        type="checkbox"
+                        checked={showInactiveLots}
+                        onChange={() => setShowInactiveLots(!showInactiveLots)}
+                      />
+                      Show inactive ({inactiveLots.length})
+                    </label>
+                    {showInactiveLots && renderLots(inactiveLots, lotBadgeMap)}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -695,6 +740,54 @@ export default function CocktailsPage() {
       })}
 
       {/* ── Modals ──────────────────────────────────────────────────── */}
+
+      {/* Component info modal */}
+      {infoRecipe && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Recipe details">
+          <div className="modal-content">
+            <h2>{infoRecipe.name}</h2>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem", fontSize: "0.85rem" }}>
+              <span><strong>Shelf life:</strong> {infoRecipe.shelf_life_days} days</span>
+              <span><strong>Max renewals:</strong> {infoRecipe.max_renewals != null ? infoRecipe.max_renewals : "Unlimited"}</span>
+            </div>
+            <table style={{ width: "100%", fontSize: "0.85rem" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", width: "2rem" }}>#</th>
+                  <th style={{ textAlign: "left" }}>Component</th>
+                  <th style={{ textAlign: "right" }}>Volume (uL)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {infoRecipe.components
+                  .sort((a, b) => a.ordinal - b.ordinal)
+                  .map((comp) => (
+                    <tr key={comp.id}>
+                      <td>{comp.ordinal}</td>
+                      <td>
+                        {comp.antibody_target || comp.antibody_fluorochrome
+                          ? [comp.antibody_target, comp.antibody_fluorochrome]
+                              .filter(Boolean)
+                              .join(" - ")
+                          : comp.free_text_name
+                            ? <em>{comp.free_text_name}</em>
+                            : "\u2014"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {comp.volume_ul != null ? comp.volume_ul : "\u2014"}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            <div className="action-btns" style={{ marginTop: "1rem" }}>
+              <button className="btn-secondary" onClick={() => setInfoRecipe(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showRecipeForm && (
         <CocktailRecipeForm

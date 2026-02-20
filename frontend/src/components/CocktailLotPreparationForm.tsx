@@ -15,6 +15,7 @@ interface Props {
     lot_number: string;
     preparation_date: string;
     expiration_date: string;
+    test_count?: number;
     sources: { component_id: string; source_lot_id: string }[];
   }) => Promise<void>;
   onCancel: () => void;
@@ -40,6 +41,7 @@ function addDays(dateStr: string, days: number): string {
 
 export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading = false }: Props) {
   const [lotNumber, setLotNumber] = useState("");
+  const [testCount, setTestCount] = useState("");
   const [preparationDate, setPreparationDate] = useState(todayISO());
   const [expirationDate, setExpirationDate] = useState(addDays(todayISO(), recipe.shelf_life_days));
   const [expirationOverridden, setExpirationOverridden] = useState(false);
@@ -142,6 +144,7 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
         lot_number: lotNumber.trim(),
         preparation_date: preparationDate,
         expiration_date: expirationDate,
+        ...(testCount ? { test_count: parseInt(testCount, 10) } : {}),
         sources: sources.map((s) => ({
           component_id: s.component_id,
           source_lot_id: s.source_lot_id,
@@ -205,6 +208,17 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
               onChange={(e) => setLotNumber(e.target.value)}
               placeholder="e.g. CKT-2026-001"
               required
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Number of Tests (optional)</label>
+            <input
+              type="number"
+              min="1"
+              value={testCount}
+              onChange={(e) => setTestCount(e.target.value)}
+              placeholder="e.g. 50"
             />
           </div>
 
@@ -286,6 +300,14 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
                     </span>
                     <span style={{ flex: 1, fontWeight: 500 }}>
                       {isFreeText ? <em>{label}</em> : label}
+                      {comp.volume_ul != null && (
+                        <span style={{ color: "var(--text-secondary)", fontWeight: 400, fontSize: "0.85em" }}>
+                          {" "}— {comp.volume_ul} uL
+                          {testCount && parseInt(testCount, 10) > 0 && (
+                            <span> = {(comp.volume_ul * parseInt(testCount, 10)).toLocaleString()} uL total</span>
+                          )}
+                        </span>
+                      )}
                     </span>
                     {isFreeText ? (
                       <span style={{ flex: 2, color: "var(--text-muted)", fontSize: "0.85em", fontStyle: "italic" }}>

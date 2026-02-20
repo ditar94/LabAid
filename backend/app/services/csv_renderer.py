@@ -80,11 +80,12 @@ def render_audit_trail_csv(data: list[dict]) -> bytes:
 def render_cocktail_lot_csv(data: list[dict]) -> bytes:
     return _render(
         ["Recipe", "Lot #", "Prepared", "Expires", "QC Status",
-         "QC Approved By", "Renewals", "Status", "Created By", "Components"],
+         "QC Approved By", "Renewals", "Tests", "Status", "Created By", "Components"],
         [[
             row["recipe_name"], row["lot_number"], row["preparation_date"],
             row["expiration_date"], row["qc_status"], row["qc_approved_by"],
-            str(row["renewal_count"]), row["status"], row["created_by"],
+            str(row["renewal_count"]), str(row.get("test_count", "")),
+            row["status"], row["created_by"],
             row["components"],
         ] for row in data],
     )

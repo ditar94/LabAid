@@ -291,13 +291,14 @@ def render_cocktail_lot_pdf(data: list[dict], lab_name: str,
     columns = [
         ("Lot #", 20), ("Prepared", 18), ("Expires", 18),
         ("QC", 12), ("QC By", 20), ("Renewals", 12),
-        ("Status", 14), ("Created By", 20), ("Components", 56),
+        ("Tests", 10), ("Status", 14), ("Created By", 20), ("Components", 46),
     ]
     return _render_grouped_table(
         "Cocktail Lot Report", lab_name, pulled_by, columns, data,
         lambda r: [
             r["lot_number"], r["preparation_date"], r["expiration_date"],
             r["qc_status"], r["qc_approved_by"], str(r["renewal_count"]),
+            str(r.get("test_count", "")),
             r["status"], r["created_by"], r["components"],
         ],
         group_key="recipe_name",

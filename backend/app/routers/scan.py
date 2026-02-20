@@ -20,6 +20,7 @@ from app.schemas.schemas import (
     CocktailRecipeOut,
     GUDIDDevice,
     LotOut,
+    OlderCocktailLotSummary,
     OlderLotSummary,
     ScanEnrichRequest,
     ScanEnrichResult,
@@ -34,7 +35,11 @@ from app.services.gudid_client import lookup_gudid
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 
 
-def _build_cocktail_scan_result(db: Session, cocktail_lot: CocktailLot) -> ScanLookupResult:
+def _build_cocktail_scan_result(
+    db: Session,
+    cocktail_lot: CocktailLot,
+    older_cocktail_lots: list[OlderCocktailLotSummary] | None = None,
+) -> ScanLookupResult:
     """Build a full ScanLookupResult for a matched cocktail lot."""
     recipe = db.query(CocktailRecipe).filter(CocktailRecipe.id == cocktail_lot.recipe_id).first()
     sources = db.query(CocktailLotSource).filter(CocktailLotSource.cocktail_lot_id == cocktail_lot.id).all()
@@ -98,6 +103,7 @@ def _build_cocktail_scan_result(db: Session, cocktail_lot: CocktailLot) -> ScanL
         is_cocktail=True,
         cocktail_lot=cl_details,
         cocktail_recipe=recipe_out,
+        older_cocktail_lots=older_cocktail_lots or [],
         vials=[],
         opened_vials=[],
         storage_grids=[],
@@ -157,15 +163,31 @@ def scan_lookup(
         recipe_match = recipe_match.first()
 
         if recipe_match:
-            # Find the most recent active (non-archived) cocktail lot for this recipe
-            recent_lot = db.query(CocktailLot).filter(
+            # Find all active (non-archived) cocktail lots, ordered FEFO
+            active_lots = db.query(CocktailLot).filter(
                 CocktailLot.recipe_id == recipe_match.id,
                 CocktailLot.is_archived.is_(False),
                 CocktailLot.status == CocktailLotStatus.ACTIVE,
-            ).order_by(CocktailLot.created_at.desc()).first()
+            ).order_by(
+                CocktailLot.expiration_date.asc(),
+                CocktailLot.created_at.asc(),
+            ).all()
 
-            if recent_lot:
-                return _build_cocktail_scan_result(db, recent_lot)
+            if active_lots:
+                recent_lot = active_lots[0]  # FEFO: earliest expiration first
+                older = [
+                    OlderCocktailLotSummary(
+                        id=ol.id,
+                        lot_number=ol.lot_number,
+                        preparation_date=ol.preparation_date,
+                        expiration_date=ol.expiration_date,
+                        qc_status=ol.qc_status.value if ol.qc_status else "",
+                        renewal_count=ol.renewal_count,
+                        test_count=ol.test_count,
+                    )
+                    for ol in active_lots[1:]
+                ]
+                return _build_cocktail_scan_result(db, recent_lot, older_cocktail_lots=older)
 
             # No active lots — return recipe info only
             components = db.query(CocktailRecipeComponent).filter(

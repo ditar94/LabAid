@@ -3,13 +3,13 @@ import type { Antibody } from "../api/types";
 
 export interface CocktailRecipeFormValues {
   name: string;
-  description: string;
   shelf_life_days: string;
   max_renewals: string;
   components: ComponentRow[];
 }
 
 export interface ComponentRow {
+  id?: string;  // present for existing components (preserves FK refs on update)
   antibody_id: string;
   volume_ul: string;
   free_text_name: string;
@@ -17,7 +17,6 @@ export interface ComponentRow {
 
 export const EMPTY_RECIPE_FORM: CocktailRecipeFormValues = {
   name: "",
-  description: "",
   shelf_life_days: "30",
   max_renewals: "",
   components: [{ antibody_id: "", volume_ul: "", free_text_name: "" }],
@@ -161,16 +160,6 @@ export function CocktailRecipeForm({
               onChange={(e) => handleChange("name", e.target.value)}
               placeholder="e.g. T-Cell Panel"
               required
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Description (optional)</label>
-            <textarea
-              value={form.description}
-              onChange={(e) => handleChange("description", e.target.value)}
-              rows={2}
-              placeholder="Brief description of this cocktail recipe"
             />
           </div>
 

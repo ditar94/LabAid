@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Antibody, Lot } from "../api/types";
+import type { Antibody, CocktailLot, CocktailRecipe, Lot } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import MonthPicker, {
@@ -30,6 +30,7 @@ const REPORT_CARDS: {
   formats: ("csv" | "pdf")[];
   needsAntibody: boolean;
   needsLot: boolean;
+  needsRecipe?: boolean;
   dateLabel: string;
 }[] = [
   {
@@ -74,6 +75,7 @@ const REPORT_CARDS: {
     formats: ["csv", "pdf"],
     needsAntibody: false,
     needsLot: false,
+    needsRecipe: true,
     dateLabel: "Preparation Date",
   },
   {
@@ -124,6 +126,8 @@ export default function ReportsPage() {
   // Shared filter state
   const [filterAntibody, setFilterAntibody] = useState("");
   const [filterLot, setFilterLot] = useState("");
+  const [filterRecipe, setFilterRecipe] = useState("");
+  const [filterCocktailLot, setFilterCocktailLot] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [entityType, setEntityType] = useState("");
   const [actionFilter, setActionFilter] = useState("");
@@ -153,10 +157,27 @@ export default function ReportsPage() {
     staleTime: 20_000,
   });
 
+  const { data: recipes = [] } = useQuery<CocktailRecipe[]>({
+    queryKey: ["cocktail-recipes"],
+    queryFn: () => api.get("/cocktails/recipes").then((r) => r.data),
+    enabled: cocktailsEnabled && activeReport === "cocktail-lots",
+    staleTime: 20_000,
+  });
+
+  const { data: cocktailLots = [] } = useQuery<CocktailLot[]>({
+    queryKey: ["cocktail-lots", "by-recipe", filterRecipe],
+    queryFn: () =>
+      api
+        .get("/cocktails/lots", { params: { recipe_id: filterRecipe } })
+        .then((r) => r.data),
+    enabled: !!filterRecipe,
+    staleTime: 20_000,
+  });
+
   // Reset preview when switching reports or changing filters
   useEffect(() => {
     setPreview(null);
-  }, [activeReport, filterAntibody, filterLot, dateRange, entityType, actionFilter]);
+  }, [activeReport, filterAntibody, filterLot, filterRecipe, filterCocktailLot, dateRange, entityType, actionFilter]);
 
   const handleCardClick = (type: ReportType) => {
     if (activeReport === type) {
@@ -188,6 +209,10 @@ export default function ReportsPage() {
       (activeReport === "lot-activity" || activeReport === "usage")
     )
       params.lot_id = filterLot;
+    if (filterRecipe && activeReport === "cocktail-lots")
+      params.recipe_id = filterRecipe;
+    if (filterCocktailLot && activeReport === "cocktail-lots")
+      params.lot_id = filterCocktailLot;
     return params;
   };
 
@@ -328,6 +353,41 @@ export default function ReportsPage() {
                 {lots.map((lot) => (
                   <option key={lot.id} value={lot.id}>
                     {lot.lot_number}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {card.needsRecipe && (
+            <label>
+              <span>Recipe</span>
+              <select
+                value={filterRecipe}
+                onChange={(e) => {
+                  setFilterRecipe(e.target.value);
+                  setFilterCocktailLot("");
+                }}
+              >
+                <option value="">All recipes</option>
+                {recipes.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {card.needsRecipe && filterRecipe && (
+            <label>
+              <span>Lot (optional)</span>
+              <select
+                value={filterCocktailLot}
+                onChange={(e) => setFilterCocktailLot(e.target.value)}
+              >
+                <option value="">All lots</option>
+                {cocktailLots.map((cl) => (
+                  <option key={cl.id} value={cl.id}>
+                    {cl.lot_number}
                   </option>
                 ))}
               </select>
@@ -728,6 +788,7 @@ export default function ReportsPage() {
                       <th>QC Status</th>
                       <th>QC By</th>
                       <th>Renewals</th>
+                      <th>Tests</th>
                       <th>Status</th>
                       <th>Created By</th>
                       <th>Components</th>
@@ -746,6 +807,7 @@ export default function ReportsPage() {
                         </td>
                         <td>{r.qc_approved_by || "\u2014"}</td>
                         <td>{r.renewal_count}</td>
+                        <td>{r.test_count || "\u2014"}</td>
                         <td>{r.status}</td>
                         <td>{r.created_by || "\u2014"}</td>
                         <td style={{ fontSize: "0.8em", maxWidth: 260, whiteSpace: "pre-line", lineHeight: 1.5 }}>

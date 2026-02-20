@@ -33,6 +33,7 @@ def _snapshot_cocktail_lot(lot: CocktailLot) -> dict:
         "renewal_count": lot.renewal_count,
         "is_archived": lot.is_archived,
         "location_cell_id": str(lot.location_cell_id) if lot.location_cell_id else None,
+        "test_count": lot.test_count,
     }
 
 
@@ -44,6 +45,7 @@ def create_cocktail_lot(
     vendor_barcode: str | None,
     preparation_date: date,
     expiration_date: date | None,
+    test_count: int | None = None,
     sources: list[dict],
     user,
     lab_id: UUID,
@@ -64,6 +66,7 @@ def create_cocktail_lot(
         vendor_barcode=vendor_barcode or None,
         preparation_date=preparation_date,
         expiration_date=exp,
+        test_count=test_count,
         created_by=user.id,
     )
     db.add(lot)

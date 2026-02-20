@@ -6,6 +6,7 @@ import type {
   Antibody, Lot, TempStorageSummary, TempStorageSummaryItem,
   StorageGrid as StorageGridData,
   LotRequest,
+  CocktailLot,
 } from "../api/types";
 import { StorageView } from "../components/storage";
 import type { StorageViewHandle } from "../components/storage";
@@ -89,11 +90,34 @@ export default function DashboardPage() {
     enabled: !!selectedLab && !!isSupervisorPlus,
   });
 
+  const cocktailsEnabled = labSettings.cocktails_enabled === true;
+
+  const { data: allCocktailLots = [] } = useQuery({
+    queryKey: ["cocktail-lots", selectedLab],
+    queryFn: () => api.get<CocktailLot[]>("/cocktails/lots", { params: labParams }).then(r => r.data),
+    enabled: !!selectedLab && cocktailsEnabled,
+  });
+
   // ── Derived state (computed from query data) ──
 
   const dataLoaded = abLoaded || lotsLoaded;
   const pendingLots = useMemo(() => allLots.filter(l => l.qc_status === "pending"), [allLots]);
   const pendingRequests = useMemo(() => allRequests.filter(r => r.status === "pending"), [allRequests]);
+
+  const pendingCocktailLots = useMemo(
+    () => allCocktailLots.filter(cl => cl.qc_status === "pending" && cl.status === "active" && !cl.is_archived),
+    [allCocktailLots],
+  );
+
+  const expiredCocktailLots = useMemo(() => {
+    const now = new Date();
+    return allCocktailLots.filter(cl =>
+      cl.status === "active" &&
+      !cl.is_archived &&
+      cl.qc_status !== "pending" &&
+      new Date(cl.expiration_date) < now
+    );
+  }, [allCocktailLots]);
 
   const expiringLots = useMemo(() => {
     const expiryWarnDays = labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS;
@@ -125,6 +149,7 @@ export default function DashboardPage() {
     queryClient.invalidateQueries({ queryKey: ["lots"] });
     queryClient.invalidateQueries({ queryKey: ["temp-storage"] });
     queryClient.invalidateQueries({ queryKey: ["lot-requests"] });
+    queryClient.invalidateQueries({ queryKey: ["cocktail-lots"] });
   }, [queryClient]);
 
   const ptr = usePullToRefresh({
@@ -285,7 +310,7 @@ export default function DashboardPage() {
     ...(isSupervisorPlus && pendingRequests.length > 0
       ? [{ key: "requests" as const, label: "Pending Antibodies", count: pendingRequests.length, className: "info", icon: PackagePlus }]
       : []),
-    { key: "pending" as const, label: "Pending QC", count: pendingLots.length, className: "warn", icon: Clock },
+    { key: "pending" as const, label: "Pending QC", count: pendingLots.length + pendingCocktailLots.length + expiredCocktailLots.length, className: "warn", icon: Clock },
     ...(storageEnabled
       ? [{ key: "temp" as const, label: "Temp Storage", count: tempSummary?.total_vials ?? 0, className: "warn", icon: Thermometer }]
       : []),
@@ -526,31 +551,86 @@ export default function DashboardPage() {
         <div className="dashboard-section-inner">
         <div className="dashboard-section" id="dashboard-section-pending">
           <h2>Pending QC Lots</h2>
-          {pendingLots.length === 0 ? (
+          {pendingLots.length === 0 && pendingCocktailLots.length === 0 && expiredCocktailLots.length === 0 ? (
             <p className="page-desc">No pending QC lots.</p>
           ) : (
-            <LotList
-              lots={pendingLots}
-              sealedOnly={false}
-              hideDepleted
-              canQC={false}
-              storageEnabled={false}
-              lotAgeBadgeMap={EMPTY_LOT_AGE_MAP}
-              hideActions
-              hideQc
-              onLotClick={(lot) => navigateToInventory(lot.antibody_id)}
-              prefixColumn={{
-                header: "Antibody",
-                render: (lot) => renderLotPrefix(lot, <>
-                  {pendingQCBadges.get(lot.id)?.map((badge, i) => (
-                    <span key={i} className="badge badge-red" style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge}</span>
-                  ))}
-                  {(labSettings.qc_doc_required ?? false) && !lot.has_qc_document && (
-                    <span className="badge badge-orange needs-doc-badge" style={{ marginLeft: 6, fontSize: "0.7em" }}>Needs QC</span>
-                  )}
-                </>),
-              }}
-            />
+            <>
+              {pendingLots.length > 0 && (
+                <LotList
+                  lots={pendingLots}
+                  sealedOnly={false}
+                  hideDepleted
+                  canQC={false}
+                  storageEnabled={false}
+                  lotAgeBadgeMap={EMPTY_LOT_AGE_MAP}
+                  hideActions
+                  hideQc
+                  onLotClick={(lot) => navigateToInventory(lot.antibody_id)}
+                  prefixColumn={{
+                    header: "Antibody",
+                    render: (lot) => renderLotPrefix(lot, <>
+                      {pendingQCBadges.get(lot.id)?.map((badge, i) => (
+                        <span key={i} className="badge badge-red" style={{ marginLeft: 6, fontSize: "0.7em" }}>{badge}</span>
+                      ))}
+                      {(labSettings.qc_doc_required ?? false) && !lot.has_qc_document && (
+                        <span className="badge badge-orange needs-doc-badge" style={{ marginLeft: 6, fontSize: "0.7em" }}>Needs QC</span>
+                      )}
+                    </>),
+                  }}
+                />
+              )}
+              {(pendingCocktailLots.length > 0 || expiredCocktailLots.length > 0) && (
+                isMobile ? (
+                  <div className="dash-card-list" style={pendingLots.length > 0 ? { marginTop: "1rem" } : undefined}>
+                    {pendingCocktailLots.map((cl) => (
+                      <div key={cl.id} className="dash-card clickable" onClick={() => navigate("/cocktails")} role="button" tabIndex={0}>
+                        <div className="dash-card-title">{cl.recipe_name || "Cocktail"}</div>
+                        <div className="dash-card-row"><span>Lot #</span><span>{cl.lot_number}</span></div>
+                        <div className="dash-card-row"><span>Status</span><span><span className="badge badge-yellow">Pending QC</span></span></div>
+                        <div className="dash-card-row"><span>Expires</span><span>{formatDate(cl.expiration_date)}</span></div>
+                      </div>
+                    ))}
+                    {expiredCocktailLots.map((cl) => (
+                      <div key={cl.id} className="dash-card clickable" onClick={() => navigate("/cocktails")} role="button" tabIndex={0}>
+                        <div className="dash-card-title">{cl.recipe_name || "Cocktail"}</div>
+                        <div className="dash-card-row"><span>Lot #</span><span>{cl.lot_number}</span></div>
+                        <div className="dash-card-row"><span>Status</span><span><span className="badge badge-red">Expired</span></span></div>
+                        <div className="dash-card-row"><span>Expires</span><span>{formatDate(cl.expiration_date)}</span></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <table style={pendingLots.length > 0 ? { marginTop: "1rem" } : undefined}>
+                    <thead>
+                      <tr>
+                        <th>Cocktail</th>
+                        <th>Lot #</th>
+                        <th>Status</th>
+                        <th>Expires</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingCocktailLots.map((cl) => (
+                        <tr key={cl.id} className="clickable-row" onClick={() => navigate("/cocktails")} role="button" tabIndex={0}>
+                          <td>{cl.recipe_name || "Cocktail"}</td>
+                          <td>{cl.lot_number}</td>
+                          <td><span className="badge badge-yellow">Pending QC</span></td>
+                          <td>{formatDate(cl.expiration_date)}</td>
+                        </tr>
+                      ))}
+                      {expiredCocktailLots.map((cl) => (
+                        <tr key={cl.id} className="clickable-row" onClick={() => navigate("/cocktails")} role="button" tabIndex={0}>
+                          <td>{cl.recipe_name || "Cocktail"}</td>
+                          <td>{cl.lot_number}</td>
+                          <td><span className="badge badge-red">Expired</span></td>
+                          <td>{formatDate(cl.expiration_date)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              )}
+            </>
           )}
         </div>
         </div>

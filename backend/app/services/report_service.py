@@ -650,6 +650,7 @@ def get_cocktail_lot_data(
     *,
     lab_id: UUID,
     recipe_id: UUID | None = None,
+    lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> list[dict]:
@@ -657,6 +658,8 @@ def get_cocktail_lot_data(
     q = db.query(CocktailLot).filter(CocktailLot.lab_id == lab_id)
     if recipe_id:
         q = q.filter(CocktailLot.recipe_id == recipe_id)
+    if lot_id:
+        q = q.filter(CocktailLot.id == lot_id)
     if date_from:
         q = q.filter(CocktailLot.preparation_date >= date_from)
     if date_to:
@@ -742,6 +745,7 @@ def get_cocktail_lot_data(
             "qc_status": cl.qc_status.value if cl.qc_status else "",
             "qc_approved_by": user_map.get(cl.qc_approved_by, "") if cl.qc_approved_by else "",
             "renewal_count": cl.renewal_count,
+            "test_count": cl.test_count if cl.test_count is not None else "",
             "status": cl.status.value if cl.status else "",
             "created_by": user_map.get(cl.created_by, "") if cl.created_by else "",
             "components": "\n".join(comp_details),

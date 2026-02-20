@@ -493,6 +493,19 @@ class OlderLotSummary(BaseModel):
         from_attributes = True
 
 
+class OlderCocktailLotSummary(BaseModel):
+    id: UUID
+    lot_number: str
+    preparation_date: date
+    expiration_date: date
+    qc_status: str
+    renewal_count: int
+    test_count: int | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class ScanLookupResult(BaseModel):
     lot: LotOut | None = None
     antibody: AntibodyOut | None = None
@@ -506,6 +519,7 @@ class ScanLookupResult(BaseModel):
     is_cocktail: bool = False
     cocktail_lot: "CocktailLotWithDetails | None" = None
     cocktail_recipe: "CocktailRecipeOut | None" = None
+    older_cocktail_lots: list[OlderCocktailLotSummary] = []
 
 
 class ScanEnrichRequest(BaseModel):
@@ -701,6 +715,7 @@ class LotRequestOut(BaseModel):
 
 
 class CocktailRecipeComponentBase(BaseModel):
+    id: UUID | None = None  # present when updating an existing component
     antibody_id: UUID | None = None
     free_text_name: str | None = None
     volume_ul: int | None = None
@@ -775,6 +790,7 @@ class CocktailLotCreate(BaseModel):
     vendor_barcode: str | None = None
     preparation_date: date
     expiration_date: date | None = None  # auto-calc if not provided
+    test_count: int | None = None
     sources: list[CocktailLotSourceCreate]
 
 
@@ -796,6 +812,7 @@ class CocktailLotOut(BaseModel):
     location_cell_id: UUID | None
     is_archived: bool
     archive_note: str | None
+    test_count: int | None = None
     created_at: datetime
 
     class Config:

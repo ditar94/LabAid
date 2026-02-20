@@ -482,6 +482,7 @@ def cocktail_lots_range(
 @router.get("/cocktail-lots/preview")
 def cocktail_lots_preview(
     recipe_id: UUID | None = None,
+    lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
@@ -489,7 +490,7 @@ def cocktail_lots_preview(
 ):
     data = get_cocktail_lot_data(
         db, lab_id=current_user.lab_id, recipe_id=recipe_id,
-        date_from=date_from, date_to=date_to,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
     return {"rows": data[:PREVIEW_LIMIT], "total": len(data)}
 
@@ -497,6 +498,7 @@ def cocktail_lots_preview(
 @router.get("/cocktail-lots/csv")
 def cocktail_lots_csv(
     recipe_id: UUID | None = None,
+    lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     tz: str | None = None,
@@ -505,7 +507,7 @@ def cocktail_lots_csv(
 ):
     data = get_cocktail_lot_data(
         db, lab_id=current_user.lab_id, recipe_id=recipe_id,
-        date_from=date_from, date_to=date_to,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
     csv_bytes = render_cocktail_lot_csv(data)
     csv_bytes = _csv_with_metadata(csv_bytes, "Cocktail Lots", _lab_name(db, current_user.lab_id), current_user.full_name, tz)
@@ -518,6 +520,7 @@ def cocktail_lots_csv(
 @router.get("/cocktail-lots/pdf")
 def cocktail_lots_pdf(
     recipe_id: UUID | None = None,
+    lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     tz: str | None = None,
@@ -526,7 +529,7 @@ def cocktail_lots_pdf(
 ):
     data = get_cocktail_lot_data(
         db, lab_id=current_user.lab_id, recipe_id=recipe_id,
-        date_from=date_from, date_to=date_to,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
     lab_name = _lab_name(db, current_user.lab_id)
     return _file_response(
@@ -699,6 +702,7 @@ def usage_export(
 def cocktail_lots_export(
     format: str = "zip",
     recipe_id: UUID | None = None,
+    lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     tz: str | None = None,
@@ -711,7 +715,7 @@ def cocktail_lots_export(
 
     data = get_cocktail_lot_data(
         db, lab_id=current_user.lab_id, recipe_id=recipe_id,
-        date_from=date_from, date_to=date_to,
+        lot_id=lot_id, date_from=date_from, date_to=date_to,
     )
     lab_name = _lab_name(db, current_user.lab_id)
     report_pdf = render_cocktail_lot_pdf(data, lab_name, pulled_by=current_user.full_name, tz=tz)
