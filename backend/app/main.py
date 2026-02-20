@@ -272,13 +272,18 @@ app.include_router(admin.router)
 def health():
     checks: dict = {}
 
-    # Database connectivity + table permissions
+    # Database connectivity + ORM schema validation
+    # Queries core models via the ORM so any mismatch between
+    # SQLAlchemy model definitions and actual DB schema is caught.
+    from app.models.models import Antibody, AuditLog, CocktailLot, Lot, Vial
+
     db = SessionLocal()
     try:
-        db.execute(text("SELECT count(*) FROM labs"))
+        for model in (Lab, Antibody, Lot, Vial, AuditLog, CocktailLot):
+            db.query(model).first()
         checks["database"] = "ok"
-    except Exception:
-        checks["database"] = "error"
+    except Exception as e:
+        checks["database"] = f"error: {type(e).__name__}"
     finally:
         db.close()
 
