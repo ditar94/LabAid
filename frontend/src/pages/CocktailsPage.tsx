@@ -11,10 +11,11 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useSharedData } from "../context/SharedDataContext";
 import EmptyState from "../components/EmptyState";
+import CocktailRecipeCard from "../components/CocktailRecipeCard";
 import { CocktailRecipeForm, type CocktailRecipeFormValues } from "../components/CocktailRecipeForm";
 import { CocktailLotPreparationForm } from "../components/CocktailLotPreparationForm";
 import { CocktailDocumentModal } from "../components/CocktailDocumentModal";
-import { Beaker, Info } from "lucide-react";
+import { Beaker } from "lucide-react";
 
 const CARD_COLLAPSE_MS = 100;
 
@@ -162,6 +163,19 @@ export default function CocktailsPage() {
       }
     }
     return badgeMap;
+  };
+
+  /** Compute recipe counts for card display. */
+  const computeRecipeCounts = (allLots: CocktailLot[]) => {
+    const activeLots = allLots.filter((l) => !isCocktailLotInactive(l));
+    const pendingQC = activeLots.filter((l) => l.qc_status === "pending").length;
+    const expired = activeLots.filter((l) => isExpired(l)).length;
+    return {
+      active: activeLots.length,
+      pendingQC,
+      expired,
+      total: allLots.length,
+    };
   };
 
   // ── Render helpers ──────────────────────────────────────────────────
@@ -607,6 +621,67 @@ export default function CocktailsPage() {
     );
   };
 
+  // ── Expanded content for recipe card ──────────────────────────────
+
+  const renderRecipeExpandedContent = (recipe: CocktailRecipeWithLots) => {
+    const allLots = recipe.lots;
+    const activeLots = allLots.filter((l) => !isCocktailLotInactive(l));
+    const inactiveLots = allLots.filter((l) => isCocktailLotInactive(l));
+    const lotBadgeMap = computeLotBadgeMap(allLots);
+
+    return (
+      <>
+        {/* Action buttons for recipe */}
+        <div className="action-btns" style={{ marginBottom: "0.75rem", flexWrap: "wrap" }}>
+          {canEdit && (
+            <button
+              className="btn-sm btn-secondary"
+              onClick={() => openEditRecipeForm(recipe)}
+            >
+              Edit Recipe
+            </button>
+          )}
+          {canPrepare && recipe.is_active && (
+            <button
+              className="btn-sm btn-green"
+              onClick={() => setPrepareRecipe(recipe)}
+            >
+              Prepare Lot
+            </button>
+          )}
+        </div>
+
+        {/* Active lots */}
+        <strong style={{ fontSize: "0.9rem" }}>
+          Active Lots ({activeLots.length})
+        </strong>
+
+        {activeLots.length === 0 ? (
+          <p className="page-desc" style={{ marginTop: "0.25rem" }}>
+            No active lots.
+          </p>
+        ) : (
+          renderLots(activeLots, lotBadgeMap)
+        )}
+
+        {/* Inactive lots toggle */}
+        {inactiveLots.length > 0 && (
+          <div style={{ marginTop: "1rem" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.85rem", cursor: "pointer", color: "var(--text-secondary)" }}>
+              <input
+                type="checkbox"
+                checked={showInactiveLots}
+                onChange={() => setShowInactiveLots(!showInactiveLots)}
+              />
+              Show inactive ({inactiveLots.length})
+            </label>
+            {showInactiveLots && renderLots(inactiveLots, lotBadgeMap)}
+          </div>
+        )}
+      </>
+    );
+  };
+
   // ── Main render ────────────────────────────────────────────────────
 
   return (
@@ -630,114 +705,33 @@ export default function CocktailsPage() {
         />
       )}
 
-      {sortedRecipes.map((recipe) => {
-        const isExpanded = expandedRecipeId === recipe.id;
-        const isCollapsing = closingId === recipe.id;
-        const isOpen = isExpanded || isCollapsing;
-        const componentLabel = recipe.components.length === 1
-          ? "1 component"
-          : `${recipe.components.length} components`;
+      {/* Recipe cards in inventory-grid layout */}
+      <div className="inventory-grid stagger-reveal">
+        {sortedRecipes.map((recipe) => {
+          const isExpanded = expandedRecipeId === recipe.id;
+          const isCollapsing = closingId === recipe.id;
+          const counts = computeRecipeCounts(recipe.lots);
 
-        const allLots = recipe.lots;
-        const activeLots = allLots.filter((l) => !isCocktailLotInactive(l));
-        const inactiveLots = allLots.filter((l) => isCocktailLotInactive(l));
-        const lotBadgeMap = computeLotBadgeMap(allLots);
-
-        return (
-          <div key={recipe.id} className="card" style={{ marginBottom: "0.75rem" }}>
-            {/* Recipe header */}
+          return (
             <div
-              className="card-header"
-              style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}
-              onClick={() => toggleRecipe(recipe.id)}
+              key={recipe.id}
+              className="inventory-card-motion"
+              style={isExpanded || isCollapsing ? { gridColumn: "1 / -1" } : undefined}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                <strong>{recipe.name}</strong>
-                {!recipe.is_active && <span className="badge badge-gray">Inactive</span>}
-                <button
-                  className="btn-sm btn-secondary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setInfoRecipe(recipe);
-                  }}
-                  title="View recipe details"
-                  style={{ padding: "0.1rem 0.3rem", lineHeight: 1 }}
-                >
-                  <Info size={14} />
-                </button>
-                <span className="badge badge-gray">{componentLabel}</span>
-                <span className="badge badge-green">
-                  {activeLots.length} active lot{activeLots.length === 1 ? "" : "s"}
-                </span>
-                <span className="badge badge-yellow">
-                  {recipe.shelf_life_days}d shelf life
-                </span>
-                {recipe.max_renewals != null && (
-                  <span className="badge badge-gray">
-                    max {recipe.max_renewals} renewal{recipe.max_renewals === 1 ? "" : "s"}
-                  </span>
-                )}
-              </div>
-              <span style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                {isOpen ? "Collapse" : "Expand"}
-              </span>
+              <CocktailRecipeCard
+                recipe={recipe}
+                counts={counts}
+                expanded={isExpanded}
+                collapsing={isCollapsing}
+                onClick={() => toggleRecipe(recipe.id)}
+                onInfo={() => setInfoRecipe(recipe)}
+              >
+                {renderRecipeExpandedContent(recipe)}
+              </CocktailRecipeCard>
             </div>
-
-            {/* Expanded content */}
-            {isOpen && (
-              <div className="card-body">
-                {/* Action buttons for recipe */}
-                <div className="action-btns" style={{ marginBottom: "0.75rem", flexWrap: "wrap" }}>
-                  {canEdit && (
-                    <button
-                      className="btn-sm btn-secondary"
-                      onClick={() => openEditRecipeForm(recipe)}
-                    >
-                      Edit Recipe
-                    </button>
-                  )}
-                  {canPrepare && recipe.is_active && (
-                    <button
-                      className="btn-sm btn-green"
-                      onClick={() => setPrepareRecipe(recipe)}
-                    >
-                      Prepare Lot
-                    </button>
-                  )}
-                </div>
-
-                {/* Active lots */}
-                <strong style={{ fontSize: "0.9rem" }}>
-                  Active Lots ({activeLots.length})
-                </strong>
-
-                {activeLots.length === 0 ? (
-                  <p className="page-desc" style={{ marginTop: "0.25rem" }}>
-                    No active lots.
-                  </p>
-                ) : (
-                  renderLots(activeLots, lotBadgeMap)
-                )}
-
-                {/* Inactive lots toggle */}
-                {inactiveLots.length > 0 && (
-                  <div style={{ marginTop: "1rem" }}>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.85rem", cursor: "pointer", color: "var(--text-secondary)" }}>
-                      <input
-                        type="checkbox"
-                        checked={showInactiveLots}
-                        onChange={() => setShowInactiveLots(!showInactiveLots)}
-                      />
-                      Show inactive ({inactiveLots.length})
-                    </label>
-                    {showInactiveLots && renderLots(inactiveLots, lotBadgeMap)}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
 
       {/* ── Modals ──────────────────────────────────────────────────── */}
 

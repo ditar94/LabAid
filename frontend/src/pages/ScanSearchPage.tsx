@@ -16,6 +16,8 @@ import type {
   StorageGrid as StorageGridType,
 } from "../api/types";
 import AntibodyCard from "../components/AntibodyCard";
+import CocktailLotCard from "../components/CocktailLotCard";
+import CocktailRecipeCard from "../components/CocktailRecipeCard";
 import CopyButton from "../components/CopyButton";
 import ViewToggle from "../components/ViewToggle";
 import LotTable from "../components/LotTable";
@@ -26,7 +28,6 @@ import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { useToast } from "../context/ToastContext";
 import { useViewPreference } from "../hooks/useViewPreference";
-import { FlaskConical } from "lucide-react";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { lotSummaryToLot } from "../utils/lotAdapters";
 import AntibodyForm, { NEW_FLUORO_VALUE, EMPTY_AB_FORM } from "../components/AntibodyForm";
@@ -776,23 +777,16 @@ export default function ScanSearchPage() {
       {/* ── Cocktail Recipe Only (no active lot) ───────────────── */}
       {mode === "scan" && result?.is_cocktail && !result.cocktail_lot && result.cocktail_recipe && (
         <div className="scan-result-wrapper">
-          <div className="scan-info">
-            <h2>
-              <FlaskConical size={20} style={{ marginRight: 6, verticalAlign: -3 }} />
-              {result.cocktail_recipe.name}
-              <span className="badge" style={{ marginLeft: 8, fontSize: "0.5em", verticalAlign: "middle", background: "#6366f1", color: "#fff" }}>Cocktail</span>
-            </h2>
-            <p>Shelf Life: <strong>{result.cocktail_recipe.shelf_life_days} days</strong>
-              {result.cocktail_recipe.max_renewals != null && (
-                <> | Max Renewals: <strong>{result.cocktail_recipe.max_renewals}</strong></>
-              )}
-            </p>
-
-            {/* Components */}
+          <CocktailRecipeCard
+            recipe={result.cocktail_recipe}
+            counts={{ active: 0, pendingQC: 0, expired: 0, total: 0 }}
+            expanded={true}
+          >
+            {/* Components table */}
             {result.cocktail_recipe.components.length > 0 && (
-              <div style={{ marginTop: "0.75rem" }}>
-                <h3 style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>Components</h3>
-                <div className="table-scroll">
+              <div style={{ marginBottom: "0.75rem" }}>
+                <strong style={{ fontSize: "0.9rem" }}>Components</strong>
+                <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
                   <table>
                     <thead>
                       <tr>
@@ -825,10 +819,10 @@ export default function ScanSearchPage() {
               </div>
             )}
 
-            <p className="info" style={{ marginTop: "0.75rem" }}>
+            <p className="info">
               No active lots for this recipe. Prepare a new lot from the Cocktails page.
             </p>
-          </div>
+          </CocktailRecipeCard>
         </div>
       )}
 
@@ -839,40 +833,29 @@ export default function ScanSearchPage() {
           new Date(cl.expiration_date + "T00:00:00") < new Date(new Date().toDateString());
         return (
         <div className="scan-result-wrapper">
-          <div className="scan-info">
-            <h2>
-              <FlaskConical size={20} style={{ marginRight: 6, verticalAlign: -3 }} />
-              {result.cocktail_recipe?.name || "Cocktail"}
-              <span className="badge" style={{ marginLeft: 8, fontSize: "0.5em", verticalAlign: "middle", background: "#6366f1", color: "#fff" }}>Cocktail</span>
-              {" "}
-              <span className={`badge ${cl.qc_status === "approved" ? "badge-green" : cl.qc_status === "failed" ? "badge-red" : "badge-yellow"}`} style={{ fontSize: "0.5em", verticalAlign: "middle" }}>
-                {cl.qc_status === "approved" ? "Approved" : cl.qc_status === "failed" ? "Failed" : "Pending QC"}
-              </span>
-              {" "}
-              {cl.status === "depleted" && <span className="badge badge-red" style={{ fontSize: "0.5em", verticalAlign: "middle" }}>Depleted</span>}
-              {cl.is_archived && <span className="badge badge-gray" style={{ fontSize: "0.5em", verticalAlign: "middle" }}>Archived</span>}
-              {clExpired && <span className="badge badge-red" style={{ fontSize: "0.5em", verticalAlign: "middle" }}>Expired</span>}
-            </h2>
-
-            {/* Metadata row */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", fontSize: "0.85rem", marginTop: "0.25rem" }}>
-              <span>Lot: <strong>{cl.lot_number}</strong></span>
-              <span>Prepared: <strong>{new Date(cl.preparation_date + "T00:00:00").toLocaleDateString()}</strong></span>
-              <span>Expires: <strong>{new Date(cl.expiration_date + "T00:00:00").toLocaleDateString()}</strong></span>
-              <span>Renewals: <strong>{cl.renewal_count}</strong></span>
-              {cl.test_count != null && <span>Tests: <strong>{cl.test_count}</strong></span>}
-            </div>
-
+          <CocktailLotCard
+            lot={cl}
+            recipe={result.cocktail_recipe}
+            isExpired={clExpired}
+          >
+            {/* Storage location */}
             {cl.storage_unit_name && (
-              <p style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>Stored: <strong>{cl.storage_unit_name}</strong>{cl.storage_cell_label && <> / <strong>{cl.storage_cell_label}</strong></>}</p>
-            )}
-            {cl.created_by_name && (
-              <p style={{ color: "var(--text-muted)", fontSize: "0.85em", marginTop: "0.25rem" }}>Prepared by: {cl.created_by_name}</p>
+              <p style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+                Stored: <strong>{cl.storage_unit_name}</strong>
+                {cl.storage_cell_label && <> / <strong>{cl.storage_cell_label}</strong></>}
+              </p>
             )}
 
-            {/* Info button for recipe details */}
+            {/* Prepared by */}
+            {cl.created_by_name && (
+              <p style={{ color: "var(--text-muted)", fontSize: "0.85em", marginBottom: "0.5rem" }}>
+                Prepared by: {cl.created_by_name}
+              </p>
+            )}
+
+            {/* Recipe details (collapsible) */}
             {result.cocktail_recipe && result.cocktail_recipe.components.length > 0 && (
-              <details style={{ marginTop: "0.75rem" }}>
+              <details style={{ marginBottom: "0.75rem" }}>
                 <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
                   Recipe Details ({result.cocktail_recipe.components.length} components)
                 </summary>
@@ -908,105 +891,105 @@ export default function ScanSearchPage() {
                 </div>
               </details>
             )}
-          </div>
 
-          {/* Source traceability */}
-          {cl.sources && cl.sources.length > 0 && (
-            <details style={{ marginTop: "0.75rem" }}>
-              <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                Source Lots ({cl.sources.length})
-              </summary>
-              <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Antibody</th>
-                      <th>Source Lot</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cl.sources.map((s) => (
-                      <tr key={s.id || s.component_id}>
-                        <td>{[s.antibody_target, s.antibody_fluorochrome].filter(Boolean).join(" - ") || "Unknown"}</td>
-                        <td>
-                          {s.source_lot_number ? (
-                            <button
-                              className="btn-link"
-                              style={{ fontSize: "inherit", padding: 0 }}
-                              onClick={() => { setInput(s.source_lot_number!); handleLookup(s.source_lot_number!); }}
-                            >
-                              {s.source_lot_number}
-                            </button>
-                          ) : "\u2014"}
-                        </td>
+            {/* Source traceability (collapsible) */}
+            {cl.sources && cl.sources.length > 0 && (
+              <details style={{ marginBottom: "0.75rem" }}>
+                <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                  Source Lots ({cl.sources.length})
+                </summary>
+                <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Antibody</th>
+                        <th>Source Lot</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          )}
+                    </thead>
+                    <tbody>
+                      {cl.sources.map((s) => (
+                        <tr key={s.id || s.component_id}>
+                          <td>{[s.antibody_target, s.antibody_fluorochrome].filter(Boolean).join(" - ") || "Unknown"}</td>
+                          <td>
+                            {s.source_lot_number ? (
+                              <button
+                                className="btn-link"
+                                style={{ fontSize: "inherit", padding: 0 }}
+                                onClick={() => { setInput(s.source_lot_number!); handleLookup(s.source_lot_number!); }}
+                              >
+                                {s.source_lot_number}
+                              </button>
+                            ) : "\u2014"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
 
-          {/* FEFO warning: older cocktail lots */}
-          {result.older_cocktail_lots && result.older_cocktail_lots.length > 0 && (
-            <div style={{ marginTop: "0.75rem", padding: "0.5rem 0.75rem", border: "1px solid var(--warning-border, #f0c040)", borderRadius: "var(--radius-sm)", background: "var(--warning-bg, #fffde7)" }}>
-              <strong style={{ fontSize: "0.85rem" }}>Use First (FEFO)</strong>
-              <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
-                Other active lots expire later than this one.
-              </p>
-              <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
-                <table style={{ fontSize: "0.8rem" }}>
-                  <thead>
-                    <tr>
-                      <th>Lot #</th>
-                      <th>Expires</th>
-                      <th>QC</th>
-                      <th>Renewals</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.older_cocktail_lots.map((ol) => (
-                      <tr
-                        key={ol.id}
-                        style={{ cursor: "pointer" }}
-                        onClick={() => { setInput(ol.lot_number); handleLookup(ol.lot_number); }}
-                      >
-                        <td><button className="btn-link" style={{ fontSize: "inherit", padding: 0 }}>{ol.lot_number}</button></td>
-                        <td>{new Date(ol.expiration_date + "T00:00:00").toLocaleDateString()}</td>
-                        <td>
-                          <span className={`badge ${ol.qc_status === "approved" ? "badge-green" : ol.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>
-                            {ol.qc_status}
-                          </span>
-                        </td>
-                        <td>{ol.renewal_count}</td>
+            {/* FEFO warning: older cocktail lots */}
+            {result.older_cocktail_lots && result.older_cocktail_lots.length > 0 && (
+              <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", border: "1px solid var(--warning-border, #f0c040)", borderRadius: "var(--radius-sm)", background: "var(--warning-bg, #fffde7)" }}>
+                <strong style={{ fontSize: "0.85rem" }}>Use First (FEFO)</strong>
+                <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                  Other active lots expire later than this one.
+                </p>
+                <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
+                  <table style={{ fontSize: "0.8rem" }}>
+                    <thead>
+                      <tr>
+                        <th>Lot #</th>
+                        <th>Expires</th>
+                        <th>QC</th>
+                        <th>Renewals</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {result.older_cocktail_lots.map((ol) => (
+                        <tr
+                          key={ol.id}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => { setInput(ol.lot_number); handleLookup(ol.lot_number); }}
+                        >
+                          <td><button className="btn-link" style={{ fontSize: "inherit", padding: 0 }}>{ol.lot_number}</button></td>
+                          <td>{new Date(ol.expiration_date + "T00:00:00").toLocaleDateString()}</td>
+                          <td>
+                            <span className={`badge ${ol.qc_status === "approved" ? "badge-green" : ol.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>
+                              {ol.qc_status}
+                            </span>
+                          </td>
+                          <td>{ol.renewal_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Deplete button for active cocktail lots */}
-          {canReceive && cl.status === "active" && (
-            <div className="intent-panel" style={{ marginTop: "0.75rem" }}>
-              <button
-                className="btn-red"
-                onClick={async () => {
-                  try {
-                    await api.post(`/cocktails/lots/${cl.id}/deplete`);
-                    addToast("Cocktail lot depleted", "success");
-                    handleLookup(input);
-                  } catch (err: any) {
-                    setError(err.response?.data?.detail || "Failed to deplete cocktail lot");
-                  }
-                }}
-                disabled={loading}
-              >
-                Mark as Depleted
-              </button>
-            </div>
-          )}
+            {/* Deplete button for active cocktail lots */}
+            {canReceive && cl.status === "active" && (
+              <div className="action-btns">
+                <button
+                  className="btn-red"
+                  onClick={async () => {
+                    try {
+                      await api.post(`/cocktails/lots/${cl.id}/deplete`);
+                      addToast("Cocktail lot depleted", "success");
+                      handleLookup(input);
+                    } catch (err: any) {
+                      setError(err.response?.data?.detail || "Failed to deplete cocktail lot");
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  Mark as Depleted
+                </button>
+              </div>
+            )}
+          </CocktailLotCard>
         </div>
         );
       })()}

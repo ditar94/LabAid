@@ -9,11 +9,11 @@
 //   Meta    → lot count, inventory alert badges
 //   Submeta → vendor, catalog #
 //   Counts  → sealed, opened, depleted, total
-//   Labels  → expand / collapse (toggled by CSS based on .expanded)
 //   Content → children rendered when expanded (lot tables, drilldowns, etc.)
 
 import type { ReactNode } from "react";
 import type { Antibody } from "../api/types";
+import InventoryCardBase from "./InventoryCardBase";
 import CopyButton from "./CopyButton";
 
 /** Default fallback color for fluorochrome circles when no color is set. */
@@ -104,18 +104,16 @@ export default function AntibodyCard({
   const showSubtitle = antibody.name && antibody.target && antibody.fluorochrome;
 
   return (
-    <div
-      className={`inventory-card${expanded ? " expanded" : ""}${collapsing ? " collapsing" : ""}${selected ? " selected" : ""}`}
-      data-antibody-id={dataAntibodyId}
-      style={style}
+    <InventoryCardBase
+      expanded={expanded}
+      collapsing={collapsing}
+      selected={selected}
       onClick={onClick}
+      style={style}
+      dataId={dataAntibodyId}
+      dataIdName="antibody-id"
+      expandedContent={children}
     >
-      {/* Corner decoration arrows (CSS-styled) */}
-      <span className="corner-arrow corner-tl" />
-      <span className="corner-arrow corner-tr" />
-      <span className="corner-arrow corner-bl" />
-      <span className="corner-arrow corner-br" />
-
       {/* ── Card Header: color circle, name, designation badge, active toggle ── */}
       <div className="inventory-card-header">
         <div className="inventory-title">
@@ -226,19 +224,6 @@ export default function AntibodyCard({
           <div className="count-value">{counts.total}</div>
         </div>
       </div>
-
-      {/* Expand/collapse label indicators (CSS toggles visibility based on .expanded) */}
-      <div className="expand-label">Expand</div>
-      <div className="collapse-label">Collapse</div>
-
-      {/* ── Expanded content: lot tables, drilldowns, forms (provided by page) ── */}
-      {(expanded || collapsing) && children && (
-        <div className="inventory-expanded" onClick={(e) => e.stopPropagation()}>
-          <div className="inventory-expanded-inner">
-            {children}
-          </div>
-        </div>
-      )}
-    </div>
+    </InventoryCardBase>
   );
 }
