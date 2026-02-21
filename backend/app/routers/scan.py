@@ -33,6 +33,7 @@ from app.services.barcode_parser import parse_sysmex_barcode
 from app.services.gs1_parser import extract_fields, parse_gs1
 from app.services.gudid_client import lookup_gudid
 from app.services.vendor_catalog_service import get_fluorochrome_variations, lookup_vendor_catalog
+from app.services.vendor_catalog_names import normalize_vendor
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 
@@ -443,7 +444,7 @@ async def scan_enrich(
                 warnings=[],
             )
         else:
-            # No catalog entry yet - return parsed data only
+            # No catalog entry yet - return parsed data only (normalize vendor)
             return ScanEnrichResult(
                 parsed=True,
                 format="sysmex",
@@ -451,7 +452,7 @@ async def scan_enrich(
                 lot_number=sysmex["lot_number"],
                 expiration_date=sysmex["expiration_date"],
                 suggested_designation=sysmex["designation"],
-                vendor=sysmex["vendor"],
+                vendor=normalize_vendor(sysmex["vendor"]),
                 catalog_use_count=0,
                 catalog_conflict_count=0,
                 from_shared_catalog=False,
@@ -519,9 +520,9 @@ async def scan_enrich(
             warnings.append("No device found in FDA database for this GTIN.")
             warnings.append("Product not yet in community catalog. Fields will be saved for future scans.")
         elif len(gudid_devices) == 1:
-            # Single match — auto-populate vendor and catalog
+            # Single match — auto-populate vendor and catalog (normalize vendor name)
             device = gudid_devices[0]
-            vendor = device.company_name
+            vendor = normalize_vendor(device.company_name)
             if device.catalog_number:
                 catalog_number = device.catalog_number
             warnings.append("Product not yet in community catalog. Fields will be saved for future scans.")
