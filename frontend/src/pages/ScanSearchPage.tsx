@@ -251,7 +251,7 @@ export default function ScanSearchPage() {
                   }));
                 }
 
-                // Handle shared catalog data (Sysmex barcodes with known product info)
+                // Handle shared catalog data (Sysmex/GS1 barcodes with known product info)
                 if (enrich.from_shared_catalog && enrich.target_normalized && enrich.fluorochrome_normalized) {
                   // Try to match existing antibody using normalized values
                   const matched = findMatchingAntibody(
@@ -265,14 +265,25 @@ export default function ScanSearchPage() {
                     setRegForm((prev) => ({ ...prev, antibody_id: matched.id }));
                     addToast("Matched existing antibody from community catalog", "info");
                   } else {
-                    // Pre-fill new antibody form with shared catalog data
+                    // Auto-select "+ New Antibody" and pre-fill with shared catalog data
+                    setRegForm((prev) => ({ ...prev, antibody_id: NEW_ANTIBODY_VALUE }));
+
+                    // Check if fluorochrome exists in lab's list
+                    const catalogFluoro = enrich.fluorochrome || "";
+                    const existingFluoro = fluorochromes.find(
+                      (f) => f.name.toUpperCase() === catalogFluoro.toUpperCase()
+                    );
+
                     setNewAbForm((prev) => ({
                       ...prev,
                       target: enrich.target || prev.target,
-                      fluorochrome_choice: enrich.fluorochrome || prev.fluorochrome_choice,
+                      // If fluorochrome exists, select it; otherwise use "+ New Fluorochrome"
+                      fluorochrome_choice: existingFluoro ? existingFluoro.name : NEW_FLUORO_VALUE,
+                      new_fluorochrome: existingFluoro ? "" : catalogFluoro,
                       clone: enrich.clone || prev.clone,
                       name: enrich.product_name || prev.name,
                     }));
+                    addToast("Pre-filled from community catalog. Review and save.", "info");
                   }
                 }
 

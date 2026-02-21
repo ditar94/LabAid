@@ -19,7 +19,7 @@ from app.schemas.schemas import (
     VialCounts,
 )
 from app.services.audit import log_audit, snapshot_antibody
-from app.services.barcode_parser import normalize_for_matching
+from app.services.barcode_parser import normalize_display, normalize_for_matching
 
 router = APIRouter(prefix="/api/antibodies", tags=["antibodies"])
 _DEFAULT_FLUORO_COLOR = "#9ca3af"
@@ -61,31 +61,35 @@ def create_antibody(
     if current_user.role == UserRole.SUPER_ADMIN and lab_id:
         target_lab_id = lab_id
 
-    fluoro_name = body.fluorochrome.strip() if body.fluorochrome else None
-    if fluoro_name:
+    # Normalize display values to uppercase
+    target_display = normalize_display(body.target)
+    fluoro_display = normalize_display(body.fluorochrome)
+
+    if fluoro_display:
         existing_fluoro = (
             db.query(Fluorochrome)
             .filter(Fluorochrome.lab_id == target_lab_id)
-            .filter(func.lower(Fluorochrome.name) == func.lower(fluoro_name))
+            .filter(func.lower(Fluorochrome.name) == func.lower(fluoro_display))
             .first()
         )
         if not existing_fluoro:
             db.add(
                 Fluorochrome(
                     lab_id=target_lab_id,
-                    name=fluoro_name,
+                    name=fluoro_display,
                     color=_DEFAULT_FLUORO_COLOR,
                 )
             )
 
-    ab_data = body.model_dump(exclude={"fluorochrome", "components"})
+    ab_data = body.model_dump(exclude={"target", "fluorochrome", "components"})
     ab = Antibody(
         lab_id=target_lab_id,
         **ab_data,
-        fluorochrome=fluoro_name,
+        target=target_display,
+        fluorochrome=fluoro_display,
         # Normalized columns for cross-lab matching
-        target_normalized=normalize_for_matching(body.target),
-        fluorochrome_normalized=normalize_for_matching(fluoro_name),
+        target_normalized=normalize_for_matching(target_display),
+        fluorochrome_normalized=normalize_for_matching(fluoro_display),
         name_normalized=normalize_for_matching(body.name),
     )
     db.add(ab)
@@ -326,9 +330,13 @@ def update_antibody(
     # Extract components separately — not a direct column
     new_components = updates.pop("components", None)
 
-    # Handle fluorochrome change — ensure it exists in the lab's list
+    # Normalize target to uppercase if being updated
+    if "target" in updates and updates["target"]:
+        updates["target"] = normalize_display(updates["target"])
+
+    # Handle fluorochrome change — normalize and ensure it exists in the lab's list
     if "fluorochrome" in updates and updates["fluorochrome"]:
-        fluoro_name = updates["fluorochrome"].strip()
+        fluoro_name = normalize_display(updates["fluorochrome"])
         target_lab_id = ab.lab_id
         existing_fluoro = (
             db.query(Fluorochrome)
