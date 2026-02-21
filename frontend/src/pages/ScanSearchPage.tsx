@@ -242,7 +242,16 @@ export default function ScanSearchPage() {
                   }));
                 }
 
-                // Handle shared catalog data (Sysmex barcodes)
+                // Always populate vendor and catalog_number from parsed barcode
+                if (enrich.vendor || enrich.catalog_number) {
+                  setNewAbForm((prev) => ({
+                    ...prev,
+                    vendor: enrich.vendor || prev.vendor,
+                    catalog_number: enrich.catalog_number || prev.catalog_number,
+                  }));
+                }
+
+                // Handle shared catalog data (Sysmex barcodes with known product info)
                 if (enrich.from_shared_catalog && enrich.target_normalized && enrich.fluorochrome_normalized) {
                   // Try to match existing antibody using normalized values
                   const matched = findMatchingAntibody(
@@ -262,8 +271,6 @@ export default function ScanSearchPage() {
                       target: enrich.target || prev.target,
                       fluorochrome_choice: enrich.fluorochrome || prev.fluorochrome_choice,
                       clone: enrich.clone || prev.clone,
-                      vendor: enrich.vendor || prev.vendor,
-                      catalog_number: enrich.catalog_number || prev.catalog_number,
                       name: enrich.product_name || prev.name,
                     }));
                   }
