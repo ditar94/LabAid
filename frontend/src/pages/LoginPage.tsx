@@ -9,13 +9,15 @@ export default function LoginPage() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
 
-  // Already authenticated (e.g. page refresh while logged in) — go to dashboard
-  if (user) return <Navigate to="/dashboard" replace />;
+  // All hooks must be called before any early returns (React rules of hooks)
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [shaking, setShaking] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Already authenticated (e.g. page refresh while logged in) — go to dashboard
+  if (user) return <Navigate to="/dashboard" replace />;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
