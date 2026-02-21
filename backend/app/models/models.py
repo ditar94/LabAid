@@ -505,7 +505,8 @@ class VendorCatalog(Base):
     the product info is upserted here so future scans can auto-populate.
 
     Key design decisions:
-    - UNIQUE(vendor, catalog_number) - composite key for uniqueness
+    - Two lookup paths: GTIN (for GS1) or catalog_number (for vendor-specific formats)
+    - vendor is informational only, NOT part of the unique key
     - use_count tracks agreements (labs that used data as-is)
     - conflict_count tracks disagreements (labs that entered different data)
     - Normalized columns enable fuzzy matching across formatting differences
@@ -514,9 +515,12 @@ class VendorCatalog(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # Composite unique constraint: same catalog # can exist for different vendors
-    vendor = Column(String(255), nullable=False)
-    catalog_number = Column(String(50), nullable=False)
+    # Lookup keys (exactly one should be set)
+    gtin = Column(String(14), nullable=True, unique=True)  # For GS1 barcodes (globally unique)
+    catalog_number = Column(String(50), nullable=True, unique=True)  # For vendor-specific formats
+
+    # Vendor is informational only (from GUDID or inferred from barcode format)
+    vendor = Column(String(255), nullable=True)
 
     # Product attributes
     designation = Column(String(10))  # "asr", "ruo", "ivd"
@@ -540,6 +544,5 @@ class VendorCatalog(Base):
     created_by_lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint('vendor', 'catalog_number', name='uq_vendor_catalog'),
         Index('idx_vendor_catalog_normalized', 'target_normalized', 'fluorochrome_normalized'),
     )

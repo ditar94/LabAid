@@ -407,10 +407,9 @@ async def scan_enrich(
     # ── Try Sysmex format first (fast regex check) ─────────────────────────
     sysmex = parse_sysmex_barcode(barcode)
     if sysmex:
-        # Look up in shared vendor catalog for auto-population
+        # Look up in shared vendor catalog by catalog_number
         catalog_entry = lookup_vendor_catalog(
             db,
-            vendor=sysmex["vendor"],
             catalog_number=sysmex["catalog_number"],
         )
 
@@ -470,17 +469,50 @@ async def scan_enrich(
 
     gtin = fields["gtin"]
     if gtin:
+        # First check shared catalog by GTIN
+        catalog_entry = lookup_vendor_catalog(db, gtin=gtin)
+        if catalog_entry:
+            return ScanEnrichResult(
+                parsed=True,
+                format="gs1",
+                gtin=gtin,
+                lot_number=fields["lot_number"],
+                expiration_date=fields["expiration_date"],
+                serial=fields["serial"],
+                catalog_number=catalog_entry.catalog_number,
+                vendor=catalog_entry.vendor,
+                all_ais=fields["all_ais"],
+                # RUO/ASR fields from catalog
+                target=catalog_entry.target,
+                fluorochrome=catalog_entry.fluorochrome,
+                clone=catalog_entry.clone,
+                target_normalized=catalog_entry.target_normalized,
+                fluorochrome_normalized=catalog_entry.fluorochrome_normalized,
+                # IVD field
+                product_name=catalog_entry.product_name,
+                suggested_designation=catalog_entry.designation,
+                # Confidence info
+                catalog_use_count=catalog_entry.use_count,
+                catalog_conflict_count=catalog_entry.conflict_count,
+                from_shared_catalog=True,
+                gudid_devices=[],
+                warnings=[],
+            )
+
+        # Not in shared catalog - try GUDID
         raw_devices = await lookup_gudid(gtin)
         gudid_devices = [GUDIDDevice(**d) for d in raw_devices]
 
         if not gudid_devices:
             warnings.append("No device found in FDA database for this GTIN.")
+            warnings.append("Product not yet in community catalog. Fields will be saved for future scans.")
         elif len(gudid_devices) == 1:
             # Single match — auto-populate vendor and catalog
             device = gudid_devices[0]
             vendor = device.company_name
             if device.catalog_number:
                 catalog_number = device.catalog_number
+            warnings.append("Product not yet in community catalog. Fields will be saved for future scans.")
     else:
         warnings.append("No GTIN found in barcode; skipping FDA device lookup.")
 
@@ -499,5 +531,8 @@ async def scan_enrich(
         all_ais=fields["all_ais"],
         gudid_devices=gudid_devices,
         suggested_designation=suggested_designation,
+        catalog_use_count=0,
+        catalog_conflict_count=0,
+        from_shared_catalog=False,
         warnings=warnings,
     )

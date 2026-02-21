@@ -251,7 +251,8 @@ class LotCreate(BaseModel):
     gs1_ai: dict | None = None
     # Barcode enrichment metadata for shared catalog updates
     barcode_format: str | None = None  # "gs1" or "sysmex"
-    barcode_vendor: str | None = None  # Vendor from barcode (e.g., "Sysmex")
+    barcode_gtin: str | None = None  # GTIN from GS1 barcode (unique key for catalog)
+    barcode_vendor: str | None = None  # Vendor from barcode (informational)
     barcode_catalog_number: str | None = None  # Catalog number from barcode
 
 

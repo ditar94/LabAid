@@ -12,7 +12,10 @@ from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotStorage
 from app.services.audit import log_audit, snapshot_lot
 from app.services.object_storage import object_storage
 from app.services.vial_service import deplete_all_opened, deplete_all_lot
-from app.services.vendor_catalog_service import update_shared_catalog_on_registration
+from app.services.vendor_catalog_service import (
+    update_shared_catalog_from_catalog_number,
+    update_shared_catalog_from_gtin,
+)
 
 router = APIRouter(prefix="/api/lots", tags=["lots"])
 
@@ -174,19 +177,29 @@ def create_lot(
         raise HTTPException(status_code=404, detail="Antibody not found")
 
     # Create the lot (exclude barcode metadata fields from model_dump)
-    lot_data = body.model_dump(exclude={"barcode_format", "barcode_vendor", "barcode_catalog_number"})
+    lot_data = body.model_dump(exclude={"barcode_format", "barcode_gtin", "barcode_vendor", "barcode_catalog_number"})
     lot = Lot(lab_id=target_lab_id, **lot_data)
     db.add(lot)
     db.flush()
 
-    # Update shared vendor catalog for Sysmex barcodes
-    if body.barcode_format == "sysmex" and body.barcode_vendor and body.barcode_catalog_number:
-        update_shared_catalog_on_registration(
+    # Update shared vendor catalog based on barcode format
+    if body.barcode_format == "gs1" and body.barcode_gtin:
+        # GS1 barcodes: use GTIN as the unique key
+        update_shared_catalog_from_gtin(
             db=db,
+            gtin=body.barcode_gtin,
+            antibody=ab,
+            lab_id=target_lab_id,
             vendor=body.barcode_vendor,
+        )
+    elif body.barcode_format == "sysmex" and body.barcode_catalog_number:
+        # Sysmex barcodes: use catalog_number as the unique key
+        update_shared_catalog_from_catalog_number(
+            db=db,
             catalog_number=body.barcode_catalog_number,
             antibody=ab,
             lab_id=target_lab_id,
+            vendor=body.barcode_vendor,
         )
 
     log_audit(

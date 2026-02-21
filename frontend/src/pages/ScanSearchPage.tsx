@@ -605,6 +605,7 @@ export default function ScanSearchPage() {
         gs1_ai: enrichResult?.all_ais || null,
         // Barcode metadata for shared catalog updates
         barcode_format: enrichResult?.format || null,
+        barcode_gtin: enrichResult?.gtin || null,
         barcode_vendor: enrichResult?.vendor || null,
         barcode_catalog_number: enrichResult?.catalog_number || null,
       });
