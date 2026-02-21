@@ -19,7 +19,8 @@ from app.schemas.schemas import (
     VialCounts,
 )
 from app.services.audit import log_audit, snapshot_antibody
-from app.services.barcode_parser import normalize_display, normalize_for_matching, normalize_target
+from app.services.barcode_parser import normalize_for_matching, normalize_target
+from app.services.fluorochrome_catalog import normalize_fluorochrome
 
 router = APIRouter(prefix="/api/antibodies", tags=["antibodies"])
 _DEFAULT_FLUORO_COLOR = "#9ca3af"
@@ -61,9 +62,9 @@ def create_antibody(
     if current_user.role == UserRole.SUPER_ADMIN and lab_id:
         target_lab_id = lab_id
 
-    # Normalize display values: targets remove spaces/hyphens, fluorochromes keep structure
+    # Normalize display values: targets remove spaces/hyphens, fluorochromes → canonical names
     target_display = normalize_target(body.target)
-    fluoro_display = normalize_display(body.fluorochrome)
+    fluoro_display = normalize_fluorochrome(body.fluorochrome)
 
     if fluoro_display:
         existing_fluoro = (
@@ -334,9 +335,9 @@ def update_antibody(
     if "target" in updates and updates["target"]:
         updates["target"] = normalize_target(updates["target"])
 
-    # Handle fluorochrome change — normalize and ensure it exists in the lab's list
+    # Handle fluorochrome change — normalize to canonical and ensure it exists in the lab's list
     if "fluorochrome" in updates and updates["fluorochrome"]:
-        fluoro_name = normalize_display(updates["fluorochrome"])
+        fluoro_name = normalize_fluorochrome(updates["fluorochrome"])
         target_lab_id = ab.lab_id
         existing_fluoro = (
             db.query(Fluorochrome)

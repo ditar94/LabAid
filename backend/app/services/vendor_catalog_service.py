@@ -15,7 +15,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.models import Antibody, VendorCatalog
-from app.services.barcode_parser import normalize_display, normalize_for_matching, normalize_target
+from app.services.barcode_parser import normalize_for_matching, normalize_target
+from app.services.fluorochrome_catalog import normalize_fluorochrome
 
 
 def lookup_by_gtin(db: Session, gtin: str) -> VendorCatalog | None:
@@ -168,7 +169,7 @@ def _update_shared_catalog(
             existing.last_used_at = now
 
     else:
-        # New entry - insert (normalize: targets remove spaces/hyphens, fluorochromes uppercase only)
+        # New entry - insert (normalize: targets remove spaces/hyphens, fluorochromes → canonical)
         entry = VendorCatalog(
             gtin=gtin,
             catalog_number=catalog_number,
@@ -176,7 +177,7 @@ def _update_shared_catalog(
             designation=antibody.designation.value if antibody.designation else None,
             target=normalize_target(antibody.target),
             target_normalized=target_norm,
-            fluorochrome=normalize_display(antibody.fluorochrome),
+            fluorochrome=normalize_fluorochrome(antibody.fluorochrome),
             fluorochrome_normalized=fluoro_norm,
             clone=antibody.clone,
             product_name=antibody.name,
