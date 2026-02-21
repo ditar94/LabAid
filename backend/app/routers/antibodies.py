@@ -19,6 +19,7 @@ from app.schemas.schemas import (
     VialCounts,
 )
 from app.services.audit import log_audit, snapshot_antibody
+from app.services.barcode_parser import normalize_for_matching
 
 router = APIRouter(prefix="/api/antibodies", tags=["antibodies"])
 _DEFAULT_FLUORO_COLOR = "#9ca3af"
@@ -78,7 +79,15 @@ def create_antibody(
             )
 
     ab_data = body.model_dump(exclude={"fluorochrome", "components"})
-    ab = Antibody(lab_id=target_lab_id, **ab_data, fluorochrome=fluoro_name)
+    ab = Antibody(
+        lab_id=target_lab_id,
+        **ab_data,
+        fluorochrome=fluoro_name,
+        # Normalized columns for cross-lab matching
+        target_normalized=normalize_for_matching(body.target),
+        fluorochrome_normalized=normalize_for_matching(fluoro_name),
+        name_normalized=normalize_for_matching(body.name),
+    )
     db.add(ab)
     db.flush()
 
@@ -339,6 +348,14 @@ def update_antibody(
 
     for field, value in updates.items():
         setattr(ab, field, value)
+
+    # Re-normalize if relevant fields changed
+    if "target" in updates:
+        ab.target_normalized = normalize_for_matching(ab.target)
+    if "fluorochrome" in updates:
+        ab.fluorochrome_normalized = normalize_for_matching(ab.fluorochrome)
+    if "name" in updates:
+        ab.name_normalized = normalize_for_matching(ab.name)
 
     # Replace components if provided
     if new_components is not None:

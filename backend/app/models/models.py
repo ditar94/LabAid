@@ -14,6 +14,7 @@ from sqlalchemy import (
     JSON,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -132,6 +133,9 @@ class User(Base):
 
 class Antibody(Base):
     __tablename__ = "antibodies"
+    __table_args__ = (
+        Index('idx_antibody_normalized', 'lab_id', 'target_normalized', 'fluorochrome_normalized'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
@@ -152,6 +156,11 @@ class Antibody(Base):
     approved_low_threshold = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Normalized columns for cross-lab matching (UPPERCASE, stripped of spaces/hyphens)
+    target_normalized = Column(String(100), nullable=True)
+    fluorochrome_normalized = Column(String(100), nullable=True)
+    name_normalized = Column(String(255), nullable=True)
 
     lab = relationship("Lab", back_populates="antibodies")
     lots = relationship("Lot", back_populates="antibody")
@@ -482,3 +491,55 @@ class CocktailLotDocument(Base):
 
     cocktail_lot = relationship("CocktailLot", back_populates="documents")
     user = relationship("User", foreign_keys=[user_id])
+
+
+# ── Shared Vendor Catalog ─────────────────────────────────────────────────
+
+
+class VendorCatalog(Base):
+    """
+    Cross-lab shared catalog of vendor products.
+
+    This table is NOT scoped by lab_id - it's a shared resource that learns
+    product info from all labs. When a lab registers a lot with a barcode,
+    the product info is upserted here so future scans can auto-populate.
+
+    Key design decisions:
+    - UNIQUE(vendor, catalog_number) - composite key for uniqueness
+    - use_count tracks agreements (labs that used data as-is)
+    - conflict_count tracks disagreements (labs that entered different data)
+    - Normalized columns enable fuzzy matching across formatting differences
+    """
+    __tablename__ = "vendor_catalog"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Composite unique constraint: same catalog # can exist for different vendors
+    vendor = Column(String(255), nullable=False)
+    catalog_number = Column(String(50), nullable=False)
+
+    # Product attributes
+    designation = Column(String(10))  # "asr", "ruo", "ivd"
+
+    # For RUO/ASR products
+    target = Column(String(100))  # Display: "CD-45"
+    target_normalized = Column(String(100))  # Match: "CD45"
+    fluorochrome = Column(String(100))  # Display: "APC-R700"
+    fluorochrome_normalized = Column(String(100))  # Match: "APCR700"
+    clone = Column(String(100))
+
+    # For IVD products
+    product_name = Column(String(255))  # Display name
+    product_name_normalized = Column(String(255))  # Match value
+
+    # Confidence tracking
+    use_count = Column(Integer, default=1, nullable=False)  # Labs that AGREED
+    conflict_count = Column(Integer, default=0, nullable=False)  # Labs that DISAGREED
+    first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_used_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_by_lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint('vendor', 'catalog_number', name='uq_vendor_catalog'),
+        Index('idx_vendor_catalog_normalized', 'target_normalized', 'fluorochrome_normalized'),
+    )

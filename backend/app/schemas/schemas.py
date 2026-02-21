@@ -249,6 +249,10 @@ class LotCreate(BaseModel):
     vendor_barcode: str | None = None
     expiration_date: date | None = None
     gs1_ai: dict | None = None
+    # Barcode enrichment metadata for shared catalog updates
+    barcode_format: str | None = None  # "gs1" or "sysmex"
+    barcode_vendor: str | None = None  # Vendor from barcode (e.g., "Sysmex")
+    barcode_catalog_number: str | None = None  # Catalog number from barcode
 
 
 class LotArchiveRequest(BaseModel):
@@ -535,6 +539,7 @@ class GUDIDDevice(BaseModel):
 
 class ScanEnrichResult(BaseModel):
     parsed: bool
+    format: str | None = None  # "gs1" or "sysmex"
     gtin: str | None = None
     lot_number: str | None = None
     expiration_date: date | None = None
@@ -545,6 +550,19 @@ class ScanEnrichResult(BaseModel):
     gudid_devices: list[GUDIDDevice] = []
     suggested_designation: str | None = None
     warnings: list[str] = []
+
+    # Shared catalog fields (populated for Sysmex barcodes)
+    target: str | None = None
+    fluorochrome: str | None = None
+    clone: str | None = None
+    target_normalized: str | None = None
+    fluorochrome_normalized: str | None = None
+    product_name: str | None = None
+
+    # Confidence indicators
+    catalog_use_count: int | None = None
+    catalog_conflict_count: int | None = None
+    from_shared_catalog: bool = False
 
 
 class ReturnToStorageRequest(BaseModel):

@@ -219,6 +219,7 @@ export interface GUDIDDevice {
 
 export interface ScanEnrichResult {
   parsed: boolean;
+  format?: "gs1" | "sysmex";
   gtin: string | null;
   lot_number: string | null;
   expiration_date: string | null;
@@ -229,6 +230,19 @@ export interface ScanEnrichResult {
   gudid_devices: GUDIDDevice[];
   suggested_designation: string | null;
   warnings: string[];
+
+  // Shared catalog fields (populated for Sysmex barcodes)
+  target?: string;
+  fluorochrome?: string;
+  clone?: string;
+  target_normalized?: string;
+  fluorochrome_normalized?: string;
+  product_name?: string;
+
+  // Confidence indicators
+  catalog_use_count?: number;
+  catalog_conflict_count?: number;
+  from_shared_catalog?: boolean;
 }
 
 export type ScanIntent = "open" | "receive" | "deplete" | "store_open" | "view_storage" | "move" | null;

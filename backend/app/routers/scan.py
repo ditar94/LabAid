@@ -29,8 +29,10 @@ from app.schemas.schemas import (
     StorageGridOut,
     VialOut,
 )
+from app.services.barcode_parser import parse_sysmex_barcode
 from app.services.gs1_parser import extract_fields, parse_gs1
 from app.services.gudid_client import lookup_gudid
+from app.services.vendor_catalog_service import lookup_vendor_catalog
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 
@@ -386,20 +388,77 @@ def scan_lookup(
 @router.post("/enrich", response_model=ScanEnrichResult)
 async def scan_enrich(
     body: ScanEnrichRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Parse GS1 AIs from a barcode string and optionally enrich via AccessGUDID.
+    Parse barcode and enrich with product data from GUDID or shared catalog.
+
+    Supports:
+    - Sysmex QR codes (23-char format) with shared vendor catalog lookup
+    - GS1 DataMatrix barcodes with AccessGUDID lookup
+
     Called when /scan/lookup returns 404 (unknown barcode) to auto-populate
     registration form fields.
     """
     warnings: list[str] = []
+    barcode = body.barcode.strip()
 
-    parsed = parse_gs1(body.barcode)
+    # ── Try Sysmex format first (fast regex check) ─────────────────────────
+    sysmex = parse_sysmex_barcode(barcode)
+    if sysmex:
+        # Look up in shared vendor catalog for auto-population
+        catalog_entry = lookup_vendor_catalog(
+            db,
+            vendor=sysmex["vendor"],
+            catalog_number=sysmex["catalog_number"],
+        )
+
+        if catalog_entry:
+            return ScanEnrichResult(
+                parsed=True,
+                format="sysmex",
+                catalog_number=sysmex["catalog_number"],
+                lot_number=sysmex["lot_number"],
+                expiration_date=sysmex["expiration_date"],
+                suggested_designation=sysmex["designation"],
+                vendor=catalog_entry.vendor,
+                # RUO/ASR fields
+                target=catalog_entry.target,
+                fluorochrome=catalog_entry.fluorochrome,
+                clone=catalog_entry.clone,
+                target_normalized=catalog_entry.target_normalized,
+                fluorochrome_normalized=catalog_entry.fluorochrome_normalized,
+                # IVD field
+                product_name=catalog_entry.product_name,
+                # Confidence info for frontend
+                catalog_use_count=catalog_entry.use_count,
+                catalog_conflict_count=catalog_entry.conflict_count,
+                from_shared_catalog=True,
+                warnings=[],
+            )
+        else:
+            # No catalog entry yet - return parsed data only
+            return ScanEnrichResult(
+                parsed=True,
+                format="sysmex",
+                catalog_number=sysmex["catalog_number"],
+                lot_number=sysmex["lot_number"],
+                expiration_date=sysmex["expiration_date"],
+                suggested_designation=sysmex["designation"],
+                vendor=sysmex["vendor"],
+                catalog_use_count=0,
+                catalog_conflict_count=0,
+                from_shared_catalog=False,
+                warnings=["Product not yet in community catalog. Fields will be saved for future scans."],
+            )
+
+    # ── Try GS1 format ─────────────────────────────────────────────────────
+    parsed = parse_gs1(barcode)
     if not parsed:
         return ScanEnrichResult(
             parsed=False,
-            warnings=["Could not parse GS1 data from barcode. Enter fields manually."],
+            warnings=["Could not parse barcode format. Enter fields manually."],
         )
 
     fields = extract_fields(parsed)
@@ -430,6 +489,7 @@ async def scan_enrich(
 
     return ScanEnrichResult(
         parsed=True,
+        format="gs1",
         gtin=gtin,
         lot_number=fields["lot_number"],
         expiration_date=fields["expiration_date"],

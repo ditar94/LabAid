@@ -3756,6 +3756,64 @@ h2 .temp-badge {
   margin-bottom: var(--space-md);
 }
 
+/* ── Shared Catalog Indicator ─────────────────────────────────────────── */
+
+.shared-catalog-indicator {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.shared-catalog-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%);
+  color: #fff;
+  font-size: 0.75em;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+}
+
+.shared-catalog-badge svg {
+  flex-shrink: 0;
+}
+
+.catalog-confidence {
+  font-size: 0.85em;
+  color: var(--success-600);
+  font-weight: 500;
+}
+
+.catalog-conflict {
+  font-size: 0.85em;
+  color: var(--warning-600);
+  font-weight: 500;
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+  .shared-catalog-indicator {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%);
+    border-color: rgba(139, 92, 246, 0.3);
+  }
+
+  .catalog-confidence {
+    color: var(--success-400, #34d399);
+  }
+
+  .catalog-conflict {
+    color: var(--warning-400, #fbbf24);
+  }
+}
+
 /* ── Intent Menu ─────────────────────────────────────────────────────── */
 
 .scan-result-wrapper {

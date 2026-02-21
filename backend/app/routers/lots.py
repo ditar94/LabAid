@@ -12,6 +12,7 @@ from app.schemas.schemas import LotArchiveRequest, LotCreate, LotOut, LotStorage
 from app.services.audit import log_audit, snapshot_lot
 from app.services.object_storage import object_storage
 from app.services.vial_service import deplete_all_opened, deplete_all_lot
+from app.services.vendor_catalog_service import update_shared_catalog_on_registration
 
 router = APIRouter(prefix="/api/lots", tags=["lots"])
 
@@ -172,9 +173,21 @@ def create_lot(
     if not ab:
         raise HTTPException(status_code=404, detail="Antibody not found")
 
-    lot = Lot(lab_id=target_lab_id, **body.model_dump())
+    # Create the lot (exclude barcode metadata fields from model_dump)
+    lot_data = body.model_dump(exclude={"barcode_format", "barcode_vendor", "barcode_catalog_number"})
+    lot = Lot(lab_id=target_lab_id, **lot_data)
     db.add(lot)
     db.flush()
+
+    # Update shared vendor catalog for Sysmex barcodes
+    if body.barcode_format == "sysmex" and body.barcode_vendor and body.barcode_catalog_number:
+        update_shared_catalog_on_registration(
+            db=db,
+            vendor=body.barcode_vendor,
+            catalog_number=body.barcode_catalog_number,
+            antibody=ab,
+            lab_id=target_lab_id,
+        )
 
     log_audit(
         db,

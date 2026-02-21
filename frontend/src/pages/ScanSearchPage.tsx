@@ -30,6 +30,7 @@ import { useToast } from "../context/ToastContext";
 import { useViewPreference } from "../hooks/useViewPreference";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { lotSummaryToLot } from "../utils/lotAdapters";
+import { findMatchingAntibody } from "../utils/normalize";
 import AntibodyForm, { NEW_FLUORO_VALUE, EMPTY_AB_FORM } from "../components/AntibodyForm";
 import LotRegistrationForm, { EMPTY_LOT_FORM } from "../components/LotRegistrationForm";
 
@@ -219,21 +220,21 @@ export default function ScanSearchPage() {
             setAntibodies(abRes.data);
             setStorageUnits(sharedStorageUnits);
 
-            // Try GS1 enrichment in the background
+            // Try barcode enrichment in the background
             try {
               const enrichRes = await api.post<ScanEnrichResult>("/scan/enrich", { barcode: q });
               const enrich = enrichRes.data;
               setEnrichResult(enrich);
 
               if (enrich.parsed) {
-                // Auto-populate lot fields from parsed GS1 data
+                // Auto-populate lot fields from parsed barcode data
                 setRegForm((prev) => ({
                   ...prev,
                   lot_number: enrich.lot_number || prev.lot_number,
                   expiration_date: enrich.expiration_date || prev.expiration_date,
                 }));
 
-                // Auto-suggest IVD designation if GUDID found
+                // Auto-suggest designation from barcode
                 if (enrich.suggested_designation) {
                   setNewAbForm((prev) => ({
                     ...prev,
@@ -241,7 +242,34 @@ export default function ScanSearchPage() {
                   }));
                 }
 
-                // If single GUDID match, auto-populate antibody fields
+                // Handle shared catalog data (Sysmex barcodes)
+                if (enrich.from_shared_catalog && enrich.target_normalized && enrich.fluorochrome_normalized) {
+                  // Try to match existing antibody using normalized values
+                  const matched = findMatchingAntibody(
+                    abRes.data,
+                    enrich.target_normalized,
+                    enrich.fluorochrome_normalized
+                  );
+
+                  if (matched) {
+                    // Auto-select the matched antibody
+                    setRegForm((prev) => ({ ...prev, antibody_id: matched.id }));
+                    addToast("Matched existing antibody from community catalog", "info");
+                  } else {
+                    // Pre-fill new antibody form with shared catalog data
+                    setNewAbForm((prev) => ({
+                      ...prev,
+                      target: enrich.target || prev.target,
+                      fluorochrome_choice: enrich.fluorochrome || prev.fluorochrome_choice,
+                      clone: enrich.clone || prev.clone,
+                      vendor: enrich.vendor || prev.vendor,
+                      catalog_number: enrich.catalog_number || prev.catalog_number,
+                      name: enrich.product_name || prev.name,
+                    }));
+                  }
+                }
+
+                // Handle GS1/GUDID data
                 if (enrich.gudid_devices.length === 1) {
                   const device = enrich.gudid_devices[0];
                   setSelectedDevice(device);
@@ -568,6 +596,10 @@ export default function ScanSearchPage() {
         vendor_barcode: regForm.vendor_barcode.trim() || scannedBarcode,
         expiration_date: regForm.expiration_date || null,
         gs1_ai: enrichResult?.all_ais || null,
+        // Barcode metadata for shared catalog updates
+        barcode_format: enrichResult?.format || null,
+        barcode_vendor: enrichResult?.vendor || null,
+        barcode_catalog_number: enrichResult?.catalog_number || null,
       });
       await api.post("/vials/receive", {
         lot_id: lotRes.data.id,
@@ -678,6 +710,30 @@ export default function ScanSearchPage() {
               {enrichResult.warnings.map((w, i) => (
                 <p key={i} className="info">{w}</p>
               ))}
+            </div>
+          )}
+
+          {/* Community Catalog indicator for Sysmex barcodes */}
+          {enrichResult?.from_shared_catalog && (
+            <div className="shared-catalog-indicator">
+              <span className="badge shared-catalog-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                  <path d="M2 17l10 5 10-5"/>
+                  <path d="M2 12l10 5 10-5"/>
+                </svg>
+                Auto-filled from Community Catalog
+              </span>
+              {enrichResult.catalog_use_count !== undefined && enrichResult.catalog_use_count > 1 && (
+                <span className="catalog-confidence">
+                  Verified by {enrichResult.catalog_use_count} labs
+                </span>
+              )}
+              {enrichResult.catalog_conflict_count !== undefined && enrichResult.catalog_conflict_count > 0 && (
+                <span className="catalog-conflict">
+                  {enrichResult.catalog_conflict_count} lab(s) entered different data
+                </span>
+              )}
             </div>
           )}
 
