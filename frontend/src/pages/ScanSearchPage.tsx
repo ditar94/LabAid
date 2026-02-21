@@ -813,6 +813,7 @@ export default function ScanSearchPage() {
                 onChange={setNewAbForm}
                 fluorochromes={fluorochromes}
                 layout="stacked"
+                fluorochromeVariations={enrichResult?.fluorochrome_variations}
               />
             )}
             {/* ── Lot fields (shared LotRegistrationForm component) ── */}

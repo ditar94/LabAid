@@ -32,7 +32,7 @@ from app.schemas.schemas import (
 from app.services.barcode_parser import parse_sysmex_barcode
 from app.services.gs1_parser import extract_fields, parse_gs1
 from app.services.gudid_client import lookup_gudid
-from app.services.vendor_catalog_service import lookup_vendor_catalog
+from app.services.vendor_catalog_service import get_fluorochrome_variations, lookup_vendor_catalog
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 
@@ -414,6 +414,11 @@ async def scan_enrich(
         )
 
         if catalog_entry:
+            # Get fluorochrome variations from other labs
+            fluoro_variations = []
+            if catalog_entry.fluorochrome_normalized:
+                fluoro_variations = get_fluorochrome_variations(db, catalog_entry.fluorochrome_normalized)
+
             return ScanEnrichResult(
                 parsed=True,
                 format="sysmex",
@@ -434,6 +439,7 @@ async def scan_enrich(
                 catalog_use_count=catalog_entry.use_count,
                 catalog_conflict_count=catalog_entry.conflict_count,
                 from_shared_catalog=True,
+                fluorochrome_variations=fluoro_variations,
                 warnings=[],
             )
         else:
@@ -472,6 +478,11 @@ async def scan_enrich(
         # First check shared catalog by GTIN
         catalog_entry = lookup_vendor_catalog(db, gtin=gtin)
         if catalog_entry:
+            # Get fluorochrome variations from other labs
+            fluoro_variations = []
+            if catalog_entry.fluorochrome_normalized:
+                fluoro_variations = get_fluorochrome_variations(db, catalog_entry.fluorochrome_normalized)
+
             return ScanEnrichResult(
                 parsed=True,
                 format="gs1",
@@ -495,6 +506,7 @@ async def scan_enrich(
                 catalog_use_count=catalog_entry.use_count,
                 catalog_conflict_count=catalog_entry.conflict_count,
                 from_shared_catalog=True,
+                fluorochrome_variations=fluoro_variations,
                 gudid_devices=[],
                 warnings=[],
             )

@@ -243,6 +243,9 @@ export interface ScanEnrichResult {
   catalog_use_count?: number;
   catalog_conflict_count?: number;
   from_shared_catalog?: boolean;
+
+  // Variations entered by other labs (for suggestions UI)
+  fluorochrome_variations?: string[];
 }
 
 export type ScanIntent = "open" | "receive" | "deplete" | "store_open" | "view_storage" | "move" | null;

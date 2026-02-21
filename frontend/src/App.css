@@ -3814,6 +3814,59 @@ h2 .temp-badge {
   }
 }
 
+/* ── Fluorochrome Variations ─────────────────────────────────────────── */
+
+.fluoro-variations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--surface-50);
+  border-radius: var(--radius-sm);
+  font-size: 0.85em;
+}
+
+.fluoro-variations-label {
+  color: var(--text-muted);
+  margin-right: var(--space-xs);
+}
+
+.fluoro-variation-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--primary-100);
+  color: var(--primary-700);
+  border: 1px solid var(--primary-200);
+  border-radius: var(--radius-sm);
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fluoro-variation-chip:hover {
+  background: var(--primary-200);
+  border-color: var(--primary-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  .fluoro-variations {
+    background: var(--surface-800);
+  }
+
+  .fluoro-variation-chip {
+    background: var(--primary-900);
+    color: var(--primary-200);
+    border-color: var(--primary-700);
+  }
+
+  .fluoro-variation-chip:hover {
+    background: var(--primary-800);
+    border-color: var(--primary-600);
+  }
+}
+
 /* ── Intent Menu ─────────────────────────────────────────────────────── */
 
 .scan-result-wrapper {

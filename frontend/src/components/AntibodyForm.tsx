@@ -65,6 +65,8 @@ interface AntibodyFormProps {
   layout?: "inline" | "stacked";
   /** Show reorder point and min ready stock fields (default: true) */
   showThresholds?: boolean;
+  /** Fluorochrome variations from community catalog (for suggestions) */
+  fluorochromeVariations?: string[];
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -75,6 +77,7 @@ export default function AntibodyForm({
   fluorochromes,
   layout = "stacked",
   showThresholds = true,
+  fluorochromeVariations = [],
 }: AntibodyFormProps) {
   const isInline = layout === "inline";
   const isIVD = values.designation === "ivd";
@@ -185,23 +188,45 @@ export default function AntibodyForm({
           )}
 
           {/* New fluorochrome name + color (shown when "+ New Fluorochrome" selected) */}
-          {values.fluorochrome_choice === NEW_FLUORO_VALUE && row(
-            field("New Fluorochrome",
-              <input
-                placeholder={isInline ? "New Fluorochrome" : "e.g., FITC"}
-                value={values.new_fluorochrome}
-                onChange={(e) => set("new_fluorochrome", e.target.value)}
-                required
-              />
-            ),
-            field("Color",
-              <input
-                type="color"
-                value={values.new_fluoro_color}
-                onChange={(e) => set("new_fluoro_color", e.target.value)}
-                required
-              />
-            )
+          {values.fluorochrome_choice === NEW_FLUORO_VALUE && (
+            <>
+              {row(
+                field("New Fluorochrome",
+                  <input
+                    placeholder={isInline ? "New Fluorochrome" : "e.g., FITC"}
+                    value={values.new_fluorochrome}
+                    onChange={(e) => set("new_fluorochrome", e.target.value)}
+                    required
+                  />
+                ),
+                field("Color",
+                  <input
+                    type="color"
+                    value={values.new_fluoro_color}
+                    onChange={(e) => set("new_fluoro_color", e.target.value)}
+                    required
+                  />
+                )
+              )}
+              {/* Fluorochrome variations from community catalog */}
+              {fluorochromeVariations.length > 1 && (
+                <div className="fluoro-variations">
+                  <span className="fluoro-variations-label">Also entered as:</span>
+                  {fluorochromeVariations
+                    .filter((v) => v !== values.new_fluorochrome)
+                    .map((variation) => (
+                      <button
+                        key={variation}
+                        type="button"
+                        className="fluoro-variation-chip"
+                        onClick={() => set("new_fluorochrome", variation)}
+                      >
+                        {variation}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </>
           )}
 
           {field("Clone",

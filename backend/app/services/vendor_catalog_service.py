@@ -213,6 +213,28 @@ def update_shared_catalog_on_registration(
     )
 
 
+def get_fluorochrome_variations(
+    db: Session,
+    fluorochrome_normalized: str,
+) -> list[str]:
+    """
+    Get all unique display variations for a normalized fluorochrome.
+
+    Used to show users alternative formatting options entered by other labs.
+
+    Example: fluorochrome_normalized="BV786" might return ["BV-786", "BV 786", "BV786"]
+    """
+    if not fluorochrome_normalized:
+        return []
+
+    results = db.query(VendorCatalog.fluorochrome).filter(
+        VendorCatalog.fluorochrome_normalized == fluorochrome_normalized,
+        VendorCatalog.fluorochrome.isnot(None),
+    ).distinct().all()
+
+    return sorted(set(r[0] for r in results if r[0]))
+
+
 def get_dirty_catalog_entries(
     db: Session,
     threshold: float = 0.3,

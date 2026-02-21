@@ -565,6 +565,9 @@ class ScanEnrichResult(BaseModel):
     catalog_conflict_count: int | None = None
     from_shared_catalog: bool = False
 
+    # Variations entered by other labs (for suggestions UI)
+    fluorochrome_variations: list[str] = []
+
 
 class ReturnToStorageRequest(BaseModel):
     cell_id: UUID
