@@ -1,0 +1,75 @@
+name: Nonprod Database Schedule
+
+on:
+  schedule:
+    - cron: "0 22 * * 1-5" # 5 PM EST (10 PM UTC) Mon-Fri - START
+    - cron: "0 5 * * *"    # Midnight EST (5 AM UTC) every day - STOP
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action to perform"
+        required: true
+        type: choice
+        options:
+          - start
+          - stop
+
+env:
+  GCP_PROJECT: labaid-prod
+
+jobs:
+  manage-nonprod-db:
+    name: Manage Nonprod Database
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Determine action
+        id: action
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "action=${{ inputs.action }}" >> $GITHUB_OUTPUT
+          else
+            # Scheduled run - check which cron triggered
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" = "22" ]; then
+              echo "action=start" >> $GITHUB_OUTPUT
+            else
+              echo "action=stop" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Start nonprod Cloud SQL
+        if: steps.action.outputs.action == 'start'
+        run: |
+          STATE=$(gcloud sql instances describe labaid-db-nonprod --project ${GCP_PROJECT} --format='value(state)')
+          if [ "$STATE" = "RUNNABLE" ]; then
+            echo "Instance already running"
+            exit 0
+          fi
+          echo "Starting instance..."
+          gcloud sql instances patch labaid-db-nonprod \
+            --activation-policy=ALWAYS \
+            --project ${GCP_PROJECT}
+
+      - name: Stop nonprod Cloud SQL
+        if: steps.action.outputs.action == 'stop'
+        run: |
+          STATE=$(gcloud sql instances describe labaid-db-nonprod --project ${GCP_PROJECT} --format='value(state)')
+          if [ "$STATE" != "RUNNABLE" ]; then
+            echo "Instance already stopped (state: $STATE)"
+            exit 0
+          fi
+          echo "Stopping instance..."
+          gcloud sql instances patch labaid-db-nonprod \
+            --activation-policy=NEVER \
+            --project ${GCP_PROJECT}

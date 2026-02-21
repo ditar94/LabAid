@@ -70,8 +70,14 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Start nonprod Cloud SQL instance
+      - name: Start nonprod Cloud SQL instance if stopped
         run: |
+          STATE=$(gcloud sql instances describe labaid-db-nonprod --project ${GCP_PROJECT} --format='value(state)')
+          if [ "$STATE" = "RUNNABLE" ]; then
+            echo "Instance already running, skipping start"
+            exit 0
+          fi
+          echo "Instance is stopped (state: $STATE), starting..."
           for i in $(seq 1 10); do
             if gcloud sql instances patch labaid-db-nonprod \
               --activation-policy=ALWAYS \
@@ -398,37 +404,6 @@ jobs:
 
       - name: Deploy to Firebase Hosting
         run: npx firebase-tools deploy --only hosting:labaid-prod --project ${GCP_PROJECT}
-
-  # ── Stop nonprod database ───────────────────────────────────────────────────
-  stop-nonprod-db:
-    name: Stop Nonprod Database
-    needs: [prod-backend, prod-frontend]
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-
-      - name: Stop nonprod Cloud SQL instance
-        run: |
-          for i in $(seq 1 10); do
-            if gcloud sql instances patch labaid-db-nonprod \
-              --activation-policy=NEVER \
-              --project ${GCP_PROJECT} 2>&1; then
-              echo "Stop command succeeded"
-              break
-            fi
-            echo "Attempt $i failed (likely concurrent operation), retrying in 30s..."
-            sleep 30
-          done
 
   # ── Sync main + tag release (auto after production) ─────────────────────────
   sync-main:
