@@ -77,24 +77,44 @@ def parse_sysmex_barcode(barcode: str) -> dict | None:
 _STRIP_PATTERN = re.compile(r'[\s\-_\.]+')
 
 
-def normalize_display(value: str | None) -> str | None:
+def normalize_target(value: str | None) -> str | None:
     """
-    Normalize a string for display: UPPERCASE but keep structure (hyphens, etc.).
+    Normalize antibody target for display: UPPERCASE + remove spaces and hyphens.
 
-    Used for storing antibody target/fluorochrome in a consistent format.
+    Targets are simple patterns like CD45, CD19, HLADR.
 
     Examples:
-        "cd-45"       → "CD-45"
-        "apc-r700"    → "APC-R700"
-        "percp-cy5.5" → "PERCP-CY5.5"
-        "  CD 45  "   → "CD 45"
+        "cd 45"   → "CD45"
+        "CD-45"   → "CD45"
+        "hla-dr"  → "HLADR"
+        "Ki-67"   → "KI67"
     """
     if not value:
         return None
 
-    # Normalize unicode and uppercase, but keep structure
-    value = unicodedata.normalize('NFKD', value)
-    return value.strip().upper() or None
+    value = unicodedata.normalize('NFKD', value).strip().upper()
+    # Remove spaces and hyphens for targets
+    value = re.sub(r'[\s\-]+', '', value)
+    return value or None
+
+
+def normalize_display(value: str | None) -> str | None:
+    """
+    Normalize a string for display: UPPERCASE only, keep structure (spaces, hyphens).
+
+    Used for fluorochromes and IVD product names where spacing matters.
+
+    Examples:
+        "pacific orange"       → "PACIFIC ORANGE"
+        "brilliant violet 421" → "BRILLIANT VIOLET 421"
+        "BV-786"               → "BV-786"
+        "apc-r700"             → "APC-R700"
+    """
+    if not value:
+        return None
+
+    value = unicodedata.normalize('NFKD', value).strip().upper()
+    return value or None
 
 
 def normalize_for_matching(value: str | None) -> str | None:
