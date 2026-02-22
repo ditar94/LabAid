@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, useRef, useMemo, type FormEvent } from "react";
 import type { Antibody } from "../api/types";
 
 export interface CocktailRecipeFormValues {
@@ -47,6 +47,24 @@ export function CocktailRecipeForm({
     () => (initialValues || EMPTY_RECIPE_FORM).components.map((c) => !!c.free_text_name)
   );
 
+  // Stable keys for each component row (for animations)
+  const keyCounterRef = useRef(form.components.length);
+  const [rowKeys, setRowKeys] = useState<number[]>(() =>
+    form.components.map((_, i) => i)
+  );
+
+  // Track which rows are animating (index -> direction)
+  const [animatingRows, setAnimatingRows] = useState<Map<number, "up" | "down">>(new Map());
+
+  // Collect all selected antibody IDs to filter from other dropdowns
+  const selectedAntibodyIds = useMemo(() => {
+    const ids = new Set<string>();
+    form.components.forEach((c) => {
+      if (c.antibody_id) ids.add(c.antibody_id);
+    });
+    return ids;
+  }, [form.components]);
+
   const handleChange = (field: keyof CocktailRecipeFormValues, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -60,11 +78,13 @@ export function CocktailRecipeForm({
   };
 
   const addComponent = () => {
+    keyCounterRef.current += 1;
     setForm((prev) => ({
       ...prev,
       components: [...prev.components, { antibody_id: "", volume_ul: "", free_text_name: "" }],
     }));
     setCustomModes((prev) => [...prev, false]);
+    setRowKeys((prev) => [...prev, keyCounterRef.current]);
   };
 
   const removeComponent = (index: number) => {
@@ -74,25 +94,45 @@ export function CocktailRecipeForm({
       components: prev.components.filter((_, i) => i !== index),
     }));
     setCustomModes((prev) => prev.filter((_, i) => i !== index));
+    setRowKeys((prev) => prev.filter((_, i) => i !== index));
   };
 
   const moveComponent = (index: number, direction: "up" | "down") => {
     const target = direction === "up" ? index - 1 : index + 1;
     if (target < 0 || target >= form.components.length) return;
-    setForm((prev) => {
-      const updated = [...prev.components];
-      const temp = updated[index];
-      updated[index] = updated[target];
-      updated[target] = temp;
-      return { ...prev, components: updated };
-    });
-    setCustomModes((prev) => {
-      const updated = [...prev];
-      const temp = updated[index];
-      updated[index] = updated[target];
-      updated[target] = temp;
-      return updated;
-    });
+
+    // Trigger animation
+    const newAnimating = new Map<number, "up" | "down">();
+    newAnimating.set(index, direction);
+    newAnimating.set(target, direction === "up" ? "down" : "up");
+    setAnimatingRows(newAnimating);
+
+    // After animation starts, swap the data
+    setTimeout(() => {
+      setForm((prev) => {
+        const updated = [...prev.components];
+        const temp = updated[index];
+        updated[index] = updated[target];
+        updated[target] = temp;
+        return { ...prev, components: updated };
+      });
+      setCustomModes((prev) => {
+        const updated = [...prev];
+        const temp = updated[index];
+        updated[index] = updated[target];
+        updated[target] = temp;
+        return updated;
+      });
+      setRowKeys((prev) => {
+        const updated = [...prev];
+        const temp = updated[index];
+        updated[index] = updated[target];
+        updated[target] = temp;
+        return updated;
+      });
+      // Clear animation state
+      setAnimatingRows(new Map());
+    }, 200);
   };
 
   const toggleCustomMode = (index: number) => {
@@ -189,106 +229,115 @@ export function CocktailRecipeForm({
           <div className="form-group">
             <label>Components</label>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {form.components.map((comp, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-sm)",
-                  }}
-                >
-                  <span
+              {form.components.map((comp, i) => {
+                const animDir = animatingRows.get(i);
+                const animClass = animDir === "up" ? "component-row-up" : animDir === "down" ? "component-row-down" : "";
+                // Filter: show only antibodies not selected elsewhere (or the current selection)
+                const availableAntibodies = antibodies.filter(
+                  (ab) => ab.is_active && ab.designation !== "ivd" && (!selectedAntibodyIds.has(ab.id) || ab.id === comp.antibody_id)
+                );
+                return (
+                  <div
+                    key={rowKeys[i]}
+                    className={`component-row ${animClass}`}
                     style={{
-                      minWidth: "1.5rem",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      color: "var(--text-secondary)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.5rem",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-sm)",
+                      background: "var(--bg)",
+                      transition: "transform 0.2s ease-out, opacity 0.2s ease-out",
                     }}
                   >
-                    {i + 1}
-                  </span>
-                  {customModes[i] ? (
-                    <input
-                      type="text"
-                      placeholder="Custom component name..."
-                      value={comp.free_text_name}
-                      onChange={(e) => handleComponentChange(i, "free_text_name", e.target.value)}
-                      style={{ flex: 2 }}
-                      required
-                    />
-                  ) : (
-                    <select
-                      value={comp.antibody_id}
-                      onChange={(e) => handleComponentChange(i, "antibody_id", e.target.value)}
-                      style={{ flex: 2 }}
-                      required
+                    <span
+                      style={{
+                        minWidth: "1.5rem",
+                        textAlign: "center",
+                        fontWeight: 600,
+                        color: "var(--text-secondary)",
+                      }}
                     >
-                      <option value="">Select antibody...</option>
-                      {antibodies
-                        .filter((ab) => ab.is_active && ab.designation !== "ivd")
-                        .map((ab) => (
+                      {i + 1}
+                    </span>
+                    {customModes[i] ? (
+                      <input
+                        type="text"
+                        placeholder="Custom component name..."
+                        value={comp.free_text_name}
+                        onChange={(e) => handleComponentChange(i, "free_text_name", e.target.value)}
+                        style={{ flex: 2 }}
+                        required
+                      />
+                    ) : (
+                      <select
+                        value={comp.antibody_id}
+                        onChange={(e) => handleComponentChange(i, "antibody_id", e.target.value)}
+                        style={{ flex: 2 }}
+                        required
+                      >
+                        <option value="">Select antibody...</option>
+                        {availableAntibodies.map((ab) => (
                           <option key={ab.id} value={ab.id}>
                             {antibodyLabel(ab)}
                           </option>
                         ))}
-                    </select>
-                  )}
-                  <button
-                    type="button"
-                    className={`btn-sm ${customModes[i] ? "btn-green" : "btn-secondary"}`}
-                    onClick={() => toggleCustomMode(i)}
-                    title={customModes[i] ? "Switch to antibody selection" : "Switch to custom text"}
-                    style={{ padding: "0.15rem 0.4rem", fontSize: "0.75rem", whiteSpace: "nowrap" }}
-                  >
-                    {customModes[i] ? "Ab" : "Custom"}
-                  </button>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    placeholder="uL"
-                    value={comp.volume_ul}
-                    onChange={(e) => handleComponentChange(i, "volume_ul", e.target.value)}
-                    style={{ flex: 0.7, minWidth: "4rem" }}
-                  />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      </select>
+                    )}
                     <button
                       type="button"
-                      className="btn-sm btn-secondary"
-                      onClick={() => moveComponent(i, "up")}
-                      disabled={i === 0}
-                      aria-label="Move up"
-                      style={{ padding: "0 0.3rem", lineHeight: 1 }}
+                      className={`btn-sm ${customModes[i] ? "btn-green" : "btn-secondary"}`}
+                      onClick={() => toggleCustomMode(i)}
+                      title={customModes[i] ? "Switch to antibody selection" : "Switch to custom text"}
+                      style={{ padding: "0.15rem 0.4rem", fontSize: "0.75rem", whiteSpace: "nowrap" }}
                     >
-                      &uarr;
+                      {customModes[i] ? "Ab" : "Custom"}
                     </button>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      placeholder="uL"
+                      value={comp.volume_ul}
+                      onChange={(e) => handleComponentChange(i, "volume_ul", e.target.value)}
+                      style={{ flex: 0.7, minWidth: "4rem" }}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <button
+                        type="button"
+                        className="btn-sm btn-secondary"
+                        onClick={() => moveComponent(i, "up")}
+                        disabled={i === 0 || animatingRows.size > 0}
+                        aria-label="Move up"
+                        style={{ padding: "0 0.3rem", lineHeight: 1 }}
+                      >
+                        &uarr;
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-sm btn-secondary"
+                        onClick={() => moveComponent(i, "down")}
+                        disabled={i === form.components.length - 1 || animatingRows.size > 0}
+                        aria-label="Move down"
+                        style={{ padding: "0 0.3rem", lineHeight: 1 }}
+                      >
+                        &darr;
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      className="btn-sm btn-secondary"
-                      onClick={() => moveComponent(i, "down")}
-                      disabled={i === form.components.length - 1}
-                      aria-label="Move down"
-                      style={{ padding: "0 0.3rem", lineHeight: 1 }}
+                      className="btn-sm btn-danger"
+                      onClick={() => removeComponent(i)}
+                      disabled={form.components.length <= 1}
+                      aria-label="Remove component"
+                      style={{ padding: "0 0.4rem" }}
                     >
-                      &darr;
+                      X
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-sm btn-danger"
-                    onClick={() => removeComponent(i)}
-                    disabled={form.components.length <= 1}
-                    aria-label="Remove component"
-                    style={{ padding: "0 0.4rem" }}
-                  >
-                    X
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <button
               type="button"
