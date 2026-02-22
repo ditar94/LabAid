@@ -234,14 +234,6 @@ export default function ScanSearchPage() {
                   expiration_date: enrich.expiration_date || prev.expiration_date,
                 }));
 
-                // Auto-suggest designation from barcode
-                if (enrich.suggested_designation) {
-                  setNewAbForm((prev) => ({
-                    ...prev,
-                    designation: enrich.suggested_designation as Designation,
-                  }));
-                }
-
                 // Always populate vendor and catalog_number from parsed barcode
                 if (enrich.vendor || enrich.catalog_number) {
                   setNewAbForm((prev) => ({
@@ -251,43 +243,7 @@ export default function ScanSearchPage() {
                   }));
                 }
 
-                // Handle shared catalog data (Sysmex/GS1 barcodes with known product info)
-                if (enrich.from_shared_catalog && enrich.target_normalized && enrich.fluorochrome_normalized) {
-                  // Try to match existing antibody using normalized values
-                  const matched = findMatchingAntibody(
-                    abRes.data,
-                    enrich.target_normalized,
-                    enrich.fluorochrome_normalized
-                  );
-
-                  if (matched) {
-                    // Auto-select the matched antibody
-                    setRegForm((prev) => ({ ...prev, antibody_id: matched.id }));
-                    addToast("Matched existing antibody from community catalog", "info");
-                  } else {
-                    // Auto-select "+ New Antibody" and pre-fill with shared catalog data
-                    setRegForm((prev) => ({ ...prev, antibody_id: NEW_ANTIBODY_VALUE }));
-
-                    // Check if fluorochrome exists in lab's list
-                    const catalogFluoro = enrich.fluorochrome || "";
-                    const existingFluoro = fluorochromes.find(
-                      (f) => f.name.toUpperCase() === catalogFluoro.toUpperCase()
-                    );
-
-                    setNewAbForm((prev) => ({
-                      ...prev,
-                      target: enrich.target || prev.target,
-                      // If fluorochrome exists, select it; otherwise use "+ New Fluorochrome"
-                      fluorochrome_choice: existingFluoro ? existingFluoro.name : NEW_FLUORO_VALUE,
-                      new_fluorochrome: existingFluoro ? "" : catalogFluoro,
-                      clone: enrich.clone || prev.clone,
-                      name: enrich.product_name || prev.name,
-                    }));
-                    addToast("Pre-filled from community catalog. Review and save.", "info");
-                  }
-                }
-
-                // Handle GS1/GUDID data
+                // Handle GS1/GUDID device data (for vendor/catalog)
                 if (enrich.gudid_devices.length === 1) {
                   const device = enrich.gudid_devices[0];
                   setSelectedDevice(device);
@@ -295,6 +251,89 @@ export default function ScanSearchPage() {
                     ...prev,
                     vendor: device.company_name || prev.vendor,
                     catalog_number: device.catalog_number || prev.catalog_number,
+                  }));
+                }
+
+                // Get target/fluorochrome from enrichment (prefer normalized, fallback to raw)
+                const enrichTarget = enrich.target_normalized || enrich.target;
+                const enrichFluoro = enrich.fluorochrome_normalized || enrich.fluorochrome;
+                const isMultitest = enrich.suggested_designation === "IVD" && enrich.product_name && !enrichTarget;
+
+                // ── Handle Multitest/IVD products ──
+                if (isMultitest) {
+                  setRegForm((prev) => ({ ...prev, antibody_id: NEW_ANTIBODY_VALUE }));
+                  setNewAbForm((prev) => ({
+                    ...prev,
+                    designation: "ivd",
+                    name: enrich.product_name || "",
+                    short_code: "",
+                  }));
+                  addToast("Multitest/IVD product detected. Enter short code to register.", "info");
+                }
+                // ── Handle single-target products with enriched data ──
+                else if (enrichTarget && enrichFluoro) {
+                  // Try to match existing antibody
+                  const matched = findMatchingAntibody(abRes.data, enrichTarget, enrichFluoro);
+
+                  if (matched) {
+                    // Auto-select the matched antibody
+                    setRegForm((prev) => ({ ...prev, antibody_id: matched.id }));
+                    addToast("Matched existing antibody from catalog", "info");
+                  } else {
+                    // Auto-select "+ New Antibody" and pre-fill fields
+                    setRegForm((prev) => ({ ...prev, antibody_id: NEW_ANTIBODY_VALUE }));
+
+                    // Check if fluorochrome exists in lab's list
+                    const existingFluoro = fluorochromes.find(
+                      (f) => f.name.toUpperCase() === enrichFluoro.toUpperCase()
+                    );
+
+                    // Set designation from barcode if available
+                    const designation = enrich.suggested_designation as Designation || "ruo";
+
+                    setNewAbForm((prev) => ({
+                      ...prev,
+                      designation,
+                      target: enrichTarget,
+                      fluorochrome_choice: existingFluoro ? existingFluoro.name : NEW_FLUORO_VALUE,
+                      new_fluorochrome: existingFluoro ? "" : enrichFluoro,
+                      clone: enrich.clone || prev.clone,
+                      name: enrich.product_name || prev.name,
+                    }));
+                    addToast(
+                      enrich.from_shared_catalog
+                        ? "Pre-filled from community catalog. Review and save."
+                        : "Pre-filled from product database. Review and save.",
+                      "info"
+                    );
+                  }
+                }
+                // ── Handle partial enrichment (target only or fluorochrome only) ──
+                else if (enrichTarget || enrichFluoro) {
+                  setRegForm((prev) => ({ ...prev, antibody_id: NEW_ANTIBODY_VALUE }));
+
+                  const existingFluoro = enrichFluoro
+                    ? fluorochromes.find((f) => f.name.toUpperCase() === enrichFluoro.toUpperCase())
+                    : null;
+
+                  const designation = enrich.suggested_designation as Designation || "ruo";
+
+                  setNewAbForm((prev) => ({
+                    ...prev,
+                    designation,
+                    target: enrichTarget || prev.target,
+                    fluorochrome_choice: existingFluoro ? existingFluoro.name : enrichFluoro ? NEW_FLUORO_VALUE : prev.fluorochrome_choice,
+                    new_fluorochrome: existingFluoro ? "" : enrichFluoro || prev.new_fluorochrome,
+                    clone: enrich.clone || prev.clone,
+                    name: enrich.product_name || prev.name,
+                  }));
+                  addToast("Partial data found. Complete the missing fields.", "info");
+                }
+                // ── Just designation hint (no target/fluorochrome) ──
+                else if (enrich.suggested_designation) {
+                  setNewAbForm((prev) => ({
+                    ...prev,
+                    designation: enrich.suggested_designation as Designation,
                   }));
                 }
               }
@@ -814,6 +853,7 @@ export default function ScanSearchPage() {
                 fluorochromes={fluorochromes}
                 layout="stacked"
                 fluorochromeVariations={enrichResult?.fluorochrome_variations}
+                vendorSuggestion={enrichResult?.vendor_suggestion}
               />
             )}
             {/* ── Lot fields (shared LotRegistrationForm component) ── */}
