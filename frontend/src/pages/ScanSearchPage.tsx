@@ -89,6 +89,7 @@ export default function ScanSearchPage() {
   });
   // New antibody form — uses shared AntibodyFormValues type
   const [newAbForm, setNewAbForm] = useState(EMPTY_AB_FORM);
+  const [showAbFormValidation, setShowAbFormValidation] = useState(false);
 
   // ── GS1 Enrich state ───────────────────────────────────────────────
   const [enrichResult, setEnrichResult] = useState<ScanEnrichResult | null>(null);
@@ -235,6 +236,7 @@ export default function ScanSearchPage() {
 
             setRegForm(regDefaults);
             setNewAbForm(abDefaults);
+            setShowAbFormValidation(false);
 
             const abRes = await api.get("/antibodies/");
             setAntibodies(abRes.data);
@@ -526,6 +528,17 @@ export default function ScanSearchPage() {
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Trigger validation display on antibody form
+    if (regForm.antibody_id === NEW_ANTIBODY_VALUE) {
+      setShowAbFormValidation(true);
+      // Check required fields for new antibody
+      if (!newAbForm.designation) {
+        setError("Please select a designation.");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const quantity = regForm.quantity.trim() ? parseInt(regForm.quantity, 10) : NaN;
@@ -874,6 +887,7 @@ export default function ScanSearchPage() {
                 layout="stacked"
                 fluorochromeVariations={enrichResult?.fluorochrome_variations}
                 vendorSuggestion={dynamicVendorSuggestion || enrichResult?.vendor_suggestion}
+                showValidation={showAbFormValidation}
               />
             )}
             {/* ── Lot fields (shared LotRegistrationForm component) ── */}

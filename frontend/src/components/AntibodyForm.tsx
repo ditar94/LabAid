@@ -4,7 +4,7 @@
 //   - InventoryPage: create (inline layout) + edit (stacked layout in modal)
 //   - ScanSearchPage: registration (stacked layout)
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Fluorochrome, Designation } from "../api/types";
 
 // ── Exported constants ───────────────────────────────────────────────────────
@@ -69,6 +69,19 @@ interface AntibodyFormProps {
   fluorochromeVariations?: string[];
   /** Vendor suggestion from fuzzy matching (shows "Did you mean X?") */
   vendorSuggestion?: string;
+  /** Show validation errors for all required fields (set true on submit attempt) */
+  showValidation?: boolean;
+}
+
+// ── Info Button Component ────────────────────────────────────────────────────
+
+function InfoButton({ tooltip }: { tooltip: string }) {
+  return (
+    <button type="button" className="info-btn" tabIndex={-1}>
+      i
+      <span className="info-tooltip">{tooltip}</span>
+    </button>
+  );
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -81,30 +94,68 @@ export default function AntibodyForm({
   showThresholds = true,
   fluorochromeVariations = [],
   vendorSuggestion,
+  showValidation = false,
 }: AntibodyFormProps) {
   const isInline = layout === "inline";
   const isIVD = values.designation === "ivd";
+
+  // Track which fields have been touched (blurred)
+  const [touched, setTouched] = useState<Set<string>>(new Set());
 
   // Helper: update a single field
   const set = (key: keyof AntibodyFormValues, value: string) => {
     onChange({ ...values, [key]: value });
   };
 
+  // Helper: mark field as touched
+  const markTouched = (key: string) => {
+    setTouched((prev) => new Set(prev).add(key));
+  };
+
+  // Helper: check if field should show error
+  const shouldShowError = (key: string, isRequired: boolean, isEmpty: boolean) => {
+    if (!isRequired || !isEmpty) return false;
+    return showValidation || touched.has(key);
+  };
+
   // ── Layout wrappers ──────────────────────────────────────────────────────
   // In "inline" mode these are identity wrappers; in "stacked" mode they add
   // <div className="form-group"> and <div className="form-row"> respectively.
 
-  const field = (label: string, input: ReactNode, optional?: boolean) => {
+  const field = (
+    label: string,
+    input: ReactNode,
+    options?: {
+      optional?: boolean;
+      subtitle?: string;
+      info?: string;
+      fieldKey?: string;
+      required?: boolean;
+      isEmpty?: boolean;
+      errorMessage?: string;
+    }
+  ) => {
     if (isInline) return input;
+
+    const { optional, subtitle, info, fieldKey, required, isEmpty, errorMessage } = options || {};
+    const showError = fieldKey && shouldShowError(fieldKey, !!required, !!isEmpty);
+
     return (
-      <div className="form-group">
+      <div className={`form-group${showError ? " invalid" : ""}`}>
         <label>
-          {label}
+          <span className={info || subtitle ? "label-with-info" : ""}>
+            {label}
+            {subtitle && <span className="label-subtitle"> — {subtitle}</span>}
+            {info && <InfoButton tooltip={info} />}
+          </span>
           {optional && (
             <small style={{ fontWeight: "normal", color: "var(--text-muted)" }}> (optional)</small>
           )}
         </label>
         {input}
+        {showError && (
+          <span className="field-error">{errorMessage || "Required"}</span>
+        )}
       </div>
     );
   };
@@ -123,13 +174,20 @@ export default function AntibodyForm({
         <select
           value={values.designation}
           onChange={(e) => set("designation", e.target.value as Designation | "")}
+          onBlur={() => markTouched("designation")}
           required
         >
           <option value="">Select Designation</option>
           <option value="ruo">RUO</option>
           <option value="asr">ASR</option>
           <option value="ivd">IVD</option>
-        </select>
+        </select>,
+        {
+          fieldKey: "designation",
+          required: true,
+          isEmpty: !values.designation,
+          errorMessage: "Please select a designation",
+        }
       )}
 
       {/* ── IVD-specific fields ── */}
@@ -140,8 +198,14 @@ export default function AntibodyForm({
               placeholder={isInline ? "Product Name (required for IVD)" : "IVD product name (required)"}
               value={values.name}
               onChange={(e) => set("name", e.target.value)}
+              onBlur={() => markTouched("name")}
               required
-            />
+            />,
+            {
+              fieldKey: "name",
+              required: true,
+              isEmpty: !values.name.trim(),
+            }
           )}
           {row(
             field("Short Code (for grid cells)",
@@ -149,9 +213,15 @@ export default function AntibodyForm({
                 placeholder="e.g., MT34"
                 value={values.short_code}
                 onChange={(e) => set("short_code", e.target.value.slice(0, 5))}
+                onBlur={() => markTouched("short_code")}
                 maxLength={5}
                 required
-              />
+              />,
+              {
+                fieldKey: "short_code",
+                required: true,
+                isEmpty: !values.short_code.trim(),
+              }
             ),
             field("Color",
               <input
@@ -174,13 +244,20 @@ export default function AntibodyForm({
                 placeholder="Target (e.g., CD3)"
                 value={values.target}
                 onChange={(e) => set("target", e.target.value)}
+                onBlur={() => markTouched("target")}
                 required
-              />
+              />,
+              {
+                fieldKey: "target",
+                required: true,
+                isEmpty: !values.target.trim(),
+              }
             ),
             field("Fluorochrome",
               <select
                 value={values.fluorochrome_choice}
                 onChange={(e) => set("fluorochrome_choice", e.target.value)}
+                onBlur={() => markTouched("fluorochrome_choice")}
                 required
               >
                 <option value="">Select Fluorochrome</option>
@@ -188,7 +265,13 @@ export default function AntibodyForm({
                 {fluorochromes.map((f) => (
                   <option key={f.id} value={f.name}>{f.name}</option>
                 ))}
-              </select>
+              </select>,
+              {
+                fieldKey: "fluorochrome_choice",
+                required: true,
+                isEmpty: !values.fluorochrome_choice,
+                errorMessage: "Please select a fluorochrome",
+              }
             )
           )}
 
@@ -201,8 +284,14 @@ export default function AntibodyForm({
                     placeholder={isInline ? "New Fluorochrome" : "e.g., FITC"}
                     value={values.new_fluorochrome}
                     onChange={(e) => set("new_fluorochrome", e.target.value)}
+                    onBlur={() => markTouched("new_fluorochrome")}
                     required
-                  />
+                  />,
+                  {
+                    fieldKey: "new_fluorochrome",
+                    required: true,
+                    isEmpty: !values.new_fluorochrome.trim(),
+                  }
                 ),
                 field("Color",
                   <input
@@ -240,7 +329,7 @@ export default function AntibodyForm({
               value={values.clone}
               onChange={(e) => set("clone", e.target.value)}
             />,
-            true
+            { optional: true }
           )}
         </>
       )}
@@ -269,7 +358,7 @@ export default function AntibodyForm({
               </div>
             )}
           </>,
-          true
+          { optional: true }
         ),
         field("Catalog #",
           <input
@@ -277,11 +366,11 @@ export default function AntibodyForm({
             value={values.catalog_number}
             onChange={(e) => set("catalog_number", e.target.value)}
           />,
-          true
+          { optional: true }
         )
       )}
 
-      {/* ── Threshold fields (stability, reorder point, min ready stock) ── */}
+      {/* ── Threshold fields (stability, low stock, min approved) ── */}
       {showThresholds && (
         <>
           {field("Stability (days)",
@@ -292,30 +381,35 @@ export default function AntibodyForm({
               value={values.stability_days}
               onChange={(e) => set("stability_days", e.target.value)}
             />,
-            true
+            { optional: true }
           )}
           {row(
-            field("Reorder Point",
+            field("Low Stock Amount",
               <input
                 type="number"
                 min={1}
-                placeholder={isInline ? "Reorder Point (total sealed vials)" : "Total sealed vials"}
+                placeholder={isInline ? "Low Stock Amount" : "Enter threshold"}
                 value={values.low_stock_threshold}
                 onChange={(e) => set("low_stock_threshold", e.target.value)}
-                title="Alert when total vials on hand drops below this level"
               />,
-              true
+              {
+                optional: true,
+                subtitle: "Total Sealed Vials",
+                info: "When the amount of sealed vials (approved and not approved) goes below this amount, an alert for reorder is triggered.",
+              }
             ),
-            field("Min Ready Stock",
+            field("Min Approved Stock",
               <input
                 type="number"
                 min={1}
-                placeholder={isInline ? "Min Ready Stock (approved vials)" : "Approved vials"}
+                placeholder={isInline ? "Min Approved Stock" : "Enter threshold"}
                 value={values.approved_low_threshold}
                 onChange={(e) => set("approved_low_threshold", e.target.value)}
-                title="Alert when QC-approved vials drops below this level"
               />,
-              true
+              {
+                optional: true,
+                info: "When the amount of QC-approved sealed vials goes below this amount, an alert is triggered.",
+              }
             )
           )}
         </>

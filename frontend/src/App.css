@@ -1893,6 +1893,107 @@ td.mono {
   letter-spacing: 0.04em;
 }
 
+/* Label with info button */
+.form-group .label-with-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.form-group .label-subtitle {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+/* Info button (i) */
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--neutral-200);
+  border: none;
+  cursor: help;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  transition: all var(--duration-fast) var(--ease-out);
+  position: relative;
+}
+
+.info-btn:hover {
+  background: var(--primary-100);
+  color: var(--primary-600);
+}
+
+/* Tooltip for info button */
+.info-btn .info-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--neutral-900);
+  color: var(--neutral-100);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  width: 220px;
+  text-align: left;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  visibility: hidden;
+  transition: all var(--duration-fast) var(--ease-out);
+  z-index: 100;
+  pointer-events: none;
+}
+
+.info-btn .info-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--neutral-900);
+}
+
+.info-btn:hover .info-tooltip,
+.info-btn:focus .info-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Form validation states */
+.form-group.invalid input,
+.form-group.invalid select,
+.form-group.invalid textarea {
+  border-color: var(--danger-500);
+  background-color: var(--danger-50);
+}
+
+.form-group.invalid input:focus,
+.form-group.invalid select:focus,
+.form-group.invalid textarea:focus {
+  border-color: var(--danger-500);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.form-group .field-error {
+  font-size: var(--text-xs);
+  color: var(--danger-600);
+  margin-top: 2px;
+  font-weight: 500;
+}
+
 /* ── Stats Grid ───────────────────────────────────────────────────────── */
 
 .stats-grid {
