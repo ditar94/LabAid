@@ -7234,35 +7234,64 @@ textarea:focus-visible {
   margin-bottom: 12px;
 }
 
-/* ── Cocktail Component Row Animations ────────────────────────────────── */
+/* ── Cocktail Component Row Drag-and-Drop ─────────────────────────────── */
+
+.component-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
 
 .component-row {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  touch-action: none;
 }
 
-.component-row-up {
-  animation: slideUp 0.2s ease-out forwards;
+.component-row-dragging {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--primary);
+  background: var(--bg-secondary);
 }
 
-.component-row-down {
-  animation: slideDown 0.2s ease-out forwards;
+.component-row-number {
+  min-width: 1.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
-@keyframes slideUp {
-  0% { transform: translateY(0); opacity: 1; }
-  50% { transform: translateY(-100%); opacity: 0.7; }
-  100% { transform: translateY(0); opacity: 1; }
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+  transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
 }
 
-@keyframes slideDown {
-  0% { transform: translateY(0); opacity: 1; }
-  50% { transform: translateY(100%); opacity: 0.7; }
-  100% { transform: translateY(0); opacity: 1; }
+.drag-handle:hover {
+  color: var(--text);
+  background: var(--bg-secondary);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+  color: var(--primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .component-row-up,
-  .component-row-down {
-    animation: none;
+  .component-row {
+    transition: none;
   }
 }

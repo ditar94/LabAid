@@ -1,4 +1,22 @@
 import { useState, useRef, useMemo, type FormEvent } from "react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical } from "lucide-react";
 import type { Antibody } from "../api/types";
 
 export interface CocktailRecipeFormValues {
@@ -13,6 +31,12 @@ export interface ComponentRow {
   antibody_id: string;
   volume_ul: string;
   free_text_name: string;
+}
+
+// Internal row with stable key for drag-and-drop
+interface ComponentRowWithKey extends ComponentRow {
+  _key: number;
+  _customMode: boolean;
 }
 
 export const EMPTY_RECIPE_FORM: CocktailRecipeFormValues = {
@@ -31,6 +55,128 @@ interface Props {
   title?: string;
 }
 
+// ── Sortable Row Component ─────────────────────────────────────────────────
+interface SortableRowProps {
+  row: ComponentRowWithKey;
+  index: number;
+  availableAntibodies: Antibody[];
+  onFieldChange: (field: keyof ComponentRow, value: string) => void;
+  onToggleCustomMode: () => void;
+  onRemove: () => void;
+  canRemove: boolean;
+  antibodyLabel: (ab: Antibody) => string;
+}
+
+function SortableRow({
+  row,
+  index,
+  availableAntibodies,
+  onFieldChange,
+  onToggleCustomMode,
+  onRemove,
+  canRemove,
+  antibodyLabel,
+}: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: row._key });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`component-row ${isDragging ? "component-row-dragging" : ""}`}
+    >
+      {/* Drag handle */}
+      <button
+        type="button"
+        className="drag-handle"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+      >
+        <GripVertical size={16} />
+      </button>
+
+      {/* Row number */}
+      <span className="component-row-number">{index + 1}</span>
+
+      {/* Antibody select or custom input */}
+      {row._customMode ? (
+        <input
+          type="text"
+          placeholder="Custom component name..."
+          value={row.free_text_name}
+          onChange={(e) => onFieldChange("free_text_name", e.target.value)}
+          style={{ flex: 2 }}
+          required
+        />
+      ) : (
+        <select
+          value={row.antibody_id}
+          onChange={(e) => onFieldChange("antibody_id", e.target.value)}
+          style={{ flex: 2 }}
+          required
+        >
+          <option value="">Select antibody...</option>
+          {availableAntibodies.map((ab) => (
+            <option key={ab.id} value={ab.id}>
+              {antibodyLabel(ab)}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {/* Toggle custom/antibody mode */}
+      <button
+        type="button"
+        className={`btn-sm ${row._customMode ? "btn-green" : "btn-secondary"}`}
+        onClick={onToggleCustomMode}
+        title={row._customMode ? "Switch to antibody selection" : "Switch to custom text"}
+        style={{ padding: "0.15rem 0.4rem", fontSize: "0.75rem", whiteSpace: "nowrap" }}
+      >
+        {row._customMode ? "Ab" : "Custom"}
+      </button>
+
+      {/* Volume input */}
+      <input
+        type="number"
+        min="0"
+        step="0.1"
+        placeholder="uL"
+        value={row.volume_ul}
+        onChange={(e) => onFieldChange("volume_ul", e.target.value)}
+        style={{ flex: 0.7, minWidth: "4rem" }}
+      />
+
+      {/* Remove button */}
+      <button
+        type="button"
+        className="btn-sm btn-danger"
+        onClick={onRemove}
+        disabled={!canRemove}
+        aria-label="Remove component"
+        style={{ padding: "0 0.4rem" }}
+      >
+        X
+      </button>
+    </div>
+  );
+}
+
+// ── Main Form Component ────────────────────────────────────────────────────
 export function CocktailRecipeForm({
   onSubmit,
   onCancel,
@@ -39,142 +185,125 @@ export function CocktailRecipeForm({
   loading = false,
   title = "New Cocktail",
 }: Props) {
-  const [form, setForm] = useState<CocktailRecipeFormValues>(
-    initialValues || { ...EMPTY_RECIPE_FORM, components: [{ antibody_id: "", volume_ul: "", free_text_name: "" }] }
-  );
+  // Generate stable keys for rows
+  const keyCounterRef = useRef(0);
+  const generateKey = () => ++keyCounterRef.current;
+
+  // Initialize rows with keys and custom mode
+  const [rows, setRows] = useState<ComponentRowWithKey[]>(() => {
+    const initial = initialValues?.components || EMPTY_RECIPE_FORM.components;
+    return initial.map((c) => ({
+      ...c,
+      _key: generateKey(),
+      _customMode: !!c.free_text_name,
+    }));
+  });
+
+  const [name, setName] = useState(initialValues?.name || "");
+  const [shelfLifeDays, setShelfLifeDays] = useState(initialValues?.shelf_life_days || "30");
+  const [maxRenewals, setMaxRenewals] = useState(initialValues?.max_renewals || "");
   const [error, setError] = useState<string | null>(null);
-  const [customModes, setCustomModes] = useState<boolean[]>(
-    () => (initialValues || EMPTY_RECIPE_FORM).components.map((c) => !!c.free_text_name)
-  );
-
-  // Stable keys for each component row (for animations)
-  const keyCounterRef = useRef(form.components.length);
-  const [rowKeys, setRowKeys] = useState<number[]>(() =>
-    form.components.map((_, i) => i)
-  );
-
-  // Track which rows are animating (index -> direction)
-  const [animatingRows, setAnimatingRows] = useState<Map<number, "up" | "down">>(new Map());
 
   // Collect all selected antibody IDs to filter from other dropdowns
   const selectedAntibodyIds = useMemo(() => {
     const ids = new Set<string>();
-    form.components.forEach((c) => {
-      if (c.antibody_id) ids.add(c.antibody_id);
+    rows.forEach((r) => {
+      if (r.antibody_id) ids.add(r.antibody_id);
     });
     return ids;
-  }, [form.components]);
+  }, [rows]);
 
-  const handleChange = (field: keyof CocktailRecipeFormValues, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+  // Drag-and-drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5, // 5px movement before drag starts
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setRows((items) => {
+        const oldIndex = items.findIndex((r) => r._key === active.id);
+        const newIndex = items.findIndex((r) => r._key === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
   };
 
-  const handleComponentChange = (index: number, field: keyof ComponentRow, value: string) => {
-    setForm((prev) => {
-      const updated = [...prev.components];
+  const handleFieldChange = (index: number, field: keyof ComponentRow, value: string) => {
+    setRows((prev) => {
+      const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
-      return { ...prev, components: updated };
+      return updated;
+    });
+  };
+
+  const toggleCustomMode = (index: number) => {
+    setRows((prev) => {
+      const updated = [...prev];
+      const row = updated[index];
+      if (row._customMode) {
+        // Switching from custom to antibody: clear free_text_name
+        updated[index] = { ...row, _customMode: false, free_text_name: "" };
+      } else {
+        // Switching from antibody to custom: clear antibody_id
+        updated[index] = { ...row, _customMode: true, antibody_id: "" };
+      }
+      return updated;
     });
   };
 
   const addComponent = () => {
-    keyCounterRef.current += 1;
-    setForm((prev) => ({
+    setRows((prev) => [
       ...prev,
-      components: [...prev.components, { antibody_id: "", volume_ul: "", free_text_name: "" }],
-    }));
-    setCustomModes((prev) => [...prev, false]);
-    setRowKeys((prev) => [...prev, keyCounterRef.current]);
+      { antibody_id: "", volume_ul: "", free_text_name: "", _key: generateKey(), _customMode: false },
+    ]);
   };
 
   const removeComponent = (index: number) => {
-    if (form.components.length <= 1) return;
-    setForm((prev) => ({
-      ...prev,
-      components: prev.components.filter((_, i) => i !== index),
-    }));
-    setCustomModes((prev) => prev.filter((_, i) => i !== index));
-    setRowKeys((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const moveComponent = (index: number, direction: "up" | "down") => {
-    const target = direction === "up" ? index - 1 : index + 1;
-    if (target < 0 || target >= form.components.length) return;
-
-    // Trigger animation
-    const newAnimating = new Map<number, "up" | "down">();
-    newAnimating.set(index, direction);
-    newAnimating.set(target, direction === "up" ? "down" : "up");
-    setAnimatingRows(newAnimating);
-
-    // After animation starts, swap the data
-    setTimeout(() => {
-      setForm((prev) => {
-        const updated = [...prev.components];
-        const temp = updated[index];
-        updated[index] = updated[target];
-        updated[target] = temp;
-        return { ...prev, components: updated };
-      });
-      setCustomModes((prev) => {
-        const updated = [...prev];
-        const temp = updated[index];
-        updated[index] = updated[target];
-        updated[target] = temp;
-        return updated;
-      });
-      setRowKeys((prev) => {
-        const updated = [...prev];
-        const temp = updated[index];
-        updated[index] = updated[target];
-        updated[target] = temp;
-        return updated;
-      });
-      // Clear animation state
-      setAnimatingRows(new Map());
-    }, 200);
-  };
-
-  const toggleCustomMode = (index: number) => {
-    setCustomModes((prev) => {
-      const updated = [...prev];
-      updated[index] = !updated[index];
-      return updated;
-    });
-    // Clear the opposite field when toggling
-    setForm((prev) => {
-      const updated = [...prev.components];
-      if (customModes[index]) {
-        // Switching from custom to antibody: clear free_text_name
-        updated[index] = { ...updated[index], free_text_name: "" };
-      } else {
-        // Switching from antibody to custom: clear antibody_id
-        updated[index] = { ...updated[index], antibody_id: "" };
-      }
-      return { ...prev, components: updated };
-    });
+    if (rows.length <= 1) return;
+    setRows((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!form.name.trim()) {
+    if (!name.trim()) {
       setError("Cocktail name is required.");
       return;
     }
-    if (!form.shelf_life_days || parseInt(form.shelf_life_days, 10) < 1) {
+    if (!shelfLifeDays || parseInt(shelfLifeDays, 10) < 1) {
       setError("Shelf life must be at least 1 day.");
       return;
     }
-    const hasEmptyComponent = form.components.some((c) => !c.antibody_id && !c.free_text_name.trim());
+    const hasEmptyComponent = rows.some((r) => !r.antibody_id && !r.free_text_name.trim());
     if (hasEmptyComponent) {
       setError("All components must have an antibody selected or a custom name entered.");
       return;
     }
 
+    // Build form values without internal keys
+    const formValues: CocktailRecipeFormValues = {
+      name: name.trim(),
+      shelf_life_days: shelfLifeDays,
+      max_renewals: maxRenewals,
+      components: rows.map((r) => ({
+        id: r.id,
+        antibody_id: r.antibody_id,
+        volume_ul: r.volume_ul,
+        free_text_name: r.free_text_name,
+      })),
+    };
+
     try {
-      await onSubmit(form);
+      await onSubmit(formValues);
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || "Failed to save cocktail.");
     }
@@ -183,6 +312,12 @@ export function CocktailRecipeForm({
   const antibodyLabel = (ab: Antibody) => {
     if (ab.name) return ab.name;
     return [ab.target, ab.fluorochrome].filter(Boolean).join(" - ") || "Unnamed";
+  };
+
+  const getAvailableAntibodies = (currentAntibodyId: string) => {
+    return antibodies.filter(
+      (ab) => ab.is_active && ab.designation !== "ivd" && (!selectedAntibodyIds.has(ab.id) || ab.id === currentAntibodyId)
+    );
   };
 
   return (
@@ -196,8 +331,8 @@ export function CocktailRecipeForm({
           <div className="form-group">
             <label>Cocktail Name</label>
             <input
-              value={form.name}
-              onChange={(e) => handleChange("name", e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               placeholder="e.g. T-Cell Panel"
               required
             />
@@ -209,8 +344,8 @@ export function CocktailRecipeForm({
               <input
                 type="number"
                 min="1"
-                value={form.shelf_life_days}
-                onChange={(e) => handleChange("shelf_life_days", e.target.value)}
+                value={shelfLifeDays}
+                onChange={(e) => setShelfLifeDays(e.target.value)}
                 required
               />
             </div>
@@ -219,8 +354,8 @@ export function CocktailRecipeForm({
               <input
                 type="number"
                 min="0"
-                value={form.max_renewals}
-                onChange={(e) => handleChange("max_renewals", e.target.value)}
+                value={maxRenewals}
+                onChange={(e) => setMaxRenewals(e.target.value)}
                 placeholder="Unlimited"
               />
             </div>
@@ -228,117 +363,32 @@ export function CocktailRecipeForm({
 
           <div className="form-group">
             <label>Components</label>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {form.components.map((comp, i) => {
-                const animDir = animatingRows.get(i);
-                const animClass = animDir === "up" ? "component-row-up" : animDir === "down" ? "component-row-down" : "";
-                // Filter: show only antibodies not selected elsewhere (or the current selection)
-                const availableAntibodies = antibodies.filter(
-                  (ab) => ab.is_active && ab.designation !== "ivd" && (!selectedAntibodyIds.has(ab.id) || ab.id === comp.antibody_id)
-                );
-                return (
-                  <div
-                    key={rowKeys[i]}
-                    className={`component-row ${animClass}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      padding: "0.5rem",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-sm)",
-                      background: "var(--bg)",
-                      transition: "transform 0.2s ease-out, opacity 0.2s ease-out",
-                    }}
-                  >
-                    <span
-                      style={{
-                        minWidth: "1.5rem",
-                        textAlign: "center",
-                        fontWeight: 600,
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      {i + 1}
-                    </span>
-                    {customModes[i] ? (
-                      <input
-                        type="text"
-                        placeholder="Custom component name..."
-                        value={comp.free_text_name}
-                        onChange={(e) => handleComponentChange(i, "free_text_name", e.target.value)}
-                        style={{ flex: 2 }}
-                        required
-                      />
-                    ) : (
-                      <select
-                        value={comp.antibody_id}
-                        onChange={(e) => handleComponentChange(i, "antibody_id", e.target.value)}
-                        style={{ flex: 2 }}
-                        required
-                      >
-                        <option value="">Select antibody...</option>
-                        {availableAntibodies.map((ab) => (
-                          <option key={ab.id} value={ab.id}>
-                            {antibodyLabel(ab)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <button
-                      type="button"
-                      className={`btn-sm ${customModes[i] ? "btn-green" : "btn-secondary"}`}
-                      onClick={() => toggleCustomMode(i)}
-                      title={customModes[i] ? "Switch to antibody selection" : "Switch to custom text"}
-                      style={{ padding: "0.15rem 0.4rem", fontSize: "0.75rem", whiteSpace: "nowrap" }}
-                    >
-                      {customModes[i] ? "Ab" : "Custom"}
-                    </button>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      placeholder="uL"
-                      value={comp.volume_ul}
-                      onChange={(e) => handleComponentChange(i, "volume_ul", e.target.value)}
-                      style={{ flex: 0.7, minWidth: "4rem" }}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={rows.map((r) => r._key)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="component-list">
+                  {rows.map((row, i) => (
+                    <SortableRow
+                      key={row._key}
+                      row={row}
+                      index={i}
+                      availableAntibodies={getAvailableAntibodies(row.antibody_id)}
+                      onFieldChange={(field, value) => handleFieldChange(i, field, value)}
+                      onToggleCustomMode={() => toggleCustomMode(i)}
+                      onRemove={() => removeComponent(i)}
+                      canRemove={rows.length > 1}
+                      antibodyLabel={antibodyLabel}
                     />
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <button
-                        type="button"
-                        className="btn-sm btn-secondary"
-                        onClick={() => moveComponent(i, "up")}
-                        disabled={i === 0 || animatingRows.size > 0}
-                        aria-label="Move up"
-                        style={{ padding: "0 0.3rem", lineHeight: 1 }}
-                      >
-                        &uarr;
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-sm btn-secondary"
-                        onClick={() => moveComponent(i, "down")}
-                        disabled={i === form.components.length - 1 || animatingRows.size > 0}
-                        aria-label="Move down"
-                        style={{ padding: "0 0.3rem", lineHeight: 1 }}
-                      >
-                        &darr;
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn-sm btn-danger"
-                      onClick={() => removeComponent(i)}
-                      disabled={form.components.length <= 1}
-                      aria-label="Remove component"
-                      style={{ padding: "0 0.4rem" }}
-                    >
-                      X
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
             <button
               type="button"
               className="btn-sm btn-secondary"
