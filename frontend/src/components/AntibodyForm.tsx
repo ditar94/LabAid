@@ -17,7 +17,7 @@ export const DEFAULT_FLUORO_COLOR = "#9ca3af";
 // ── Form values type ─────────────────────────────────────────────────────────
 
 export interface AntibodyFormValues {
-  designation: Designation;
+  designation: Designation | "";  // Empty string = "Select" placeholder
   target: string;
   fluorochrome_choice: string;
   new_fluorochrome: string;
@@ -35,7 +35,7 @@ export interface AntibodyFormValues {
 
 /** Empty default form values for initializing state */
 export const EMPTY_AB_FORM: AntibodyFormValues = {
-  designation: "ruo",
+  designation: "",  // Empty = require explicit selection
   target: "",
   fluorochrome_choice: "",
   new_fluorochrome: "",
@@ -122,8 +122,10 @@ export default function AntibodyForm({
       {field("Designation",
         <select
           value={values.designation}
-          onChange={(e) => set("designation", e.target.value)}
+          onChange={(e) => set("designation", e.target.value as Designation | "")}
+          required
         >
+          <option value="">Select Designation</option>
           <option value="ruo">RUO</option>
           <option value="asr">ASR</option>
           <option value="ivd">IVD</option>

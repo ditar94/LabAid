@@ -309,7 +309,7 @@ export default function ScanSearchPage() {
                     );
 
                     // Set designation from barcode if available
-                    const designation = enrich.suggested_designation as Designation || "ruo";
+                    const designation = (enrich.suggested_designation as Designation) || "";
 
                     setNewAbForm((prev) => ({
                       ...prev,
@@ -336,7 +336,7 @@ export default function ScanSearchPage() {
                     ? fluorochromes.find((f) => f.name.toUpperCase() === enrichFluoro.toUpperCase())
                     : null;
 
-                  const designation = enrich.suggested_designation as Designation || "ruo";
+                  const designation = (enrich.suggested_designation as Designation) || "";
 
                   setNewAbForm((prev) => ({
                     ...prev,
