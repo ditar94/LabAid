@@ -21,6 +21,7 @@ from app.schemas.schemas import (
 from app.services.audit import log_audit, snapshot_antibody
 from app.services.barcode_parser import normalize_for_matching, normalize_target
 from app.services.fluorochrome_catalog import normalize_fluorochrome
+from app.services.vendor_catalog_names import normalize_vendor
 
 router = APIRouter(prefix="/api/antibodies", tags=["antibodies"])
 _DEFAULT_FLUORO_COLOR = "#9ca3af"
@@ -62,9 +63,10 @@ def create_antibody(
     if current_user.role == UserRole.SUPER_ADMIN and lab_id:
         target_lab_id = lab_id
 
-    # Normalize display values: targets remove spaces/hyphens, fluorochromes → canonical names
+    # Normalize display values: targets remove spaces/hyphens, fluorochromes → canonical names, vendors → canonical names
     target_display = normalize_target(body.target)
     fluoro_display = normalize_fluorochrome(body.fluorochrome)
+    vendor_display = normalize_vendor(body.vendor)
 
     if fluoro_display:
         existing_fluoro = (
@@ -82,12 +84,13 @@ def create_antibody(
                 )
             )
 
-    ab_data = body.model_dump(exclude={"target", "fluorochrome", "components"})
+    ab_data = body.model_dump(exclude={"target", "fluorochrome", "vendor", "components"})
     ab = Antibody(
         lab_id=target_lab_id,
         **ab_data,
         target=target_display,
         fluorochrome=fluoro_display,
+        vendor=vendor_display,
         # Normalized columns for cross-lab matching
         target_normalized=normalize_for_matching(target_display),
         fluorochrome_normalized=normalize_for_matching(fluoro_display),
@@ -335,6 +338,10 @@ def update_antibody(
     if "target" in updates and updates["target"]:
         updates["target"] = normalize_target(updates["target"])
 
+    # Normalize vendor if being updated
+    if "vendor" in updates and updates["vendor"]:
+        updates["vendor"] = normalize_vendor(updates["vendor"])
+
     # Handle fluorochrome change — normalize to canonical and ensure it exists in the lab's list
     if "fluorochrome" in updates and updates["fluorochrome"]:
         fluoro_name = normalize_fluorochrome(updates["fluorochrome"])
@@ -506,6 +513,36 @@ def archive_antibody(
     db.commit()
     db.refresh(ab)
     return ab
+
+
+@router.get("/vendor/suggest")
+def suggest_vendor(
+    q: str = "",
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Suggest canonical vendor names as user types.
+
+    Returns:
+        - suggestion: Canonical vendor name if input is close to a known vendor
+        - canonical: Normalized version of input (what would be saved)
+        - is_known: True if input matches a known vendor exactly
+    """
+    from app.services.vendor_catalog_names import get_vendor_suggestion, is_known_vendor
+
+    if not q.strip():
+        return {"suggestion": None, "canonical": None, "is_known": False}
+
+    input_val = q.strip()
+    canonical = normalize_vendor(input_val)
+    is_known = is_known_vendor(input_val)
+    suggestion = get_vendor_suggestion(input_val) if not is_known else None
+
+    return {
+        "suggestion": suggestion,
+        "canonical": canonical,
+        "is_known": is_known,
+    }
 
 
 @router.get("/{antibody_id}", response_model=AntibodyOut)

@@ -94,6 +94,26 @@ export default function ScanSearchPage() {
   const [enrichResult, setEnrichResult] = useState<ScanEnrichResult | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<GUDIDDevice | null>(null);
 
+  // ── Real-time vendor suggestion ───────────────────────────────────
+  const [dynamicVendorSuggestion, setDynamicVendorSuggestion] = useState<string | null>(null);
+
+  // Debounced vendor suggestion lookup
+  useEffect(() => {
+    if (!newAbForm.vendor || newAbForm.vendor.length < 2) {
+      setDynamicVendorSuggestion(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get("/antibodies/vendor/suggest", { params: { q: newAbForm.vendor } });
+        setDynamicVendorSuggestion(res.data.suggestion);
+      } catch {
+        setDynamicVendorSuggestion(null);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [newAbForm.vendor]);
+
   // ── Search state ────────────────────────────────────────────────────
   const [searchResults, setSearchResults] = useState<AntibodySearchResult[]>([]);
   const [selectedSearchResult, setSelectedSearchResult] = useState<AntibodySearchResult | null>(null);
@@ -853,7 +873,7 @@ export default function ScanSearchPage() {
                 fluorochromes={fluorochromes}
                 layout="stacked"
                 fluorochromeVariations={enrichResult?.fluorochrome_variations}
-                vendorSuggestion={enrichResult?.vendor_suggestion}
+                vendorSuggestion={dynamicVendorSuggestion || enrichResult?.vendor_suggestion}
               />
             )}
             {/* ── Lot fields (shared LotRegistrationForm component) ── */}
