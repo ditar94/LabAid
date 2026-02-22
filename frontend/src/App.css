@@ -7450,3 +7450,49 @@ textarea:focus-visible {
     transition: none;
   }
 }
+
+/* ── Cocktail Form Mobile ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .component-row {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.6rem;
+  }
+
+  /* Keep drag handle and row number on first line */
+  .component-row .drag-handle {
+    order: 0;
+  }
+
+  .component-row-number {
+    order: 1;
+    min-width: auto;
+    flex: 0 0 auto;
+  }
+
+  /* Remove button moves to end of first line */
+  .component-row > button.btn-danger {
+    order: 2;
+    margin-left: auto;
+  }
+
+  /* Main controls on second line, full width */
+  .component-row > select,
+  .component-row > input[type="text"] {
+    order: 3;
+    flex: 1 1 100% !important;
+    min-width: 0;
+  }
+
+  /* Custom toggle and volume on third line */
+  .component-row > button.btn-sm:not(.btn-danger) {
+    order: 4;
+    flex: 0 0 auto;
+  }
+
+  .component-row > input[type="number"] {
+    order: 5;
+    flex: 1 1 auto !important;
+    min-width: 60px;
+  }
+}
