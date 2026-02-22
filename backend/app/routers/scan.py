@@ -36,6 +36,7 @@ from app.services.vendor_catalog_service import get_fluorochrome_variations, loo
 from app.services.vendor_catalog_names import get_vendor_suggestion, normalize_vendor
 from app.services.product_name_parser import parse_product_fields
 from app.services.sysmex_catalog import lookup_sysmex_catalog
+from app.services.fluorochrome_catalog import normalize_fluorochrome
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 
@@ -460,7 +461,7 @@ async def scan_enrich(
                     suggested_designation=sysmex["designation"],
                     vendor=normalize_vendor(sysmex["vendor"]),
                     target=sysmex_product.target,
-                    fluorochrome=sysmex_product.fluorochrome,
+                    fluorochrome=normalize_fluorochrome(sysmex_product.fluorochrome),
                     clone=sysmex_product.clone,
                     catalog_use_count=0,
                     catalog_conflict_count=0,
