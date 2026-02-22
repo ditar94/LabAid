@@ -568,6 +568,9 @@ class ScanEnrichResult(BaseModel):
     # Variations entered by other labs (for suggestions UI)
     fluorochrome_variations: list[str] = []
 
+    # Vendor suggestion (fuzzy match when vendor doesn't match exactly)
+    vendor_suggestion: str | None = None
+
 
 class ReturnToStorageRequest(BaseModel):
     cell_id: UUID

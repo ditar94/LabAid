@@ -3850,6 +3850,33 @@ h2 .temp-badge {
   border-color: var(--primary-300);
 }
 
+/* ── Vendor Suggestion ("Did you mean X?") ────────────────────────────── */
+
+.vendor-suggestion {
+  margin-top: var(--space-xs);
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.vendor-suggestion-link {
+  display: inline;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--primary-600);
+  font-weight: 600;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.vendor-suggestion-link:hover {
+  color: var(--primary-700);
+  text-decoration-style: solid;
+}
+
 @media (prefers-color-scheme: dark) {
   .fluoro-variations {
     background: var(--surface-800);
@@ -3864,6 +3891,14 @@ h2 .temp-badge {
   .fluoro-variation-chip:hover {
     background: var(--primary-800);
     border-color: var(--primary-600);
+  }
+
+  .vendor-suggestion-link {
+    color: var(--primary-400);
+  }
+
+  .vendor-suggestion-link:hover {
+    color: var(--primary-300);
   }
 }
 

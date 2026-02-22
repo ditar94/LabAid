@@ -246,6 +246,9 @@ export interface ScanEnrichResult {
 
   // Variations entered by other labs (for suggestions UI)
   fluorochrome_variations?: string[];
+
+  // Vendor suggestion (fuzzy match when vendor doesn't match exactly)
+  vendor_suggestion?: string;
 }
 
 export type ScanIntent = "open" | "receive" | "deplete" | "store_open" | "view_storage" | "move" | null;

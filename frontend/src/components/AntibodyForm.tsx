@@ -67,6 +67,8 @@ interface AntibodyFormProps {
   showThresholds?: boolean;
   /** Fluorochrome variations from community catalog (for suggestions) */
   fluorochromeVariations?: string[];
+  /** Vendor suggestion from fuzzy matching (shows "Did you mean X?") */
+  vendorSuggestion?: string;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -78,6 +80,7 @@ export default function AntibodyForm({
   layout = "stacked",
   showThresholds = true,
   fluorochromeVariations = [],
+  vendorSuggestion,
 }: AntibodyFormProps) {
   const isInline = layout === "inline";
   const isIVD = values.designation === "ivd";
@@ -243,11 +246,27 @@ export default function AntibodyForm({
       {/* ── Common fields (all designations) ── */}
       {row(
         field("Vendor",
-          <input
-            placeholder="Vendor"
-            value={values.vendor}
-            onChange={(e) => set("vendor", e.target.value)}
-          />,
+          <>
+            <input
+              placeholder="Vendor"
+              value={values.vendor}
+              onChange={(e) => set("vendor", e.target.value)}
+            />
+            {/* Vendor suggestion from fuzzy matching */}
+            {vendorSuggestion && values.vendor && vendorSuggestion !== values.vendor && (
+              <div className="vendor-suggestion">
+                Did you mean{" "}
+                <button
+                  type="button"
+                  className="vendor-suggestion-link"
+                  onClick={() => set("vendor", vendorSuggestion)}
+                >
+                  {vendorSuggestion}
+                </button>
+                ?
+              </div>
+            )}
+          </>,
           true
         ),
         field("Catalog #",
