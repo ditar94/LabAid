@@ -4658,9 +4658,20 @@ h2 .temp-badge {
 
 .modal-overlay {
   position: fixed;
-  inset: 0; /* Fill entire viewport including safe areas */
+  /* Explicit positioning to ensure full viewport coverage including safe areas */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Fallback for browsers that don't support env() */
+  width: 100%;
+  height: 100%;
+  /* Use dvh for proper mobile viewport handling */
+  min-height: 100vh;
+  min-height: 100dvh;
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -18,6 +18,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import type { Antibody } from "../api/types";
+import { Modal } from "./Modal";
 
 export interface CocktailRecipeFormValues {
   name: string;
@@ -319,7 +320,7 @@ export function CocktailRecipeForm({
   };
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title}>
+    <Modal onClose={onCancel} ariaLabel={title}>
       <div className="modal-content">
         <h2>{title}</h2>
         <form onSubmit={handleSubmit} className="cocktail-form">
@@ -405,6 +406,6 @@ export function CocktailRecipeForm({
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   );
 }

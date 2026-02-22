@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../api/client";
 import type { CocktailLotDocument } from "../api/types";
+import { Modal } from "./Modal";
 
 interface Props {
   cocktailLotId: string;
@@ -197,7 +198,7 @@ export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onC
   );
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Cocktail Lot Documents">
+    <Modal onClose={onClose} ariaLabel="Cocktail Lot Documents">
       <div className="modal-content">
         <h2>Documents</h2>
 
@@ -267,6 +268,6 @@ export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onC
           Close
         </button>
       </div>
-    </div>
+    </Modal>
   );
 }

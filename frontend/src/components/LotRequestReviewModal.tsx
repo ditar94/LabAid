@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import api from "../api/client";
 import type { LotRequest, StorageUnit, Fluorochrome, Designation } from "../api/types";
 import DatePicker from "./DatePicker";
+import { Modal } from "./Modal";
 
 interface Props {
   request: LotRequest;
@@ -115,7 +116,7 @@ export default function LotRequestReviewModal({ request, onClose, onSuccess }: P
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <Modal onClose={onClose} ariaLabel="Review Request">
       <div className="modal-content lot-request-modal" onClick={(e) => e.stopPropagation()}>
         <h2>Review Request</h2>
 
@@ -292,6 +293,6 @@ export default function LotRequestReviewModal({ request, onClose, onSuccess }: P
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

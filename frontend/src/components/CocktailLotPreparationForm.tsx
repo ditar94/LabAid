@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import api from "../api/client";
 import type { CocktailRecipe, Lot } from "../api/types";
+import { Modal } from "./Modal";
 
 interface SourceSelection {
   component_id: string;
@@ -191,7 +192,7 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
   };
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={`Prepare lot for ${recipe.name}`}>
+    <Modal onClose={onCancel} ariaLabel={`Prepare lot for ${recipe.name}`}>
       <div className="modal-content">
         <h2>Prepare Lot: {recipe.name}</h2>
         <p className="page-desc">
@@ -351,6 +352,6 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   );
 }
