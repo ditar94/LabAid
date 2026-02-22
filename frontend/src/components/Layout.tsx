@@ -215,23 +215,23 @@ export default function Layout() {
           </div>
         )}
         <div className="nav-links" ref={navLinksRef}>
-          <NavLink to="/dashboard" onClick={handleNavClick} onMouseEnter={prefetchDashboard} className="hide-on-mobile-nav">
+          <NavLink to="/dashboard" onClick={handleNavClick} onMouseEnter={prefetchDashboard}>
             <LayoutDashboard className="nav-icon" />
             Dashboard
             {pendingRequestCount > 0 && <span className="nav-badge">{pendingRequestCount}</span>}
           </NavLink>
           {hasLabContext && (
             <>
-              <NavLink to="/scan-search" onClick={handleNavClick} className="hide-on-mobile-nav">
+              <NavLink to="/scan-search" onClick={handleNavClick}>
                 <ScanLine className="nav-icon" />
                 Scan / Search
               </NavLink>
-              <NavLink to="/inventory" onClick={handleNavClick} onMouseEnter={prefetchDashboard} className="hide-on-mobile-nav">
+              <NavLink to="/inventory" onClick={handleNavClick} onMouseEnter={prefetchDashboard}>
                 <Package className="nav-icon" />
                 Inventory
               </NavLink>
               {storageEnabled && (
-                <NavLink to="/storage" onClick={handleNavClick} className="hide-on-mobile-nav">
+                <NavLink to="/storage" onClick={handleNavClick}>
                   <Warehouse className="nav-icon" />
                   Storage
                 </NavLink>
@@ -246,7 +246,7 @@ export default function Layout() {
           )}
 
           <div className="nav-section-label">Review</div>
-          <NavLink to="/audit" onClick={handleNavClick} className="hide-on-mobile-nav">
+          <NavLink to="/audit" onClick={handleNavClick}>
             <ClipboardList className="nav-icon" />
             Audit Log
           </NavLink>
@@ -267,19 +267,19 @@ export default function Layout() {
                 </NavLink>
               )}
               {isSuperAdmin && (
-                <NavLink to="/labs" onClick={handleNavClick} className={!hasLabContext ? "hide-on-mobile-nav" : undefined}>
+                <NavLink to="/labs" onClick={handleNavClick}>
                   <Building2 className="nav-icon" />
                   Labs
                 </NavLink>
               )}
               {isSuperAdmin && (
-                <NavLink to="/global-search" onClick={handleNavClick} className={!hasLabContext ? "hide-on-mobile-nav" : undefined}>
+                <NavLink to="/global-search" onClick={handleNavClick}>
                   <Search className="nav-icon" />
                   Global Search
                 </NavLink>
               )}
               {isSupervisor && (
-                <NavLink to="/tickets" onClick={handleNavClick} className={!hasLabContext ? "hide-on-mobile-nav" : undefined}>
+                <NavLink to="/tickets" onClick={handleNavClick}>
                   <LifeBuoy className="nav-icon" />
                   Support
                 </NavLink>
@@ -385,49 +385,6 @@ export default function Layout() {
         )}
         <Outlet />
       </main>
-      <nav className="bottom-nav">
-        <NavLink to="/dashboard" end className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-          <LayoutDashboard className="nav-icon" />
-          <span>Dashboard</span>
-        </NavLink>
-        {hasLabContext ? (
-          <>
-            <NavLink to="/scan-search" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-              <ScanLine className="nav-icon" />
-              <span>Scan</span>
-            </NavLink>
-            <NavLink to="/inventory" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-              <Package className="nav-icon" />
-              <span>Inventory</span>
-            </NavLink>
-            {storageEnabled && (
-              <NavLink to="/storage" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-                <Warehouse className="nav-icon" />
-                <span>Storage</span>
-              </NavLink>
-            )}
-          </>
-        ) : (
-          <>
-            <NavLink to="/labs" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-              <Building2 className="nav-icon" />
-              <span>Labs</span>
-            </NavLink>
-            <NavLink to="/global-search" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-              <Search className="nav-icon" />
-              <span>Search</span>
-            </NavLink>
-            <NavLink to="/tickets" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-              <LifeBuoy className="nav-icon" />
-              <span>Support</span>
-            </NavLink>
-          </>
-        )}
-        <NavLink to="/audit" className={({ isActive }) => `bottom-nav-item${isActive ? " active" : ""}`}>
-          <ClipboardList className="nav-icon" />
-          <span>Audit</span>
-        </NavLink>
-      </nav>
     </div>
   );
 }

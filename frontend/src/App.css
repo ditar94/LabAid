@@ -6239,11 +6239,6 @@ textarea:focus-visible {
   }
 }
 
-/* ── Bottom Navigation (hidden on desktop) ──────────────────────────── */
-
-.bottom-nav {
-  display: none;
-}
 
 /* ── Tablet Responsive ───────────────────────────────────────────────── */
 
@@ -6678,57 +6673,6 @@ textarea:focus-visible {
     max-height: 85vh;
     padding: var(--space-lg);
     margin: var(--space-sm);
-  }
-
-  /* ── Bottom Navigation (mobile) ─────────────────────────────────────── */
-  .bottom-nav {
-    display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 56px;
-    background: var(--sidebar-bg);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    z-index: 1000;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .bottom-nav-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    color: var(--sidebar-text);
-    text-decoration: none;
-    font-size: 10px;
-    font-weight: 500;
-    transition: color var(--duration-fast) ease;
-  }
-
-  .bottom-nav-item .nav-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .bottom-nav-item.active {
-    color: var(--sidebar-active);
-  }
-
-  .bottom-nav-item:active {
-    opacity: 0.7;
-  }
-
-  /* Hide nav items that are duplicated in bottom nav */
-  .nav-links .hide-on-mobile-nav {
-    display: none;
-  }
-
-  /* Adjust main content for bottom nav */
-  .main-content {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom) + var(--space-lg));
   }
 }
 
