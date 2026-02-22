@@ -279,18 +279,21 @@ export default function ScanSearchPage() {
                 // Get target/fluorochrome from enrichment (prefer normalized, fallback to raw)
                 const enrichTarget = enrich.target_normalized || enrich.target;
                 const enrichFluoro = enrich.fluorochrome_normalized || enrich.fluorochrome;
-                const isMultitest = enrich.suggested_designation === "IVD" && enrich.product_name && !enrichTarget;
+                // IVD detection: designation is "ivd" (case-insensitive) with product_name but no target
+                const isIVDProduct = enrich.suggested_designation?.toLowerCase() === "ivd" && enrich.product_name && !enrichTarget;
 
-                // ── Handle Multitest/IVD products ──
-                if (isMultitest) {
+                // ── Handle IVD products (multitest or single IVD) ──
+                if (isIVDProduct) {
                   setRegForm((prev) => ({ ...prev, antibody_id: NEW_ANTIBODY_VALUE }));
                   setNewAbForm((prev) => ({
                     ...prev,
                     designation: "ivd",
                     name: enrich.product_name || "",
                     short_code: "",
+                    vendor: enrich.vendor || prev.vendor,
+                    catalog_number: enrich.catalog_number || prev.catalog_number,
                   }));
-                  addToast("Multitest/IVD product detected. Enter short code to register.", "info");
+                  addToast("IVD product detected. Enter short code to register.", "info");
                 }
                 // ── Handle single-target products with enriched data ──
                 else if (enrichTarget && enrichFluoro) {
@@ -321,6 +324,8 @@ export default function ScanSearchPage() {
                       new_fluorochrome: existingFluoro ? "" : enrichFluoro,
                       clone: enrich.clone || prev.clone,
                       name: enrich.product_name || prev.name,
+                      vendor: enrich.vendor || prev.vendor,
+                      catalog_number: enrich.catalog_number || prev.catalog_number,
                     }));
                     addToast(
                       enrich.from_shared_catalog
@@ -348,6 +353,8 @@ export default function ScanSearchPage() {
                     new_fluorochrome: existingFluoro ? "" : enrichFluoro || prev.new_fluorochrome,
                     clone: enrich.clone || prev.clone,
                     name: enrich.product_name || prev.name,
+                    vendor: enrich.vendor || prev.vendor,
+                    catalog_number: enrich.catalog_number || prev.catalog_number,
                   }));
                   addToast("Partial data found. Complete the missing fields.", "info");
                 }
@@ -356,6 +363,8 @@ export default function ScanSearchPage() {
                   setNewAbForm((prev) => ({
                     ...prev,
                     designation: enrich.suggested_designation as Designation,
+                    vendor: enrich.vendor || prev.vendor,
+                    catalog_number: enrich.catalog_number || prev.catalog_number,
                   }));
                 }
               }

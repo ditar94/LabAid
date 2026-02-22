@@ -423,13 +423,17 @@ async def scan_enrich(
             if catalog_entry.fluorochrome_normalized:
                 fluoro_variations = get_fluorochrome_variations(db, catalog_entry.fluorochrome_normalized)
 
+            # Use catalog entry's designation if set, otherwise use barcode's designation
+            # (IVD products in catalog should return "ivd" designation)
+            designation = catalog_entry.designation or sysmex["designation"]
+
             return ScanEnrichResult(
                 parsed=True,
                 format="sysmex",
                 catalog_number=sysmex["catalog_number"],
                 lot_number=sysmex["lot_number"],
                 expiration_date=sysmex["expiration_date"],
-                suggested_designation=sysmex["designation"],
+                suggested_designation=designation,
                 vendor=catalog_entry.vendor,
                 # RUO/ASR fields
                 target=catalog_entry.target,
