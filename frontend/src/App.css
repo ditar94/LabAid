@@ -4661,7 +4661,16 @@ h2 .temp-badge {
 
 .modal-overlay {
   position: fixed;
-  inset: 0;
+  /* Use negative margins to counteract body's safe area padding */
+  top: calc(-1 * env(safe-area-inset-top));
+  left: calc(-1 * env(safe-area-inset-left));
+  right: calc(-1 * env(safe-area-inset-right));
+  bottom: 0;
+  /* Extend background fully into safe areas */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
   display: flex;
@@ -4671,8 +4680,6 @@ h2 .temp-badge {
   animation: fadeIn var(--duration-fast) var(--ease-out);
   overflow-y: auto;
   overscroll-behavior: contain;
-  /* Extend into safe areas - the blur/overlay should fill entire screen */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 .modal-content {
@@ -4681,11 +4688,13 @@ h2 .temp-badge {
   padding: var(--space-xl) var(--space-2xl);
   max-width: 500px;
   width: 90%;
-  max-height: calc(80vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: 80dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
   box-shadow: var(--shadow-2xl);
   animation: scaleIn var(--duration-normal) var(--ease-out);
+  /* Ensure modal doesn't get clipped by safe areas */
+  margin: var(--space-lg);
 }
 
 .modal-content h2 {
@@ -6523,13 +6532,25 @@ textarea:focus-visible {
   }
 
   /* ── Modals ─────────────────────────────────────────────────────── */
+  .modal-overlay {
+    /* Reset positioning for mobile - fill entire screen */
+    top: calc(-1 * env(safe-area-inset-top));
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: env(safe-area-inset-top) var(--space-md) env(safe-area-inset-bottom) var(--space-md);
+    align-items: flex-start;
+    padding-top: calc(env(safe-area-inset-top) + var(--space-lg));
+  }
+
   .modal-content {
-    width: calc(100vw - 2 * var(--space-md));
-    max-width: calc(100vw - 2 * var(--space-md));
-    max-height: 90vh;
-    margin: var(--space-md);
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2 * var(--space-lg));
+    margin: 0;
     padding: var(--space-lg);
     overflow-x: hidden;
+    border-radius: var(--radius-lg);
   }
 
   .modal-content form {
@@ -7441,7 +7462,7 @@ textarea:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg);
-  touch-action: none;
+  /* Don't use touch-action: none here - it prevents scrolling the form */
 }
 
 .component-row-dragging {
