@@ -10,12 +10,21 @@
 
 ## Local Development
 
+**Ensure Docker Desktop is running**, then:
+
 ```bash
 # Start all services (backend, frontend, PostgreSQL, MinIO)
 docker compose up
 
 # Backend runs at http://localhost:8000
 # Frontend runs at http://localhost:5173
+```
+
+If the backend fails to start (e.g., missing Python packages), rebuild the images:
+
+```bash
+docker compose build
+docker compose up
 ```
 
 ### Environment Files
@@ -91,6 +100,43 @@ PRs still run `ci.yml` (tests + typecheck) as a safety check.
 | Production | labaid.io | labaid-backend | `labaid-db-prod` | `labaid` | resend | 3 |
 
 Beta and staging share the same database (`labaid_beta`) on `labaid-db-nonprod`. Production has its own isolated instance (`labaid-db-prod`). See [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for full security architecture.
+
+### Local vs Cloud Databases
+
+Local Docker databases are **not** mirrors of cloud data — they're separate, empty databases with the same schema.
+
+| Environment | Database | Data |
+|-------------|----------|------|
+| Local Docker | `labaid` on localhost:5433 | Your local test data only |
+| Beta/Staging | `labaid_beta` on Cloud SQL | Shared test data |
+| Production | `labaid` on Cloud SQL | Real customer data |
+
+**Schema stays in sync via Alembic migrations:**
+- Create migrations locally: `cd backend && alembic revision --autogenerate -m "description"`
+- Test locally: migrations run automatically when backend starts
+- Push to beta: Cloud Run runs `alembic upgrade head`, applying your migrations to the cloud DB
+- The *schema* syncs across environments, but *data* remains separate
+
+### Destructive Migration Protection
+
+CI automatically blocks migrations that could cause **data loss**:
+- `DROP COLUMN` / `DROP TABLE` / `DROP INDEX`
+- `RENAME COLUMN` (breaks code referencing old name)
+- `ALTER COLUMN ... TYPE` (can fail or truncate data)
+- `TRUNCATE`
+
+If you intentionally need a destructive migration, add this comment to the migration file:
+
+```python
+# DESTRUCTIVE: acknowledged - catalog_number column unused since v2024.06, data migrated to new_field
+def upgrade():
+    op.drop_column('antibodies', 'catalog_number')
+```
+
+**Best practice for removing columns:**
+1. First deploy: Remove all code references to the column
+2. Verify on beta/staging that nothing breaks
+3. Second deploy: Add migration with `# DESTRUCTIVE: acknowledged` to drop the column
 
 ## Infrastructure Rules
 

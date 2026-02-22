@@ -23,6 +23,20 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -35,10 +49,113 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r backend/requirements.txt
 
+      - name: Check Python dependencies for vulnerabilities
+        run: |
+          pip install pip-audit
+          echo "Scanning Python dependencies for vulnerabilities..."
+          pip-audit --strict --vulnerability-service osv || {
+            echo "::warning::Python dependency vulnerabilities found. Review and update requirements.txt"
+            # Don't fail on vulnerabilities without fixes available
+            pip-audit --vulnerability-service osv
+          }
+
+      - name: Check for destructive migrations
+        run: |
+          cd backend/alembic/versions
+
+          # Dangerous SQL patterns that could cause data loss
+          DANGEROUS_PATTERNS="DROP COLUMN|DROP TABLE|DROP INDEX|ALTER COLUMN.*TYPE|RENAME COLUMN|TRUNCATE"
+
+          # Check all migration files
+          FOUND_DANGEROUS=""
+          for file in *.py; do
+            [ -f "$file" ] || continue
+
+            # Look for dangerous operations (case-insensitive)
+            MATCHES=$(grep -iE "$DANGEROUS_PATTERNS" "$file" 2>/dev/null | grep -v "^#" | grep -v "# DESTRUCTIVE:" || true)
+
+            if [ -n "$MATCHES" ]; then
+              # Check if there's an acknowledgment comment
+              if ! grep -q "# DESTRUCTIVE: acknowledged" "$file"; then
+                FOUND_DANGEROUS="$FOUND_DANGEROUS
+
+          FILE: $file
+          $MATCHES"
+              fi
+            fi
+          done
+
+          if [ -n "$FOUND_DANGEROUS" ]; then
+            echo ""
+            echo "::error::Destructive migration operations detected!"
+            echo "$FOUND_DANGEROUS"
+            echo ""
+            echo "These operations can cause DATA LOSS in production."
+            echo ""
+            echo "If intentional, add this comment to the migration file:"
+            echo "  # DESTRUCTIVE: acknowledged - [reason for data loss]"
+            echo ""
+            exit 1
+          fi
+
+          echo "No unacknowledged destructive migrations found."
+
+      - name: Validate migrations against Postgres
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          SECRET_KEY: test-secret-key
+        run: |
+          cd backend
+          echo "Running alembic migrations..."
+          alembic upgrade head
+
+      - name: Check for missing migrations
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          SECRET_KEY: test-secret-key
+        run: |
+          cd backend
+          echo "Checking if models match migrations..."
+          if ! alembic check 2>&1 | grep -q "No new upgrade operations detected"; then
+            echo ""
+            echo "::error::Models have changed but no migration was created!"
+            echo ""
+            echo "Run locally:"
+            echo "  cd backend && alembic revision --autogenerate -m 'description'"
+            echo ""
+            echo "Then commit the new migration file and push again."
+            exit 1
+          fi
+          echo "Models and migrations are in sync."
+
+      - name: Test migration rollback
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          SECRET_KEY: test-secret-key
+        run: |
+          cd backend
+          echo "Testing migration downgrade..."
+          alembic downgrade -1 || { echo "::error::Migration downgrade failed! Ensure downgrade() is implemented."; exit 1; }
+          echo "Testing migration upgrade again..."
+          alembic upgrade head || { echo "::error::Migration upgrade after downgrade failed!"; exit 1; }
+          echo "Migration rollback test passed."
+
+      - name: Verify models load correctly
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          SECRET_KEY: test-secret-key
+        run: |
+          cd backend
+          python -c "
+          from app.models import *
+          from app.main import app
+          print('All models and routes loaded successfully')
+          "
+
       - name: Run backend tests
         env:
           SECRET_KEY: test-secret-key
-          DATABASE_URL: "sqlite://"
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
         run: python -m pytest backend/tests/ -v
 
       - uses: actions/setup-node@v4
@@ -49,6 +166,14 @@ jobs:
 
       - name: Install Node dependencies
         run: cd frontend && npm ci
+
+      - name: Check Node dependencies for vulnerabilities
+        run: |
+          cd frontend
+          echo "Scanning Node dependencies for vulnerabilities..."
+          npm audit --audit-level=high || {
+            echo "::warning::Node dependency vulnerabilities found. Run 'npm audit fix' to resolve."
+          }
 
       - name: TypeScript check
         run: cd frontend && npx tsc --noEmit -p tsconfig.app.json
