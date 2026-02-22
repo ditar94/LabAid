@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Canonical Vendor Name Catalog
 
@@ -5,11 +7,13 @@ Maps vendor name variations to canonical names for consistent storage.
 Covers major flow cytometry reagent manufacturers.
 
 Usage:
-    from app.services.vendor_catalog_names import normalize_vendor
+    from app.services.vendor_catalog_names import normalize_vendor, get_vendor_suggestion
     canonical = normalize_vendor("Becton Dickinson & Company")  # Returns "BD"
+    suggestion = get_vendor_suggestion("Becton Dickenson")  # Returns "BD" (fuzzy match)
 """
 
 import re
+from difflib import get_close_matches
 
 # ── Canonical Vendor Names ───────────────────────────────────────────────────
 # Keys are normalized (uppercase, no spaces/punctuation) for lookup
@@ -25,6 +29,13 @@ VENDOR_CANONICAL: dict[str, str] = {
     "BECTONDICKINSONANDCOMPANY": "BD",
     "BDBIO": "BD",
     "BDBIOSCIENCE": "BD",
+    # Common misspellings
+    "BECTONDICKENSON": "BD",
+    "BECTONDICKENSON COMPANY": "BD",
+    "BECKTONDICKINSON": "BD",
+    "BECKTONDICKENSON": "BD",
+    "BECTONDICKENSONCOMPANY": "BD",
+    "BECTONDICKENSONANDCOMPANY": "BD",
 
     # ── BioLegend ────────────────────────────────────────────────────────────
     "BIOLEGEND": "BIOLEGEND",
@@ -257,3 +268,46 @@ def is_known_vendor(value: str | None) -> bool:
 def get_canonical_vendors() -> list[str]:
     """Get list of all canonical vendor names (deduplicated)."""
     return sorted(set(VENDOR_CANONICAL.values()))
+
+
+def get_vendor_suggestion(value: str | None, cutoff: float = 0.6) -> str | None:
+    """
+    Get a suggested canonical vendor name using fuzzy matching.
+
+    Returns a suggestion if:
+    1. The input doesn't match any known vendor exactly
+    2. A close match is found above the cutoff threshold
+
+    Args:
+        value: The vendor name to check
+        cutoff: Minimum similarity ratio (0.0 to 1.0). Default 0.6 (60% similar)
+
+    Returns:
+        Canonical vendor name if a close match is found, None otherwise.
+
+    Examples:
+        "Becton Dickenson"      → "BD" (misspelling)
+        "Biolegen"              → "BIOLEGEND" (typo)
+        "Thermo Fischer"        → "THERMO FISHER" (misspelling)
+        "BD"                    → None (exact match, no suggestion needed)
+        "Random Company"        → None (no close match)
+    """
+    if not value:
+        return None
+
+    # First check if it's already a known vendor (no suggestion needed)
+    lookup_key = _normalize_for_lookup(value)
+    if lookup_key in VENDOR_CANONICAL:
+        return None  # Exact match found, no suggestion needed
+
+    # Get all unique lookup keys for fuzzy matching
+    all_keys = list(VENDOR_CANONICAL.keys())
+
+    # Find close matches
+    matches = get_close_matches(lookup_key, all_keys, n=1, cutoff=cutoff)
+
+    if matches:
+        # Return the canonical name for the closest match
+        return VENDOR_CANONICAL[matches[0]]
+
+    return None
