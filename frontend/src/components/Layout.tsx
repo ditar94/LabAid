@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Outlet, NavLink, Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -30,6 +30,9 @@ import {
   Info,
   AlertTriangle,
   XCircle,
+  ChevronUp,
+  ChevronDown,
+  MoreHorizontal,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 import { version } from "../../package.json";
@@ -38,7 +41,29 @@ export default function Layout() {
   const { user, logout, impersonatingLab, endImpersonation, labSettings } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const navLinksRef = useRef<HTMLDivElement>(null);
   const { theme, cycleTheme } = useTheme();
+
+  // Check if nav links overflow and can scroll in either direction
+  useEffect(() => {
+    const el = navLinksRef.current;
+    if (!el) return;
+    const checkScroll = () => {
+      const hasOverflow = el.scrollHeight > el.clientHeight;
+      setCanScrollUp(hasOverflow && el.scrollTop > 10);
+      setCanScrollDown(hasOverflow && el.scrollTop + el.clientHeight < el.scrollHeight - 10);
+    };
+    checkScroll();
+    el.addEventListener("scroll", checkScroll);
+    window.addEventListener("resize", checkScroll);
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
+    };
+  }, [sidebarOpen]);
 
   const handleLogout = () => {
     logout();
@@ -189,24 +214,24 @@ export default function Layout() {
             </button>
           </div>
         )}
-        <div className="nav-links">
-          <NavLink to="/dashboard" onClick={handleNavClick} onMouseEnter={prefetchDashboard}>
+        <div className="nav-links" ref={navLinksRef}>
+          <NavLink to="/dashboard" onClick={handleNavClick} onMouseEnter={prefetchDashboard} className="hide-on-mobile-nav">
             <LayoutDashboard className="nav-icon" />
             Dashboard
             {pendingRequestCount > 0 && <span className="nav-badge">{pendingRequestCount}</span>}
           </NavLink>
           {hasLabContext && (
             <>
-              <NavLink to="/scan-search" onClick={handleNavClick}>
+              <NavLink to="/scan-search" onClick={handleNavClick} className="hide-on-mobile-nav">
                 <ScanLine className="nav-icon" />
                 Scan / Search
               </NavLink>
-              <NavLink to="/inventory" onClick={handleNavClick} onMouseEnter={prefetchDashboard}>
+              <NavLink to="/inventory" onClick={handleNavClick} onMouseEnter={prefetchDashboard} className="hide-on-mobile-nav">
                 <Package className="nav-icon" />
                 Inventory
               </NavLink>
               {storageEnabled && (
-                <NavLink to="/storage" onClick={handleNavClick}>
+                <NavLink to="/storage" onClick={handleNavClick} className="hide-on-mobile-nav">
                   <Warehouse className="nav-icon" />
                   Storage
                 </NavLink>
@@ -221,7 +246,7 @@ export default function Layout() {
           )}
 
           <div className="nav-section-label">Review</div>
-          <NavLink to="/audit" onClick={handleNavClick}>
+          <NavLink to="/audit" onClick={handleNavClick} className="hide-on-mobile-nav">
             <ClipboardList className="nav-icon" />
             Audit Log
           </NavLink>
@@ -242,19 +267,19 @@ export default function Layout() {
                 </NavLink>
               )}
               {isSuperAdmin && (
-                <NavLink to="/labs" onClick={handleNavClick}>
+                <NavLink to="/labs" onClick={handleNavClick} className={!hasLabContext ? "hide-on-mobile-nav" : undefined}>
                   <Building2 className="nav-icon" />
                   Labs
                 </NavLink>
               )}
               {isSuperAdmin && (
-                <NavLink to="/global-search" onClick={handleNavClick}>
+                <NavLink to="/global-search" onClick={handleNavClick} className={!hasLabContext ? "hide-on-mobile-nav" : undefined}>
                   <Search className="nav-icon" />
                   Global Search
                 </NavLink>
               )}
               {isSupervisor && (
-                <NavLink to="/tickets" onClick={handleNavClick}>
+                <NavLink to="/tickets" onClick={handleNavClick} className={!hasLabContext ? "hide-on-mobile-nav" : undefined}>
                   <LifeBuoy className="nav-icon" />
                   Support
                 </NavLink>
@@ -273,21 +298,60 @@ export default function Layout() {
               )}
             </>
           )}
+          {canScrollUp && (
+            <div className="nav-scroll-indicator nav-scroll-indicator--top">
+              <ChevronUp size={14} />
+            </div>
+          )}
+          {canScrollDown && (
+            <div className="nav-scroll-indicator nav-scroll-indicator--bottom">
+              <ChevronDown size={14} />
+            </div>
+          )}
         </div>
-        <button className="theme-toggle-btn" onClick={cycleTheme} title={`Theme: ${theme}`}>
-          {theme === "light" && <Sun size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
-          {theme === "dark" && <Moon size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
-          {theme === "system" && <Monitor size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
-          {theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"}
-        </button>
-        <button className="logout-btn" onClick={() => { handleNavClick(); navigate("/change-password"); }}>
-          <KeyRound size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-          Change Password
-        </button>
-        <button className="logout-btn" onClick={handleLogout}>
-          <LogOut size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-          Sign Out
-        </button>
+        <div className="sidebar-account-bar">
+          <button
+            className="account-bar-btn"
+            onClick={cycleTheme}
+            title={`Theme: ${theme}`}
+            aria-label={`Theme: ${theme}`}
+          >
+            {theme === "light" && <Sun size={20} />}
+            {theme === "dark" && <Moon size={20} />}
+            {theme === "system" && <Monitor size={20} />}
+          </button>
+          <div className="account-bar-menu">
+            <button
+              className="account-bar-btn"
+              onClick={() => setAccountMenuOpen(!accountMenuOpen)}
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="true"
+              title="More options"
+              aria-label="More options"
+            >
+              <MoreHorizontal size={20} />
+            </button>
+            {accountMenuOpen && (
+              <>
+                <div className="account-bar-menu-backdrop" onClick={() => setAccountMenuOpen(false)} />
+                <div className="account-bar-menu-dropdown">
+                  <button onClick={() => { setAccountMenuOpen(false); handleNavClick(); navigate("/change-password"); }}>
+                    <KeyRound size={16} />
+                    Change Password
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <button
+            className="account-bar-btn account-bar-btn--logout"
+            onClick={handleLogout}
+            title="Sign Out"
+            aria-label="Sign Out"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
         <div className="sidebar-copyright">
           <div>&copy; {new Date().getFullYear()} LabAid</div>
           <div>

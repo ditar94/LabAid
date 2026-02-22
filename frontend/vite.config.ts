@@ -8,20 +8,22 @@ function spaFallback(): Plugin {
   return {
     name: 'spa-fallback',
     configureServer(server) {
-      return () => {
-        server.middlewares.use((req, _res, next) => {
-          if (
-            req.url &&
-            !req.url.includes('.') &&
-            req.url !== '/' &&
-            !req.url.startsWith('/pricing') &&
-            !req.url.startsWith('/api')
-          ) {
-            req.url = '/app.html'
-          }
-          next()
-        })
-      }
+      // Use pre-middleware (no return wrapper) so it runs before Vite's static file serving
+      server.middlewares.use((req, _res, next) => {
+        if (
+          req.url &&
+          !req.url.includes('.') &&
+          req.url !== '/' &&
+          !req.url.startsWith('/pricing') &&
+          !req.url.startsWith('/api') &&
+          !req.url.startsWith('/@') &&        // Vite internals (@react-refresh, @vite, @fs, etc.)
+          !req.url.startsWith('/node_modules') &&
+          !req.url.startsWith('/src')
+        ) {
+          req.url = '/app.html'
+        }
+        next()
+      })
     },
   }
 }
@@ -33,7 +35,8 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // Use 'backend' for Docker, 'localhost' for running outside Docker
+        target: process.env.DOCKER ? 'http://backend:8000' : 'http://localhost:8000',
         changeOrigin: true,
       },
     },
