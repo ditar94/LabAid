@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Canonical Fluorochrome Catalog
 
@@ -108,6 +110,20 @@ FLUOROCHROME_CANONICAL: dict[str, str] = {
     "BRILLIANTULTRAVIOLET737": "BUV737",
     "BUV805": "BUV805",
     "BRILLIANTULTRAVIOLET805": "BUV805",
+
+    # ── BD Horizon Series ───────────────────────────────────────────────────
+    "V450": "V450",
+    "HORIZONV450": "V450",
+    "HV450": "V450",
+    "BDHORIZONV450": "V450",
+    "V500": "V500",
+    "HORIZONV500": "V500",
+    "HV500": "V500",
+    "BDHORIZONV500": "V500",
+    "V500C": "V500-C",
+    "HORIZONV500C": "V500-C",
+    "HV500C": "V500-C",
+    "BDHORIZONV500C": "V500-C",
 
     # ── Alexa Fluor Series ───────────────────────────────────────────────────
     "AF350": "ALEXA FLUOR 350",

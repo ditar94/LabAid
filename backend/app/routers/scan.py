@@ -31,9 +31,11 @@ from app.schemas.schemas import (
 )
 from app.services.barcode_parser import parse_sysmex_barcode
 from app.services.gs1_parser import extract_fields, parse_gs1
-from app.services.gudid_client import lookup_gudid
+from app.services.gudid_client import lookup_gudid, search_gudid_by_catalog
 from app.services.vendor_catalog_service import get_fluorochrome_variations, lookup_vendor_catalog
-from app.services.vendor_catalog_names import normalize_vendor
+from app.services.vendor_catalog_names import get_vendor_suggestion, normalize_vendor
+from app.services.product_name_parser import parse_product_fields
+from app.services.sysmex_catalog import lookup_sysmex_catalog
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 
@@ -444,20 +446,101 @@ async def scan_enrich(
                 warnings=[],
             )
         else:
-            # No catalog entry yet - return parsed data only (normalize vendor)
-            return ScanEnrichResult(
-                parsed=True,
-                format="sysmex",
-                catalog_number=sysmex["catalog_number"],
-                lot_number=sysmex["lot_number"],
-                expiration_date=sysmex["expiration_date"],
-                suggested_designation=sysmex["designation"],
-                vendor=normalize_vendor(sysmex["vendor"]),
-                catalog_use_count=0,
-                catalog_conflict_count=0,
-                from_shared_catalog=False,
-                warnings=["Product not yet in community catalog. Fields will be saved for future scans."],
-            )
+            # No shared catalog entry - check static Sysmex catalog first (instant)
+            sysmex_product = lookup_sysmex_catalog(sysmex["catalog_number"])
+
+            if sysmex_product:
+                # Found in static Sysmex catalog
+                return ScanEnrichResult(
+                    parsed=True,
+                    format="sysmex",
+                    catalog_number=sysmex["catalog_number"],
+                    lot_number=sysmex["lot_number"],
+                    expiration_date=sysmex["expiration_date"],
+                    suggested_designation=sysmex["designation"],
+                    vendor=normalize_vendor(sysmex["vendor"]),
+                    target=sysmex_product.target,
+                    fluorochrome=sysmex_product.fluorochrome,
+                    clone=sysmex_product.clone,
+                    catalog_use_count=0,
+                    catalog_conflict_count=0,
+                    from_shared_catalog=False,
+                    warnings=["Product found in Sysmex catalog. Fields will be saved for future scans."],
+                )
+
+            # Not in static catalog - try GUDID search by catalog number
+            gudid_results = await search_gudid_by_catalog(sysmex["catalog_number"])
+
+            if gudid_results:
+                # Found in GUDID - parse brand name AND description for target/fluorochrome
+                # (BD puts info in description, others use brand name)
+                device = gudid_results[0]
+                parsed = parse_product_fields(
+                    device.get("brand_name"),
+                    device.get("description"),
+                )
+                # For Sysmex barcodes, use "SYSMEX" as vendor (they distribute products
+                # from various manufacturers like EXBIO)
+                vendor = normalize_vendor(sysmex["vendor"])
+
+                if parsed.is_multitest:
+                    # Multi-target panel - use product_name, suggest IVD designation
+                    return ScanEnrichResult(
+                        parsed=True,
+                        format="sysmex",
+                        catalog_number=sysmex["catalog_number"],
+                        lot_number=sysmex["lot_number"],
+                        expiration_date=sysmex["expiration_date"],
+                        suggested_designation="IVD",
+                        vendor=vendor,
+                        target=None,
+                        fluorochrome=None,
+                        product_name=parsed.product_name,
+                        gtin=device.get("gtin"),
+                        catalog_use_count=0,
+                        catalog_conflict_count=0,
+                        from_shared_catalog=False,
+                        warnings=["Multi-target panel detected. Product name preserved."],
+                    )
+
+                # Use description as product_name if brand_name is "N/A"
+                brand = device.get("brand_name") or ""
+                product_name = brand if brand.upper() not in ("N/A", "NA", "") else device.get("description")
+
+                return ScanEnrichResult(
+                    parsed=True,
+                    format="sysmex",
+                    catalog_number=sysmex["catalog_number"],
+                    lot_number=sysmex["lot_number"],
+                    expiration_date=sysmex["expiration_date"],
+                    suggested_designation=sysmex["designation"],
+                    vendor=vendor,
+                    # Parsed from GUDID brand name or description
+                    target=parsed.target,
+                    fluorochrome=parsed.fluorochrome,
+                    product_name=product_name,
+                    # GTIN from GUDID (useful for future lookups)
+                    gtin=device.get("gtin"),
+                    catalog_use_count=0,
+                    catalog_conflict_count=0,
+                    from_shared_catalog=False,
+                    warnings=["Product found in FDA database. Fields will be saved for future scans."],
+                )
+            else:
+                # Not in GUDID either - return parsed data only
+                return ScanEnrichResult(
+                    parsed=True,
+                    format="sysmex",
+                    catalog_number=sysmex["catalog_number"],
+                    lot_number=sysmex["lot_number"],
+                    expiration_date=sysmex["expiration_date"],
+                    suggested_designation=sysmex["designation"],
+                    vendor=normalize_vendor(sysmex["vendor"]),
+                    catalog_use_count=0,
+                    catalog_conflict_count=0,
+                    from_shared_catalog=False,
+                    warnings=["Product not yet in community catalog or FDA database. Fields will be saved for future scans."],
+                )
 
     # ── Try GS1 format ─────────────────────────────────────────────────────
     parsed = parse_gs1(barcode)
@@ -529,8 +612,28 @@ async def scan_enrich(
     else:
         warnings.append("No GTIN found in barcode; skipping FDA device lookup.")
 
-    # If a GUDID device was found, it's likely an FDA-registered IVD product
-    suggested_designation = "ivd" if gudid_devices else None
+    # Parse brand name AND description to extract target/fluorochrome
+    # (BD puts info in description, others use brand name)
+    parsed_target: str | None = None
+    parsed_fluorochrome: str | None = None
+    parsed_product_name: str | None = None
+    suggested_designation: str | None = None
+
+    if gudid_devices and len(gudid_devices) == 1:
+        device = gudid_devices[0]
+        parsed = parse_product_fields(device.brand_name, device.description)
+
+        if parsed.is_multitest:
+            # Multi-target panel (e.g., "Multitest CD3/CD16+CD56/CD45/CD19")
+            # Don't try to extract individual target/fluorochrome
+            parsed_product_name = parsed.product_name
+            suggested_designation = "IVD"
+        else:
+            parsed_target = parsed.target
+            parsed_fluorochrome = parsed.fluorochrome
+
+    # Get vendor suggestion if vendor doesn't match catalog exactly
+    vendor_suggestion = get_vendor_suggestion(vendor) if vendor else None
 
     return ScanEnrichResult(
         parsed=True,
@@ -544,8 +647,13 @@ async def scan_enrich(
         all_ais=fields["all_ais"],
         gudid_devices=gudid_devices,
         suggested_designation=suggested_designation,
+        # Parsed from GUDID brand name or description
+        target=parsed_target,
+        fluorochrome=parsed_fluorochrome,
+        product_name=parsed_product_name,
         catalog_use_count=0,
         catalog_conflict_count=0,
         from_shared_catalog=False,
+        vendor_suggestion=vendor_suggestion,
         warnings=warnings,
     )

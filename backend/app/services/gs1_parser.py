@@ -4,6 +4,7 @@ GS1 DataMatrix barcode parser for flow cytometry reagent barcodes.
 Parses GS1 Application Identifiers (AIs) from DataMatrix barcode strings,
 normalizes scanner input, and extracts semantic fields for lot registration.
 """
+from __future__ import annotations
 
 import calendar
 import re

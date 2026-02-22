@@ -5,6 +5,8 @@ Supports:
 - Sysmex QR codes (23-char format: catalog[8] + lot[6] + expiration[6] + designation[3])
 - GS1 DataMatrix (via gs1_parser.py)
 """
+from __future__ import annotations
+
 import re
 import unicodedata
 from datetime import datetime
