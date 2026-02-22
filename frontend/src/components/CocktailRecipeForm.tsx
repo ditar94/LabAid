@@ -120,14 +120,14 @@ function SortableRow({
           placeholder="Custom component name..."
           value={row.free_text_name}
           onChange={(e) => onFieldChange("free_text_name", e.target.value)}
-          style={{ flex: 2 }}
+          className="component-select"
           required
         />
       ) : (
         <select
           value={row.antibody_id}
           onChange={(e) => onFieldChange("antibody_id", e.target.value)}
-          style={{ flex: 2 }}
+          className="component-select"
           required
         >
           <option value="">Select antibody...</option>
@@ -142,10 +142,9 @@ function SortableRow({
       {/* Toggle custom/antibody mode */}
       <button
         type="button"
-        className={`btn-sm ${row._customMode ? "btn-green" : "btn-secondary"}`}
+        className={`btn-sm component-mode-toggle ${row._customMode ? "btn-green" : "btn-secondary"}`}
         onClick={onToggleCustomMode}
         title={row._customMode ? "Switch to antibody selection" : "Switch to custom text"}
-        style={{ padding: "0.15rem 0.4rem", fontSize: "0.75rem", whiteSpace: "nowrap" }}
       >
         {row._customMode ? "Ab" : "Custom"}
       </button>
@@ -155,22 +154,21 @@ function SortableRow({
         type="number"
         min="0"
         step="0.1"
-        placeholder="uL"
+        placeholder="μL"
         value={row.volume_ul}
         onChange={(e) => onFieldChange("volume_ul", e.target.value)}
-        style={{ flex: 0.7, minWidth: "4rem" }}
+        className="component-volume"
       />
 
       {/* Remove button */}
       <button
         type="button"
-        className="btn-sm btn-danger"
+        className="btn-sm btn-danger component-remove"
         onClick={onRemove}
         disabled={!canRemove}
         aria-label="Remove component"
-        style={{ padding: "0 0.4rem" }}
       >
-        X
+        ×
       </button>
     </div>
   );
@@ -324,10 +322,7 @@ export function CocktailRecipeForm({
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title}>
       <div className="modal-content">
         <h2>{title}</h2>
-        <form
-          onSubmit={handleSubmit}
-          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
-        >
+        <form onSubmit={handleSubmit} className="cocktail-form">
           <div className="form-group">
             <label>Cocktail Name</label>
             <input
@@ -338,8 +333,8 @@ export function CocktailRecipeForm({
             />
           </div>
 
-          <div style={{ display: "flex", gap: "0.75rem" }}>
-            <div className="form-group" style={{ flex: 1 }}>
+          <div className="cocktail-form-row">
+            <div className="form-group">
               <label>Shelf Life (days)</label>
               <input
                 type="number"
@@ -349,7 +344,7 @@ export function CocktailRecipeForm({
                 required
               />
             </div>
-            <div className="form-group" style={{ flex: 1 }}>
+            <div className="form-group">
               <label>Max Renewals (optional)</label>
               <input
                 type="number"
@@ -393,7 +388,6 @@ export function CocktailRecipeForm({
               type="button"
               className="btn-sm btn-secondary"
               onClick={addComponent}
-              style={{ marginTop: "0.5rem" }}
             >
               + Add Component
             </button>
@@ -401,7 +395,7 @@ export function CocktailRecipeForm({
 
           {error && <p className="error">{error}</p>}
 
-          <div className="action-btns" style={{ marginTop: "0.5rem" }}>
+          <div className="action-btns">
             <button type="submit" disabled={loading}>
               {loading ? "Saving..." : initialValues ? "Save Changes" : "Create Cocktail"}
             </button>
