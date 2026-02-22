@@ -191,6 +191,7 @@ def create_lot(
             antibody=ab,
             lab_id=target_lab_id,
             vendor=body.barcode_vendor,
+            catalog_number=body.barcode_catalog_number,
         )
     elif body.barcode_format == "sysmex" and body.barcode_catalog_number:
         # Sysmex barcodes: use catalog_number as the unique key

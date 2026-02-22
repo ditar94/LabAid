@@ -71,6 +71,7 @@ def update_shared_catalog_from_gtin(
     antibody: Antibody,
     lab_id: UUID,
     vendor: str | None = None,
+    catalog_number: str | None = None,
 ) -> None:
     """
     Update shared catalog after lot registration with GS1 barcode.
@@ -83,11 +84,12 @@ def update_shared_catalog_from_gtin(
         antibody: The antibody being registered
         lab_id: The lab creating this registration
         vendor: Vendor name from GUDID (informational only)
+        catalog_number: Catalog number from GUDID (informational)
     """
     _update_shared_catalog(
         db=db,
         gtin=gtin,
-        catalog_number=None,
+        catalog_number=catalog_number,
         antibody=antibody,
         lab_id=lab_id,
         vendor=vendor,
