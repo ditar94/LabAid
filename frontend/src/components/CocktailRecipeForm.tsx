@@ -37,7 +37,7 @@ export function CocktailRecipeForm({
   initialValues,
   antibodies,
   loading = false,
-  title = "New Recipe",
+  title = "New Cocktail",
 }: Props) {
   const [form, setForm] = useState<CocktailRecipeFormValues>(
     initialValues || { ...EMPTY_RECIPE_FORM, components: [{ antibody_id: "", volume_ul: "", free_text_name: "" }] }
@@ -120,7 +120,7 @@ export function CocktailRecipeForm({
     setError(null);
 
     if (!form.name.trim()) {
-      setError("Recipe name is required.");
+      setError("Cocktail name is required.");
       return;
     }
     if (!form.shelf_life_days || parseInt(form.shelf_life_days, 10) < 1) {
@@ -136,7 +136,7 @@ export function CocktailRecipeForm({
     try {
       await onSubmit(form);
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || "Failed to save recipe.");
+      setError(err.response?.data?.detail || err.message || "Failed to save cocktail.");
     }
   };
 
@@ -154,7 +154,7 @@ export function CocktailRecipeForm({
           style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
         >
           <div className="form-group">
-            <label>Recipe Name</label>
+            <label>Cocktail Name</label>
             <input
               value={form.name}
               onChange={(e) => handleChange("name", e.target.value)}
@@ -229,7 +229,7 @@ export function CocktailRecipeForm({
                     >
                       <option value="">Select antibody...</option>
                       {antibodies
-                        .filter((ab) => ab.is_active)
+                        .filter((ab) => ab.is_active && ab.designation !== "ivd")
                         .map((ab) => (
                           <option key={ab.id} value={ab.id}>
                             {antibodyLabel(ab)}
@@ -304,7 +304,7 @@ export function CocktailRecipeForm({
 
           <div className="action-btns" style={{ marginTop: "0.5rem" }}>
             <button type="submit" disabled={loading}>
-              {loading ? "Saving..." : initialValues ? "Save Changes" : "Create Recipe"}
+              {loading ? "Saving..." : initialValues ? "Save Changes" : "Create Cocktail"}
             </button>
             <button type="button" className="btn-secondary" onClick={onCancel}>
               Cancel

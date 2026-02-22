@@ -214,7 +214,7 @@ export default function CocktailsPage() {
         })),
       });
       setShowRecipeForm(false);
-      addToast("Recipe created.", "success");
+      addToast("Cocktail created.", "success");
       invalidate();
     } catch (err: any) {
       throw err;
@@ -240,7 +240,7 @@ export default function CocktailsPage() {
         })),
       });
       setEditRecipe(null);
-      addToast("Recipe updated.", "success");
+      addToast("Cocktail updated.", "success");
       invalidate();
     } catch (err: any) {
       throw err;
@@ -638,7 +638,7 @@ export default function CocktailsPage() {
               className="btn-sm btn-secondary"
               onClick={() => openEditRecipeForm(recipe)}
             >
-              Edit Recipe
+              Edit Cocktail
             </button>
           )}
           {canPrepare && recipe.is_active && (
@@ -690,18 +690,18 @@ export default function CocktailsPage() {
         <h1>Cocktails</h1>
         <div className="filters">
           {canEdit && (
-            <button onClick={() => setShowRecipeForm(true)}>+ New Recipe</button>
+            <button onClick={() => setShowRecipeForm(true)}>+ New Cocktail</button>
           )}
         </div>
       </div>
 
-      {isLoading && <p className="page-desc">Loading recipes...</p>}
+      {isLoading && <p className="page-desc">Loading cocktails...</p>}
 
       {!isLoading && sortedRecipes.length === 0 && (
         <EmptyState
           icon={Beaker}
-          title="No cocktail recipes"
-          description="Create a recipe to start tracking cocktail preparations."
+          title="No cocktails"
+          description="Create a cocktail to start tracking preparations."
         />
       )}
 
@@ -737,7 +737,7 @@ export default function CocktailsPage() {
 
       {/* Component info modal */}
       {infoRecipe && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Recipe details">
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Cocktail details">
           <div className="modal-content">
             <h2>{infoRecipe.name}</h2>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem", fontSize: "0.85rem" }}>
@@ -789,7 +789,7 @@ export default function CocktailsPage() {
           onCancel={() => setShowRecipeForm(false)}
           antibodies={antibodies}
           loading={recipeFormLoading}
-          title="New Recipe"
+          title="New Cocktail"
         />
       )}
 
@@ -800,7 +800,7 @@ export default function CocktailsPage() {
           antibodies={antibodies}
           initialValues={editRecipeInitialValues}
           loading={recipeFormLoading}
-          title={`Edit Recipe: ${editRecipe.name}`}
+          title={`Edit Cocktail: ${editRecipe.name}`}
         />
       )}
 

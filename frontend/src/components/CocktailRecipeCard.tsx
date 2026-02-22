@@ -87,7 +87,7 @@ export default function CocktailRecipeCard({
           )}
         </div>
 
-        {/* Info button to view recipe details (components, shelf life, etc.) */}
+        {/* Info button to view cocktail details (components, shelf life, etc.) */}
         {onInfo && (
           <button
             className="btn-sm btn-secondary"
@@ -95,7 +95,7 @@ export default function CocktailRecipeCard({
               e.stopPropagation();
               onInfo(e);
             }}
-            title="View recipe details"
+            title="View cocktail details"
             style={{ padding: "0.1rem 0.3rem", lineHeight: 1 }}
           >
             <Info size={14} />

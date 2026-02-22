@@ -40,8 +40,8 @@ const ACTION_OPTIONS = [
     { value: "antibody.unarchived", label: "Ab Unarchived" },
   ]},
   { group: "Cocktails", items: [
-    { value: "cocktail_recipe.created", label: "Recipe Created" },
-    { value: "cocktail_recipe.updated", label: "Recipe Updated" },
+    { value: "cocktail_recipe.created", label: "Cocktail Created" },
+    { value: "cocktail_recipe.updated", label: "Cocktail Updated" },
     { value: "cocktail_lot.created", label: "Lot Prepared" },
     { value: "cocktail_lot.qc_approved", label: "Cocktail QC Approved" },
     { value: "cocktail_lot.qc_failed", label: "Cocktail QC Failed" },
