@@ -395,7 +395,6 @@ export default function AntibodyForm({
               />,
               {
                 optional: true,
-                subtitle: "Total Sealed Vials",
                 info: "When the amount of sealed vials (approved and not approved) goes below this amount, an alert for reorder is triggered.",
               }
             ),
