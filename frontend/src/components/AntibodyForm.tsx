@@ -5,6 +5,7 @@
 //   - ScanSearchPage: registration (stacked layout)
 
 import { useState, type ReactNode } from "react";
+import { Info } from "lucide-react";
 import type { Fluorochrome, Designation } from "../api/types";
 
 // ── Exported constants ───────────────────────────────────────────────────────
@@ -77,10 +78,10 @@ interface AntibodyFormProps {
 
 function InfoButton({ tooltip }: { tooltip: string }) {
   return (
-    <button type="button" className="info-btn" tabIndex={-1}>
-      i
+    <span className="info-btn" tabIndex={-1}>
+      <Info size={12} />
       <span className="info-tooltip">{tooltip}</span>
-    </button>
+    </span>
   );
 }
 
@@ -388,7 +389,7 @@ export default function AntibodyForm({
               <input
                 type="number"
                 min={1}
-                placeholder={isInline ? "Low Stock Amount" : "Enter threshold"}
+                placeholder={isInline ? "Low Stock Amount" : "Sealed vials"}
                 value={values.low_stock_threshold}
                 onChange={(e) => set("low_stock_threshold", e.target.value)}
               />,
@@ -402,7 +403,7 @@ export default function AntibodyForm({
               <input
                 type="number"
                 min={1}
-                placeholder={isInline ? "Min Approved Stock" : "Enter threshold"}
+                placeholder={isInline ? "Min Approved Stock" : "Approved vials"}
                 value={values.approved_low_threshold}
                 onChange={(e) => set("approved_low_threshold", e.target.value)}
               />,

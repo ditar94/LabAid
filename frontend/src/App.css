@@ -1908,26 +1908,27 @@ td.mono {
   opacity: 0.8;
 }
 
-/* Info button (i) */
+/* Info button (i) - small superscript style */
 .info-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: var(--neutral-200);
+  background: transparent;
   border: none;
   cursor: help;
-  font-size: 10px;
-  font-weight: 700;
   color: var(--text-muted);
+  opacity: 0.6;
   transition: all var(--duration-fast) var(--ease-out);
   position: relative;
+  vertical-align: super;
+  margin-left: 2px;
 }
 
 .info-btn:hover {
-  background: var(--primary-100);
+  opacity: 1;
   color: var(--primary-600);
 }
 
