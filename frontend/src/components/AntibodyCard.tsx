@@ -179,27 +179,30 @@ export default function AntibodyCard({
         )}
       </div>
 
-      {/* ── Meta row: lot count + inventory alert badges ── */}
-      <div className="inventory-meta">
+      {/* ── Vendor + catalog + lot count ── */}
+      <div className="inventory-vendor">
         <span>
-          {counts.lots} lot{counts.lots === 1 ? "" : "s"}
+          {antibody.vendor || ""}
+          {antibody.vendor && antibody.catalog_number && " — "}
+          {antibody.catalog_number && <>Catalog #: {antibody.catalog_number} <CopyButton value={antibody.catalog_number} /></>}
         </span>
-        {badges?.map((b, i) => (
-          <span
-            key={i}
-            className={`badge badge-${b.color}`}
-            style={{ fontSize: "0.75em" }}
-          >
-            {b.label}
-          </span>
-        ))}
+        <span>{counts.lots} lot{counts.lots === 1 ? "" : "s"}</span>
       </div>
 
-      {/* ── Submeta row: vendor + catalog number ── */}
-      <div className="inventory-submeta">
-        <span>Vendor: {antibody.vendor || "\u2014"}</span>
-        <span>Catalog #: {antibody.catalog_number ? <>{antibody.catalog_number} <CopyButton value={antibody.catalog_number} /></> : "\u2014"}</span>
-      </div>
+      {/* ── Alert badges ── */}
+      {badges && badges.length > 0 && (
+        <div className="inventory-meta">
+          {badges.map((b, i) => (
+            <span
+              key={i}
+              className={`badge badge-${b.color}`}
+              style={{ fontSize: "0.75em" }}
+            >
+              {b.label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* ── Vial count columns ── */}
       <div className="inventory-counts">

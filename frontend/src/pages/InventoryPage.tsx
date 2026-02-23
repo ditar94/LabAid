@@ -16,6 +16,7 @@ import LotRegistrationForm, { EMPTY_LOT_FORM } from "../components/LotRegistrati
 import { StorageView } from "../components/storage";
 import { useViewPreference } from "../hooks/useViewPreference";
 import { openDocumentInNewTab } from "../utils/documents";
+import { Modal } from "../components/Modal";
 
 function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUploadAndApprove, onDocumentsChange }: {
   lot: Lot;
@@ -162,7 +163,7 @@ function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUpload
   };
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={`Documents for Lot ${lot.lot_number}`}>
+    <Modal onClose={onClose} ariaLabel={`Documents for Lot ${lot.lot_number}`}>
       <div className="modal-content">
         <h2>Documents for Lot {lot.lot_number}</h2>
         <div className="document-list">
@@ -233,7 +234,7 @@ function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUpload
           {onUploadAndApprove ? "Cancel" : "Close"}
         </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1075,37 +1076,31 @@ export default function InventoryPage() {
   };
 
   // Shared expanded content for both card and list views
-  const renderExpandedContent = (row: InventoryRow, title: string) => {
+  const renderExpandedContent = (row: InventoryRow) => {
     const allAbLots = lotsByAntibody.get(row.antibody.id) || [];
     const abLots = showInactiveLots ? allAbLots : allAbLots.filter((l) => !isLotInactive(l));
     return (
       <>
-        <div className="detail-header">
-          <div>
-            <h3>{title}</h3>
-            <p className="page-desc">Manage lots for this antibody.</p>
-          </div>
-          <div className="filters">
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={showInactiveLots}
-                onChange={() => setShowInactiveLots(!showInactiveLots)}
-              />
-              Show inactive
-            </label>
-            {canEdit && (
-              <button onClick={() => openEditForm(row.antibody)}>
-                Edit Antibody
-              </button>
-            )}
-            {canReceive && (
-              <button onClick={() => setShowLotForm(true)}>
-                + New Lot
-              </button>
-            )}
-          </div>
+        <div className="detail-header" style={{ justifyContent: "space-between" }}>
+          {canEdit ? (
+            <button className="cocktail-recipe-btn edit" onClick={() => openEditForm(row.antibody)}>
+              Edit Antibody
+            </button>
+          ) : <span />}
+          {canReceive && (
+            <button className="cocktails-new-btn" onClick={() => setShowLotForm(true)}>
+              + New Lot
+            </button>
+          )}
         </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: "var(--space-sm)" }}>
+          <input
+            type="checkbox"
+            checked={showInactiveLots}
+            onChange={() => setShowInactiveLots(!showInactiveLots)}
+          />
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Show inactive</span>
+        </label>
 
         {abLots.length > 0 ? (
           isMobile ? (
@@ -1176,6 +1171,7 @@ export default function InventoryPage() {
           const storedCount = locations.length > 0
             ? locations.reduce((s, l) => s + l.vial_count, 0)
             : undefined;
+          const closeDrilldown = () => { setDrilldownLotId(null); setDrilldownGrids(new Map()); };
           return (
             <StorageView
               grids={Array.from(drilldownGrids.values())}
@@ -1193,7 +1189,7 @@ export default function InventoryPage() {
                 stockLoading: drilldownStockLoading,
               }}
               onRefresh={handleDrilldownRefresh}
-              className="lot-drilldown-panel"
+              onClose={closeDrilldown}
             />
           );
         })()}
@@ -1320,10 +1316,7 @@ export default function InventoryPage() {
           canEditColor={canEdit && !!row.antibody.fluorochrome}
           onColorChange={(color) => handleUpdateFluoroColor(row.antibody.fluorochrome!, color)}
         >
-          {isExpanded && renderExpandedContent(
-            row,
-            row.antibody.name || [row.antibody.target, row.antibody.fluorochrome].filter(Boolean).join("-") || "Lots",
-          )}
+          {isExpanded && renderExpandedContent(row)}
         </AntibodyCard>
       </div>
     );
@@ -1368,7 +1361,7 @@ export default function InventoryPage() {
       {error && <p className="error">{error}</p>}
 
       {showAbForm && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="New antibody">
+        <Modal onClose={() => setShowAbForm(false)} ariaLabel="New antibody">
           <div className="modal-content">
             <h2>New Antibody</h2>
             <form onSubmit={handleCreateAntibody} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -1392,7 +1385,7 @@ export default function InventoryPage() {
               </div>
             </form>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Card view ── */}
@@ -1436,7 +1429,6 @@ export default function InventoryPage() {
                 const badges = antibodyBadges.get(ab.id);
                 const expanded = expandedId === ab.id;
                 const colCount = 6 + (sealedOnly ? 0 : 2) + 1;
-                const title = ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join("-") || "Unnamed";
                 return (
                   <Fragment key={ab.id}>
                     <tr
@@ -1474,7 +1466,7 @@ export default function InventoryPage() {
                       <tr className="expanded-detail-row">
                         <td colSpan={colCount} style={{ padding: 0 }}>
                           <div className="locator-panel" data-antibody-id={ab.id}>
-                            {renderExpandedContent(row, title)}
+                            {renderExpandedContent(row)}
                           </div>
                         </td>
                       </tr>
@@ -1550,7 +1542,7 @@ export default function InventoryPage() {
       </div>
 
       {archiveAbPrompt && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Set antibody inactive">
+        <Modal onClose={() => setArchiveAbPrompt(null)} ariaLabel="Set antibody inactive">
           <div className="modal-content">
             <h2>Set Inactive: {archiveAbPrompt.label}</h2>
             <p className="page-desc">
@@ -1583,10 +1575,10 @@ export default function InventoryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
       {confirmAction && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Confirm deplete">
+        <Modal onClose={() => setConfirmAction(null)} ariaLabel="Confirm deplete">
           <div className="modal-content">
             <h2>Confirm Deplete</h2>
             <p className="page-desc">
@@ -1616,10 +1608,10 @@ export default function InventoryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
       {editAbId && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Edit antibody">
+        <Modal onClose={() => setEditAbId(null)} ariaLabel="Edit antibody">
           <div className="modal-content">
             <h2>Edit Antibody</h2>
             <form onSubmit={handleEditAntibody} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -1643,10 +1635,10 @@ export default function InventoryPage() {
               </div>
             </form>
           </div>
-        </div>
+        </Modal>
       )}
       {showLotForm && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="New lot">
+        <Modal onClose={() => setShowLotForm(false)} ariaLabel="New lot">
           <div className="modal-content">
             <h2>New Lot</h2>
             <form onSubmit={handleCreateLot} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -1681,10 +1673,10 @@ export default function InventoryPage() {
               </div>
             </form>
           </div>
-        </div>
+        </Modal>
       )}
       {editLot && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Edit lot">
+        <Modal onClose={() => setEditLot(null)} ariaLabel="Edit lot">
           <div className="modal-content">
             <h2>Edit Lot</h2>
             <form onSubmit={handleEditLot} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -1721,7 +1713,7 @@ export default function InventoryPage() {
               </div>
             </form>
           </div>
-        </div>
+        </Modal>
       )}
       {modalLot && (
         <DocumentModal
@@ -1751,7 +1743,7 @@ export default function InventoryPage() {
         />
       )}
       {qcBlockedLot && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="QC document required">
+        <Modal onClose={() => setQcBlockedLot(null)} ariaLabel="QC document required">
           <div className="modal-content">
             <h2>QC Document Required</h2>
             <p>
@@ -1774,10 +1766,10 @@ export default function InventoryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
       {archiveWarning && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Archive lot warning">
+        <Modal onClose={() => setArchiveWarning(null)} ariaLabel="Archive lot warning">
           <div className="modal-content">
             <h2>Archive Lot {archiveWarning.lotNumber}?</h2>
             <p className="page-desc" style={{ color: "var(--warning-500)" }}>
@@ -1806,10 +1798,10 @@ export default function InventoryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
       {archivePrompt && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Archive lot">
+        <Modal onClose={() => setArchivePrompt(null)} ariaLabel="Archive lot">
           <div className="modal-content">
             <h2>Archive Lot {archivePrompt.lotNumber}</h2>
             <p className="page-desc">
@@ -1842,7 +1834,7 @@ export default function InventoryPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

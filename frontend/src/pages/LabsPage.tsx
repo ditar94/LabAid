@@ -8,6 +8,7 @@ import EmptyState from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
+import { Modal } from "../components/Modal";
 
 export default function LabsPage() {
   const { refreshLabs } = useSharedData();
@@ -278,7 +279,7 @@ export default function LabsPage() {
       )}
 
       {suspendPrompt && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Suspend lab">
+        <Modal onClose={() => setSuspendPrompt(null)} ariaLabel="Suspend lab">
           <div className="modal-content">
             <h2>Suspend {suspendPrompt.name}?</h2>
             <p className="page-desc">
@@ -301,7 +302,7 @@ export default function LabsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

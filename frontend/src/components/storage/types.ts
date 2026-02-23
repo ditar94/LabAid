@@ -103,7 +103,8 @@ export interface StorageViewProps {
   stockControl?: StockControl;
   onMoveChange?: (isMoving: boolean) => void;
   loading?: boolean;
-  className?: string;
+  /** Extra content rendered between the header and the grid body (e.g. stocking panel). */
+  toolbar?: ReactNode;
   extraPopoutActions?: (cell: StorageCell) => PopoutAction[];
   headerActions?: (ctx: { enterMoveMode: () => void }) => ReactNode;
   moveHeaderExtra?: (ctx: {
@@ -116,4 +117,6 @@ export interface StorageViewProps {
   /** Cell picker mode (e.g. ScanSearchPage store_open intent). */
   onCellSelect?: (cell: StorageCell) => void;
   selectedCellId?: string | null;
+  /** Called when the popup is dismissed. When provided, renders as a modal overlay. */
+  onClose?: () => void;
 }

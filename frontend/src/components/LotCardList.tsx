@@ -39,50 +39,61 @@ export default function LotCardList({
   return (
     <div className="lot-card-list">
       {lots.map((lot) => (
-        <div
-          key={lot.id}
-          className={`lot-card${lot.is_archived ? " lot-row-archived" : ""}${!lot.is_archived && (lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0 ? " lot-row-depleted" : ""}${onLotClick ? " clickable" : ""}${selectedLotId === lot.id ? " active" : ""}`}
-          onClick={() => onLotClick?.(lot)}
-        >
-          {/* Optional prefix (e.g., antibody name + vendor for Dashboard) */}
-          {prefixColumn && (
-            <div style={{ padding: "0.5rem 0.75rem 0", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              {prefixColumn.render(lot)}
-            </div>
-          )}
+        <div key={lot.id} className="lot-card-wrapper">
+          <div
+            className={`lot-card${lot.is_archived ? " lot-row-archived" : ""}${!lot.is_archived && (lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0 ? " lot-row-depleted" : ""}${onLotClick ? " clickable" : ""}${selectedLotId === lot.id ? " active" : ""}`}
+            onClick={() => onLotClick?.(lot)}
+          >
+            {/* Optional prefix (e.g., antibody name + vendor for Dashboard) */}
+            {prefixColumn && (
+              <div style={{ padding: "0.5rem 0.75rem 0", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {prefixColumn.render(lot)}
+              </div>
+            )}
 
-          {/* Header: lot number + QC badge + actions */}
-          <div className="lot-card-header">
-            <div className="lot-card-id">
-              {lot.lot_number}
-              <LotAgeBadge age={lotAgeBadgeMap.get(lot.id)} />
-              {/* Custom badges (e.g., Dashboard contextual badges) */}
-              {customBadges?.get(lot.id)}
+            {/* Header: lot number + QC badge + actions */}
+            <div className="lot-card-header">
+              <div className="lot-card-id">
+                {lot.lot_number}
+                <LotAgeBadge age={lotAgeBadgeMap.get(lot.id)} />
+                {!hideQc && (
+                  <QcBadge
+                    status={lot.qc_status}
+                    needsDoc={!!(qcDocRequired && !lot.has_qc_document)}
+                  />
+                )}
+                {customBadges?.get(lot.id)}
+              </div>
+              <span style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
+                {!hideActions && canQC && lot.qc_status !== "approved" && onApproveQC && (
+                  <button className="approve-chip" onClick={(e) => { e.stopPropagation(); onApproveQC(lot.id); }}>
+                    Approve
+                  </button>
+                )}
+                {!hideActions && extraActions && (
+                  <span onClick={(e) => e.stopPropagation()}>
+                    {extraActions(lot)}
+                  </span>
+                )}
+              </span>
             </div>
-            <span style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
-              {!hideQc && (
-                <QcBadge
-                  status={lot.qc_status}
-                  needsDoc={!!(qcDocRequired && !lot.has_qc_document)}
-                />
-              )}
-              {!hideActions && canQC && lot.qc_status !== "approved" && onApproveQC && (
-                <button className="approve-chip" onClick={(e) => { e.stopPropagation(); onApproveQC(lot.id); }}>
-                  Approve
-                </button>
-              )}
-              {!hideActions && extraActions && (
-                <span onClick={(e) => e.stopPropagation()}>
-                  {extraActions(lot)}
+
+            {/* Barcode below lot number */}
+            {lot.vendor_barcode && (
+              <div className="lot-card-barcode">
+                <span
+                  className={`lot-card-barcode-text${expandedBarcode === lot.id ? " expanded" : ""}`}
+                  onClick={() => setExpandedBarcode(expandedBarcode === lot.id ? null : lot.id)}
+                >
+                  {expandedBarcode === lot.id
+                    ? lot.vendor_barcode
+                    : lot.vendor_barcode.length > 12
+                    ? lot.vendor_barcode.slice(0, 12) + "\u2026"
+                    : lot.vendor_barcode}
                 </span>
-              )}
-              {!hideActions && (
-                <span onClick={(e) => e.stopPropagation()}>
-                  <ActionMenu items={buildLotActions({ lot, onEditLot, onDeplete, onOpenDocs, onArchive, onConsolidate })} />
-                </span>
-              )}
-            </span>
-          </div>
+                <CopyButton value={lot.vendor_barcode!} />
+              </div>
+            )}
 
           {/* Body: details */}
           <div className="lot-card-body">
@@ -137,23 +148,14 @@ export default function LotCardList({
               </div>
             )}
 
-            {/* Barcode tap-to-view */}
-            {lot.vendor_barcode && (
-              <div className="lot-card-barcode">
-                <span
-                  className={`lot-card-barcode-text${expandedBarcode === lot.id ? " expanded" : ""}`}
-                  onClick={() => setExpandedBarcode(expandedBarcode === lot.id ? null : lot.id)}
-                >
-                  {expandedBarcode === lot.id
-                    ? lot.vendor_barcode
-                    : lot.vendor_barcode.length > 12
-                    ? lot.vendor_barcode.slice(0, 12) + "\u2026"
-                    : lot.vendor_barcode}
-                </span>
-                <CopyButton value={lot.vendor_barcode!} />
-              </div>
-            )}
           </div>
+        </div>
+          {/* Action menu to the right of lot card */}
+          {!hideActions && (
+            <span className="lot-card-action-rail" onClick={(e) => e.stopPropagation()}>
+              <ActionMenu items={buildLotActions({ lot, onEditLot, onDeplete, onOpenDocs, onArchive, onConsolidate })} />
+            </span>
+          )}
         </div>
       ))}
     </div>

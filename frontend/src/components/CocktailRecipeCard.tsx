@@ -10,7 +10,7 @@
 //   Content → children rendered when expanded (lot tables, actions, etc.)
 
 import type { ReactNode, MouseEvent } from "react";
-import { FlaskConical, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import type { CocktailRecipe } from "../api/types";
 import InventoryCardBase from "./InventoryCardBase";
 
@@ -65,19 +65,28 @@ export default function CocktailRecipeCard({
         ) : undefined
       }
     >
-      {/* ── Card Header: flask icon, name, cocktail badge, inactive badge, info button ── */}
+      {/* Info button — positioned absolutely in top-right corner */}
+      {onInfo && (
+        <button
+          className="cocktail-info-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onInfo(e);
+          }}
+          title="View cocktail details"
+        >
+          <Info size={14} />
+        </button>
+      )}
+
+      {/* ── Card Header: name, shelf life badge, inactive badge ── */}
       <div className="inventory-card-header">
         <div className="inventory-title">
-          {/* Cocktail flask icon with gradient and bubbles */}
-          <div className="cocktail-flask">
-            <FlaskConical size={14} color="#fff" strokeWidth={2.5} />
-          </div>
-
-          {/* Recipe name */}
           <span>{recipe.name}</span>
 
-          {/* Cocktail type badge with shimmer */}
-          <span className="cocktail-type-badge">Cocktail</span>
+          <span className="badge cocktail-shelf-badge" style={{ fontSize: "0.7em" }}>
+            {recipe.shelf_life_days}d
+          </span>
 
           {/* Inactive badge (if recipe is deactivated) */}
           {!recipe.is_active && (
@@ -86,37 +95,16 @@ export default function CocktailRecipeCard({
             </span>
           )}
         </div>
-
-        {/* Info button to view cocktail details (components, shelf life, etc.) */}
-        {onInfo && (
-          <button
-            className="btn-sm btn-secondary"
-            onClick={(e) => {
-              e.stopPropagation();
-              onInfo(e);
-            }}
-            title="View cocktail details"
-            style={{ padding: "0.1rem 0.3rem", lineHeight: 1 }}
-          >
-            <Info size={14} />
-          </button>
-        )}
       </div>
 
-      {/* ── Meta row: component count, shelf life, max renewals ── */}
-      <div className="inventory-meta cocktail-meta">
-        <span>
-          {recipe.components.length} component{recipe.components.length !== 1 ? "s" : ""}
-        </span>
-        <span className="badge cocktail-shelf-badge" style={{ fontSize: "0.75em" }}>
-          {recipe.shelf_life_days}d shelf life
-        </span>
-        {recipe.max_renewals != null && (
+      {/* ── Meta row: max renewals ── */}
+      {recipe.max_renewals != null && (
+        <div className="inventory-meta cocktail-meta">
           <span className="badge cocktail-renewal-badge" style={{ fontSize: "0.75em" }}>
             max {recipe.max_renewals} renewal{recipe.max_renewals !== 1 ? "s" : ""}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── Lot count columns (violet gradient) ── */}
       <div className="cocktail-counts">

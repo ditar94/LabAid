@@ -711,28 +711,23 @@ export default function DashboardPage() {
           )}
 
           {/* Drill-down: temp grid + move controls */}
-          {tempSelectedItem && (
-            <div className="lot-drilldown-panel" style={{ marginTop: "1rem" }}>
-              {tempMessage && <p className="success">{tempMessage}</p>}
-              {tempError && <p className="error">{tempError}</p>}
-
-              {tempGridLoading ? null : tempGrid ? (
+          {tempSelectedItem && !tempGridLoading && tempGrid && (
+            <StorageView
+              ref={tempViewRef}
+              grids={[tempGrid]}
+              fluorochromes={fluorochromes}
+              highlightVialIds={new Set(tempSelectedItem.vial_ids)}
+              highlightOnly
+              onRefresh={handleTempRefresh}
+              onClose={() => setTempSelectedItem(null)}
+              excludeUnitIds={[tempGrid.unit.id]}
+              toolbar={
                 <>
-                  <h3 style={{ margin: "0 0 0.5rem" }}>
-                    {tempSelectedItem.antibody_name || [tempSelectedItem.antibody_target, tempSelectedItem.antibody_fluorochrome].filter(Boolean).join("-") || "Unnamed"} — Lot {tempSelectedItem.lot_number}
-                  </h3>
-                  <StorageView
-                    ref={tempViewRef}
-                    grids={[tempGrid]}
-                    fluorochromes={fluorochromes}
-                    highlightVialIds={new Set(tempSelectedItem.vial_ids)}
-                    highlightOnly
-                    onRefresh={handleTempRefresh}
-                    excludeUnitIds={[tempGrid.unit.id]}
-                  />
+                  {tempMessage && <p className="success" style={{ padding: "0 var(--space-md)" }}>{tempMessage}</p>}
+                  {tempError && <p className="error" style={{ padding: "0 var(--space-md)" }}>{tempError}</p>}
                 </>
-              ) : null}
-            </div>
+              }
+            />
           )}
         </div>
         </div>

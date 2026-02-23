@@ -31,10 +31,12 @@ interface Props {
     variant?: "primary" | "danger" | "default";
   }>;
   unit?: StorageUnit;
-  headerActions?: ReactNode;
   showTempBadge?: boolean;
   legendExtra?: ReactNode;
   hideLegend?: boolean;
+  unitOptions?: { id: string; label: string }[];
+  onUnitChange?: (unitId: string) => void;
+  collapsible?: boolean;
 }
 
 function hexToRgba(hex: string, opacity: number): string {
@@ -61,10 +63,12 @@ export default function StorageGrid({
   previewCellIds,
   popoutActions,
   unit,
-  headerActions,
   showTempBadge = true,
   legendExtra,
   hideLegend = false,
+  unitOptions,
+  onUnitChange,
+  collapsible = false,
 }: Props) {
   const [expandedCellId, setExpandedCellId] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -403,43 +407,76 @@ export default function StorageGrid({
     const totalCells = cells.length;
     const occupiedCount = cells.filter((c) => !!c.vial_id).length;
 
+    const summaryContent = unitOptions && onUnitChange ? (
+      <select
+        className="sv-unit-summary-select"
+        value={unit.id}
+        onChange={(e) => onUnitChange(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <option value="">Select destination...</option>
+        {unitOptions.map((o) => (
+          <option key={o.id} value={o.id}>{o.label}</option>
+        ))}
+      </select>
+    ) : (
+      <span className="sv-unit-summary-name">{unit.name}</span>
+    );
+
+    const panelContent = (
+      <>
+        {gridElement}
+        {!hideLegend && (
+          <GridLegend>{legendExtra}</GridLegend>
+        )}
+      </>
+    );
+
+    if (collapsible) {
+      return (
+        <details open className="sv-unit-section" data-unit-id={unit.id}>
+          {mobilePopoutPortal}
+          <summary className="sv-unit-summary">
+            {summaryContent}
+            <span className="sv-unit-summary-count">{occupiedCount}/{totalCells}</span>
+          </summary>
+          {panelContent}
+        </details>
+      );
+    }
+
     return (
       <div className="grid-container">
         {mobilePopoutPortal}
-        <div className="move-panel compact">
-          <div className="move-header">
-            <div className="move-header-icon">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <rect x="2" y="3" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
-                <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.5" />
-                <circle cx="10" cy="6.5" r="1" fill="currentColor" />
-                <circle cx="10" cy="13.5" r="1" fill="currentColor" />
-              </svg>
-            </div>
-            <span className="move-header-title">
-              {unit.name}
-              {showTempBadge && unit.is_temporary && (
-                <span className="temp-badge">Auto</span>
-              )}
-            </span>
-            {unit.temperature && (
-              <span className="move-header-temp">{unit.temperature}</span>
+        <div className="sv-grid-panel">
+          <div className="move-body-header">
+            {unitOptions && onUnitChange ? (
+              <select
+                className="move-body-title-select"
+                value={unit.id}
+                onChange={(e) => onUnitChange(e.target.value)}
+              >
+                <option value="">Select destination...</option>
+                {unitOptions.map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="move-body-title">
+                {unit.name}
+                {showTempBadge && unit.is_temporary && (
+                  <span className="temp-badge">Auto</span>
+                )}
+              </span>
             )}
-            <div className="move-header-capacity">
+            <div className="move-body-capacity">
               <CapacityBar occupied={occupiedCount} total={totalCells} />
             </div>
-            {headerActions && (
-              <div className="move-header-actions">
-                {headerActions}
-              </div>
-            )}
           </div>
-          <div className="move-body">
-            {gridElement}
-            {!hideLegend && (
-              <GridLegend>{legendExtra}</GridLegend>
-            )}
-          </div>
+          {gridElement}
+          {!hideLegend && (
+            <GridLegend>{legendExtra}</GridLegend>
+          )}
         </div>
       </div>
     );

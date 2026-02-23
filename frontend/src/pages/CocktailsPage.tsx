@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type {
@@ -15,7 +15,8 @@ import CocktailRecipeCard from "../components/CocktailRecipeCard";
 import { CocktailRecipeForm, type CocktailRecipeFormValues } from "../components/CocktailRecipeForm";
 import { CocktailLotPreparationForm } from "../components/CocktailLotPreparationForm";
 import { CocktailDocumentModal } from "../components/CocktailDocumentModal";
-import { Beaker } from "lucide-react";
+import { Modal } from "../components/Modal";
+import { FlaskConical, Calendar, RefreshCw, FileText, Archive, CheckCircle, Trash2 } from "lucide-react";
 
 const CARD_COLLAPSE_MS = 100;
 
@@ -143,8 +144,6 @@ export default function CocktailsPage() {
     if (!dateStr) return "\u2014";
     return new Date(dateStr).toLocaleString();
   };
-
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
   /** Compute FEFO badges: among active non-archived lots sorted by expiration, first = Current, rest = New. */
   const computeLotBadgeMap = (lots: CocktailLot[]): Map<string, "current" | "new"> => {
@@ -363,124 +362,130 @@ export default function CocktailsPage() {
       (lot.renewal_count < (recipes.find((r) => r.id === lot.recipe_id)?.max_renewals ?? Infinity));
 
     return (
-      <div style={{ padding: "0.75rem", borderTop: "1px solid var(--border)" }}>
+      <div className="cocktail-lot-detail">
         {/* Source traceability */}
         {lot.sources && lot.sources.length > 0 && (
-          <div style={{ marginBottom: "0.75rem" }}>
-            <strong>Source Lots:</strong>
-            <table style={{ width: "100%", marginTop: "0.25rem", fontSize: "0.85rem" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left" }}>Antibody</th>
-                  <th style={{ textAlign: "left" }}>Lot #</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lot.sources.map((src) => (
-                  <tr key={src.id}>
-                    <td>
-                      {[src.antibody_target, src.antibody_fluorochrome]
-                        .filter(Boolean)
-                        .join(" - ") || "\u2014"}
-                    </td>
-                    <td>{src.source_lot_number || "\u2014"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="cocktail-lot-sources">
+            <h4>Source Lots</h4>
+            <div className="cocktail-source-list">
+              {lot.sources.map((src) => (
+                <div key={src.id} className="cocktail-source-item">
+                  <span className="cocktail-source-ab">
+                    {[src.antibody_target, src.antibody_fluorochrome]
+                      .filter(Boolean)
+                      .join(" - ") || "\u2014"}
+                  </span>
+                  <span className="cocktail-source-lot">{src.source_lot_number || "\u2014"}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Metadata */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+        <div className="cocktail-lot-meta">
           {lot.created_by_name && (
-            <span>
-              <strong>Prepared by:</strong> {lot.created_by_name}
-            </span>
+            <div className="cocktail-meta-item">
+              <span className="cocktail-meta-label">Prepared by</span>
+              <span className="cocktail-meta-value">{lot.created_by_name}</span>
+            </div>
           )}
           {lot.test_count != null && (
-            <span>
-              <strong>Tests:</strong> {lot.test_count}
-            </span>
+            <div className="cocktail-meta-item">
+              <span className="cocktail-meta-label">Tests</span>
+              <span className="cocktail-meta-value">{lot.test_count}</span>
+            </div>
           )}
           {lot.storage_unit_name && (
-            <span>
-              <strong>Location:</strong> {lot.storage_unit_name}
-              {lot.storage_cell_label ? ` / ${lot.storage_cell_label}` : ""}
-            </span>
+            <div className="cocktail-meta-item">
+              <span className="cocktail-meta-label">Location</span>
+              <span className="cocktail-meta-value">
+                {lot.storage_unit_name}
+                {lot.storage_cell_label ? ` / ${lot.storage_cell_label}` : ""}
+              </span>
+            </div>
           )}
           {lot.last_renewed_at && (
-            <span>
-              <strong>Last renewed:</strong> {formatDateTime(lot.last_renewed_at)}
-            </span>
+            <div className="cocktail-meta-item">
+              <span className="cocktail-meta-label">Last renewed</span>
+              <span className="cocktail-meta-value">{formatDateTime(lot.last_renewed_at)}</span>
+            </div>
           )}
           {lot.qc_approved_at && (
-            <span>
-              <strong>QC approved:</strong> {formatDateTime(lot.qc_approved_at)}
-            </span>
+            <div className="cocktail-meta-item">
+              <span className="cocktail-meta-label">QC approved</span>
+              <span className="cocktail-meta-value">{formatDateTime(lot.qc_approved_at)}</span>
+            </div>
           )}
           {lot.archive_note && (
-            <span>
-              <strong>Archive note:</strong> {lot.archive_note}
-            </span>
+            <div className="cocktail-meta-item full-width">
+              <span className="cocktail-meta-label">Archive note</span>
+              <span className="cocktail-meta-value">{lot.archive_note}</span>
+            </div>
           )}
         </div>
 
         {/* Actions */}
         {!isReadOnly && (
-          <div className="action-btns" style={{ flexWrap: "wrap" }}>
+          <div className="cocktail-lot-actions">
             {canEdit && lot.qc_status === "pending" && !lot.is_archived && (
               <button
-                className="btn-sm btn-green"
+                className="cocktail-action-btn approve"
                 onClick={() => handleQC(lot.id, "approved")}
                 disabled={isLotLoading}
               >
-                Approve QC
+                <CheckCircle size={14} />
+                <span>Approve QC</span>
               </button>
             )}
             {canRenew && (
               <button
-                className="btn-sm btn-secondary"
+                className="cocktail-action-btn renew"
                 onClick={() => handleRenew(lot.id)}
                 disabled={isLotLoading}
               >
-                Renew
+                <RefreshCw size={14} />
+                <span>Renew</span>
               </button>
             )}
             {canPrepare && lot.status === "active" && !lot.is_archived && (
               <button
-                className="btn-sm btn-danger"
+                className="cocktail-action-btn deplete"
                 onClick={() => handleDeplete(lot.id)}
                 disabled={isLotLoading}
               >
-                Deplete
+                <Trash2 size={14} />
+                <span>Deplete</span>
               </button>
             )}
             <button
-              className="btn-sm btn-secondary"
+              className="cocktail-action-btn docs"
               onClick={() => setDocModalLotId(lot.id)}
             >
-              Documents{lot.has_qc_document ? " (QC)" : ""}
+              <FileText size={14} />
+              <span>Documents{lot.has_qc_document ? " (QC)" : ""}</span>
             </button>
             {canEdit && !lot.is_archived && lot.status !== "depleted" && (
               <button
-                className="btn-sm btn-secondary"
+                className="cocktail-action-btn archive"
                 onClick={() => {
                   setArchiveNote("");
                   setArchivePrompt({ lotId: lot.id, lotNumber: lot.lot_number });
                 }}
                 disabled={isLotLoading}
               >
-                Archive
+                <Archive size={14} />
+                <span>Archive</span>
               </button>
             )}
             {canEdit && lot.is_archived && (
               <button
-                className="btn-sm btn-secondary"
+                className="cocktail-action-btn unarchive"
                 onClick={() => handleArchive(lot.id)}
                 disabled={isLotLoading}
               >
-                Unarchive
+                <Archive size={14} />
+                <span>Unarchive</span>
               </button>
             )}
           </div>
@@ -493,131 +498,48 @@ export default function CocktailsPage() {
 
   const renderLots = (lotsToRender: CocktailLot[], lotBadgeMap: Map<string, "current" | "new">) => {
     if (lotsToRender.length === 0) {
-      return <p className="page-desc" style={{ marginTop: "0.25rem" }}>No lots.</p>;
+      return <p className="cocktail-no-lots">No lots.</p>;
     }
 
-    if (isMobile) {
-      return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
-          {lotsToRender.map((lot) => {
-            const isLotExpanded = expandedLotId === lot.id;
-            return (
+    return (
+      <div className="cocktail-lots-list">
+        {lotsToRender.map((lot) => {
+          const isLotExpanded = expandedLotId === lot.id;
+          return (
+            <div
+              key={lot.id}
+              className={`cocktail-lot-item${isLotExpanded ? " expanded" : ""}`}
+            >
               <div
-                key={lot.id}
-                style={{
-                  border: "1px solid var(--border)",
-                  borderLeft: isLotExpanded ? "3px solid var(--primary)" : "1px solid var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  overflow: "hidden",
-                }}
+                className="cocktail-lot-header"
+                onClick={() => setExpandedLotId(isLotExpanded ? null : lot.id)}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem 0.75rem",
-                    cursor: "pointer",
-                    background: isLotExpanded ? "var(--bg-secondary)" : undefined,
-                  }}
-                  onClick={() => setExpandedLotId(isLotExpanded ? null : lot.id)}
-                >
-                  <strong style={{ flex: 1 }}>
-                    {lot.lot_number}
-                    {lotBadgeMap.get(lot.id) === "current" && (
-                      <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
-                    )}
-                    {lotBadgeMap.get(lot.id) === "new" && (
-                      <span className="badge badge-yellow" style={{ marginLeft: 6, fontSize: "0.7em" }}>New</span>
-                    )}
-                  </strong>
+                <div className="cocktail-lot-primary">
+                  <span className="cocktail-lot-number">{lot.lot_number}</span>
+                  {lotBadgeMap.get(lot.id) === "current" && (
+                    <span className="badge badge-blue">Current</span>
+                  )}
+                  {lotBadgeMap.get(lot.id) === "new" && (
+                    <span className="badge badge-yellow">New</span>
+                  )}
+                </div>
+                <div className="cocktail-lot-badges">
                   {qcBadge(lot.qc_status)}
                   {statusBadge(lot)}
                   {expiredBadge(lot)}
                 </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "0.75rem",
-                    padding: "0 0.75rem 0.5rem",
-                    fontSize: "0.85rem",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  <span>Prep: {formatDate(lot.preparation_date)}</span>
-                  <span>Exp: {formatDate(lot.expiration_date)}</span>
-                  {lot.renewal_count > 0 && <span>Renewals: {lot.renewal_count}</span>}
-                  {lot.test_count != null && <span>Tests: {lot.test_count}</span>}
-                </div>
-                {isLotExpanded && renderLotDetail(lot)}
               </div>
-            );
-          })}
-        </div>
-      );
-    }
-
-    return (
-      <table style={{ width: "100%", marginTop: "0.5rem", fontSize: "0.85rem" }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: "left" }}>Lot #</th>
-            <th style={{ textAlign: "left" }}>Prepared</th>
-            <th style={{ textAlign: "left" }}>Expires</th>
-            <th style={{ textAlign: "left" }}>QC</th>
-            <th style={{ textAlign: "left" }}>Status</th>
-            <th style={{ textAlign: "right" }}>Renewals</th>
-            <th style={{ textAlign: "right" }}>Tests</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lotsToRender.map((lot) => {
-            const isLotExpanded = expandedLotId === lot.id;
-            return (
-              <Fragment key={lot.id}>
-                <tr
-                  style={{
-                    cursor: "pointer",
-                    background: isLotExpanded ? "var(--bg-secondary)" : undefined,
-                    fontWeight: isLotExpanded ? 600 : undefined,
-                    borderLeft: isLotExpanded ? "3px solid var(--primary)" : "3px solid transparent",
-                  }}
-                  onClick={() => setExpandedLotId(isLotExpanded ? null : lot.id)}
-                >
-                  <td>
-                    <strong>{lot.lot_number}</strong>
-                    {lotBadgeMap.get(lot.id) === "current" && (
-                      <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: "0.7em" }}>Current</span>
-                    )}
-                    {lotBadgeMap.get(lot.id) === "new" && (
-                      <span className="badge badge-yellow" style={{ marginLeft: 6, fontSize: "0.7em" }}>New</span>
-                    )}
-                  </td>
-                  <td>{formatDate(lot.preparation_date)}</td>
-                  <td>{formatDate(lot.expiration_date)}</td>
-                  <td>
-                    {qcBadge(lot.qc_status)}
-                    {" "}
-                    {expiredBadge(lot)}
-                  </td>
-                  <td>{statusBadge(lot)}</td>
-                  <td style={{ textAlign: "right" }}>{lot.renewal_count}</td>
-                  <td style={{ textAlign: "right" }}>{lot.test_count != null ? lot.test_count : "\u2014"}</td>
-                </tr>
-                {isLotExpanded && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 0 }}>
-                      {renderLotDetail(lot)}
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+              <div className="cocktail-lot-info">
+                <span><Calendar size={12} /> Prep: {formatDate(lot.preparation_date)}</span>
+                <span>Exp: {formatDate(lot.expiration_date)}</span>
+                {lot.renewal_count > 0 && <span>Renewals: {lot.renewal_count}</span>}
+                {lot.test_count != null && <span>Tests: {lot.test_count}</span>}
+              </div>
+              {isLotExpanded && renderLotDetail(lot)}
+            </div>
+          );
+        })}
+      </div>
     );
   };
 
@@ -630,12 +552,12 @@ export default function CocktailsPage() {
     const lotBadgeMap = computeLotBadgeMap(allLots);
 
     return (
-      <>
+      <div className="cocktail-recipe-expanded">
         {/* Action buttons for recipe */}
-        <div className="action-btns" style={{ marginBottom: "0.75rem", flexWrap: "wrap" }}>
+        <div className="cocktail-recipe-actions">
           {canEdit && (
             <button
-              className="btn-sm btn-secondary"
+              className="cocktail-recipe-btn edit"
               onClick={() => openEditRecipeForm(recipe)}
             >
               Edit Cocktail
@@ -643,54 +565,54 @@ export default function CocktailsPage() {
           )}
           {canPrepare && recipe.is_active && (
             <button
-              className="btn-sm btn-green"
+              className="cocktail-recipe-btn prepare"
               onClick={() => setPrepareRecipe(recipe)}
             >
-              Prepare Lot
+              <FlaskConical size={14} />
+              <span>Prepare Lot</span>
             </button>
           )}
         </div>
 
         {/* Active lots */}
-        <strong style={{ fontSize: "0.9rem" }}>
-          Active Lots ({activeLots.length})
-        </strong>
-
-        {activeLots.length === 0 ? (
-          <p className="page-desc" style={{ marginTop: "0.25rem" }}>
-            No active lots.
-          </p>
-        ) : (
-          renderLots(activeLots, lotBadgeMap)
-        )}
+        <div className="cocktail-lots-section">
+          <h4>Active Lots ({activeLots.length})</h4>
+          {activeLots.length === 0 ? (
+            <p className="cocktail-no-lots">No active lots.</p>
+          ) : (
+            renderLots(activeLots, lotBadgeMap)
+          )}
+        </div>
 
         {/* Inactive lots toggle */}
         {inactiveLots.length > 0 && (
-          <div style={{ marginTop: "1rem" }}>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.85rem", cursor: "pointer", color: "var(--text-secondary)" }}>
+          <div className="cocktail-inactive-section">
+            <label className="cocktail-inactive-toggle">
               <input
                 type="checkbox"
                 checked={showInactiveLots}
                 onChange={() => setShowInactiveLots(!showInactiveLots)}
               />
-              Show inactive ({inactiveLots.length})
+              <span>Show inactive ({inactiveLots.length})</span>
             </label>
             {showInactiveLots && renderLots(inactiveLots, lotBadgeMap)}
           </div>
         )}
-      </>
+      </div>
     );
   };
 
   // ── Main render ────────────────────────────────────────────────────
 
   return (
-    <div>
+    <div className="cocktails-page">
       <div className="page-header">
         <h1>Cocktails</h1>
         <div className="filters">
           {canEdit && (
-            <button onClick={() => setShowRecipeForm(true)}>+ New Cocktail</button>
+            <button className="cocktails-new-btn" onClick={() => setShowRecipeForm(true)}>
+              + New
+            </button>
           )}
         </div>
       </div>
@@ -699,7 +621,7 @@ export default function CocktailsPage() {
 
       {!isLoading && sortedRecipes.length === 0 && (
         <EmptyState
-          icon={Beaker}
+          icon={FlaskConical}
           title="No cocktails"
           description="Create a cocktail to start tracking preparations."
         />
@@ -737,28 +659,35 @@ export default function CocktailsPage() {
 
       {/* Component info modal */}
       {infoRecipe && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Cocktail details">
-          <div className="modal-content">
-            <h2>{infoRecipe.name}</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem", fontSize: "0.85rem" }}>
-              <span><strong>Shelf life:</strong> {infoRecipe.shelf_life_days} days</span>
-              <span><strong>Max renewals:</strong> {infoRecipe.max_renewals != null ? infoRecipe.max_renewals : "Unlimited"}</span>
+        <Modal onClose={() => setInfoRecipe(null)} ariaLabel="Cocktail details">
+          <div className="cocktail-info-modal">
+            <div className="cocktail-info-header">
+              <div className="cocktail-info-icon">
+                <FlaskConical size={20} />
+              </div>
+              <h2>{infoRecipe.name}</h2>
             </div>
-            <table style={{ width: "100%", fontSize: "0.85rem" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", width: "2rem" }}>#</th>
-                  <th style={{ textAlign: "left" }}>Component</th>
-                  <th style={{ textAlign: "right" }}>Volume (uL)</th>
-                </tr>
-              </thead>
-              <tbody>
+
+            <div className="cocktail-info-meta">
+              <div className="cocktail-info-stat">
+                <span className="label">Shelf life</span>
+                <span className="value">{infoRecipe.shelf_life_days} days</span>
+              </div>
+              <div className="cocktail-info-stat">
+                <span className="label">Max renewals</span>
+                <span className="value">{infoRecipe.max_renewals != null ? infoRecipe.max_renewals : "Unlimited"}</span>
+              </div>
+            </div>
+
+            <div className="cocktail-info-components">
+              <h3>Components</h3>
+              <div className="cocktail-info-component-list">
                 {infoRecipe.components
                   .sort((a, b) => a.ordinal - b.ordinal)
                   .map((comp) => (
-                    <tr key={comp.id}>
-                      <td>{comp.ordinal}</td>
-                      <td>
+                    <div key={comp.id} className="cocktail-info-component">
+                      <span className="ordinal">{comp.ordinal}</span>
+                      <span className="name">
                         {comp.antibody_target || comp.antibody_fluorochrome
                           ? [comp.antibody_target, comp.antibody_fluorochrome]
                               .filter(Boolean)
@@ -766,21 +695,22 @@ export default function CocktailsPage() {
                           : comp.free_text_name
                             ? <em>{comp.free_text_name}</em>
                             : "\u2014"}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {comp.volume_ul != null ? comp.volume_ul : "\u2014"}
-                      </td>
-                    </tr>
+                      </span>
+                      <span className="volume">
+                        {comp.volume_ul != null ? `${comp.volume_ul} μL` : "\u2014"}
+                      </span>
+                    </div>
                   ))}
-              </tbody>
-            </table>
-            <div className="action-btns" style={{ marginTop: "1rem" }}>
-              <button className="btn-secondary" onClick={() => setInfoRecipe(null)}>
+              </div>
+            </div>
+
+            <div className="cocktail-info-actions">
+              <button className="cocktail-btn-close" onClick={() => setInfoRecipe(null)}>
                 Close
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {showRecipeForm && (
@@ -800,7 +730,7 @@ export default function CocktailsPage() {
           antibodies={antibodies}
           initialValues={editRecipeInitialValues}
           loading={recipeFormLoading}
-          title={`Edit Cocktail: ${editRecipe.name}`}
+          title="Edit Cocktail"
         />
       )}
 
@@ -827,13 +757,11 @@ export default function CocktailsPage() {
       })()}
 
       {archivePrompt && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Archive cocktail lot">
-          <div className="modal-content">
+        <Modal onClose={() => setArchivePrompt(null)} ariaLabel="Archive cocktail lot">
+          <div className="cocktail-archive-modal">
             <h2>Archive Lot {archivePrompt.lotNumber}</h2>
-            <p className="page-desc">
-              Add an optional note about why this lot is being archived.
-            </p>
-            <div className="form-group">
+            <p>Add an optional note about why this lot is being archived.</p>
+            <div className="cocktail-archive-field">
               <label>Archive Note (optional)</label>
               <textarea
                 value={archiveNote}
@@ -842,9 +770,15 @@ export default function CocktailsPage() {
                 placeholder='e.g., "QC Failed"'
               />
             </div>
-            <div className="action-btns" style={{ marginTop: "1rem" }}>
+            <div className="cocktail-archive-actions">
               <button
-                className="btn-danger"
+                className="cocktail-btn-cancel"
+                onClick={() => setArchivePrompt(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="cocktail-btn-archive"
                 onClick={() =>
                   handleArchive(archivePrompt.lotId, archiveNote.trim() || undefined)
                 }
@@ -852,15 +786,9 @@ export default function CocktailsPage() {
               >
                 {archiveLoading ? "Archiving..." : "Archive Lot"}
               </button>
-              <button
-                className="btn-secondary"
-                onClick={() => setArchivePrompt(null)}
-              >
-                Cancel
-              </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

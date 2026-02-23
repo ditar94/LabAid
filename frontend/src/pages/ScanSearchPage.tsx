@@ -1610,7 +1610,7 @@ export default function ScanSearchPage() {
                         const sr = selectedSearchResultRef.current;
                         if (sr) return handleSearchSelect(sr);
                       }}
-                      className="lot-drilldown-panel"
+                      onClose={() => setSelectedLotId(null)}
                     />
                   );
                 })()}

@@ -376,72 +376,12 @@ export default function StoragePage() {
       </div>
 
       {selectedGrid && (
-        <>
-          {selectedGrid.unit.is_temporary && !isMoving && (
-            <p className="page-desc">
-              Newly received vials appear here. Use <strong>Move Vials</strong> to transfer them to permanent storage.
-            </p>
-          )}
-
-          {stockingMode && (
-            <div className="stocking-panel">
-              <p className="page-desc">
-                Scan a vial barcode to place it in the next open slot
-                {nextEmptyCell ? (
-                  <>
-                    {" "}
-                    — next slot:{" "}
-                    <strong>{nextEmptyCell.label}</strong>
-                  </>
-                ) : (
-                  " — storage unit is full"
-                )}
-              </p>
-              <div className="scan-input-container">
-                <input
-                  ref={scanRef}
-                  className="scan-input"
-                  placeholder="Scan vial barcode..."
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={!nextEmptyCell}
-                  autoFocus
-                />
-                <BarcodeScannerButton
-                  label="Scan"
-                  disabled={!nextEmptyCell}
-                  onDetected={(value) => {
-                    setBarcode(value);
-                    handleStock(value);
-                  }}
-                />
-                <button
-                  onClick={() => handleStock()}
-                  disabled={!nextEmptyCell || !barcode.trim()}
-                >
-                  Stock
-                </button>
-              </div>
-              {message && <p className="success">{message}</p>}
-              {error && error.startsWith("not_registered:") ? (
-                <p className="error">
-                  Barcode not registered.{" "}
-                  <Link to={`/scan?barcode=${encodeURIComponent(error.slice("not_registered:".length))}`}>
-                    Go to Scan/Search to register
-                  </Link>
-                </p>
-              ) : error ? (
-                <p className="error">{error}</p>
-              ) : null}
-            </div>
-          )}
-
           <StorageView
             ref={viewRef}
             grids={[selectedGrid]}
             fluorochromes={fluorochromes}
             onRefresh={refreshGrid}
+            onClose={() => { setSelectedGrid(null); exitStockingMode(); }}
             readOnly={stockingMode}
             highlightNextCellId={stockingMode ? nextEmptyCell?.id : undefined}
             excludeUnitIds={[]}
@@ -454,18 +394,89 @@ export default function StoragePage() {
               }];
             }}
             headerActions={({ enterMoveMode }) => (
-              <div className="move-header-actions">
+              <>
                 {canStock && !stockingMode && !selectedGrid.unit.is_temporary && (
-                  <button className="move-header-btn" onClick={enterStockingMode}>Stock</button>
+                  <button className="sv-header-btn sv-header-btn--primary" onClick={enterStockingMode}>Stock</button>
                 )}
                 {canStock && !stockingMode && (
-                  <button className="move-header-btn" onClick={enterMoveMode}>Move</button>
+                  <button className="sv-header-btn sv-header-btn--primary" onClick={enterMoveMode}>Move</button>
                 )}
                 {stockingMode && (
-                  <button className="move-header-btn" onClick={exitStockingMode}>Exit Stocking</button>
+                  <button className="sv-header-btn" onClick={exitStockingMode}>Exit Stocking</button>
                 )}
-              </div>
+              </>
             )}
+            toolbar={
+              <>
+                {selectedGrid.unit.is_temporary && !isMoving && (
+                  <p className="sv-toolbar-hint">
+                    Newly received vials appear here. Use <strong>Move Vials</strong> to transfer them to permanent storage.
+                  </p>
+                )}
+                {stockingMode && (
+                  <div className="stocking-panel">
+                    <p className="sv-toolbar-hint">
+                      Scan a vial barcode to place it in the next open slot
+                      {nextEmptyCell ? (
+                        <>
+                          {" "}— next slot: <strong>{nextEmptyCell.label}</strong>
+                        </>
+                      ) : (
+                        " — storage unit is full"
+                      )}
+                    </p>
+                    <div className="scan-input-container">
+                      <input
+                        ref={scanRef}
+                        className="scan-input"
+                        placeholder="Scan vial barcode..."
+                        value={barcode}
+                        onChange={(e) => setBarcode(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        disabled={!nextEmptyCell}
+                        autoFocus
+                      />
+                      <BarcodeScannerButton
+                        label="Scan"
+                        disabled={!nextEmptyCell}
+                        onDetected={(value) => {
+                          setBarcode(value);
+                          handleStock(value);
+                        }}
+                      />
+                      <button
+                        onClick={() => handleStock()}
+                        disabled={!nextEmptyCell || !barcode.trim()}
+                      >
+                        Stock
+                      </button>
+                    </div>
+                    {message && <p className="success">{message}</p>}
+                    {error && error.startsWith("not_registered:") ? (
+                      <p className="error">
+                        Barcode not registered.{" "}
+                        <Link to={`/scan?barcode=${encodeURIComponent(error.slice("not_registered:".length))}`}>
+                          Go to Scan/Search to register
+                        </Link>
+                      </p>
+                    ) : error ? (
+                      <p className="error">{error}</p>
+                    ) : null}
+                  </div>
+                )}
+                {!stockingMode && message && <p className="success" style={{ padding: "0 var(--space-md)" }}>{message}</p>}
+                {!stockingMode && error && error.startsWith("not_registered:") ? (
+                  <p className="error" style={{ padding: "0 var(--space-md)" }}>
+                    Barcode not registered.{" "}
+                    <Link to={`/scan?barcode=${encodeURIComponent(error.slice("not_registered:".length))}`}>
+                      Go to Scan/Search to register
+                    </Link>
+                  </p>
+                ) : !stockingMode && error ? (
+                  <p className="error" style={{ padding: "0 var(--space-md)" }}>{error}</p>
+                ) : null}
+              </>
+            }
             moveHeaderExtra={({ addVialIds }) => (
               <select value="" onChange={(e) => {
                 if (!e.target.value) return;
@@ -486,20 +497,6 @@ export default function StoragePage() {
               ) : undefined
             }
           />
-
-          {/* Status messages (outside stocking mode) */}
-          {!stockingMode && message && <p className="success">{message}</p>}
-          {!stockingMode && error && error.startsWith("not_registered:") ? (
-            <p className="error">
-              Barcode not registered.{" "}
-              <Link to={`/scan?barcode=${encodeURIComponent(error.slice("not_registered:".length))}`}>
-                Go to Scan/Search to register
-              </Link>
-            </p>
-          ) : !stockingMode && error ? (
-            <p className="error">{error}</p>
-          ) : null}
-        </>
       )}
     </div>
   );

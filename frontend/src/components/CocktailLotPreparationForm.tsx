@@ -193,11 +193,8 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
 
   return (
     <Modal onClose={onCancel} ariaLabel={`Prepare lot for ${recipe.name}`}>
-      <div className="modal-content">
-        <h2>Prepare Lot: {recipe.name}</h2>
-        <p className="page-desc">
-          Select source lots for each component in this cocktail recipe.
-        </p>
+      <div className="modal-content cf-modal" style={{ maxWidth: 500 }}>
+        <h2>Prepare Lot</h2>
         <form
           onSubmit={handleSubmit}
           style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
@@ -281,44 +278,43 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
                   <div
                     key={comp.id}
                     style={{
+                      position: "relative",
                       display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      padding: "0.5rem",
+                      flexDirection: "column",
+                      gap: "0.3rem",
+                      padding: "0.4rem 0.5rem",
                       border: "1px solid var(--border)",
                       borderRadius: "var(--radius-sm)",
                     }}
                   >
-                    <span
-                      style={{
-                        minWidth: "1.5rem",
-                        textAlign: "center",
-                        fontWeight: 600,
-                        color: "var(--text-secondary)",
-                      }}
-                    >
-                      {comp.ordinal}
-                    </span>
-                    <span style={{ flex: 1, fontWeight: 500 }}>
+                    {comp.volume_ul != null && (
+                      <span style={{
+                        position: "absolute",
+                        top: "0.25rem",
+                        right: "0.4rem",
+                        fontSize: "0.6rem",
+                        color: "var(--text-muted)",
+                      }}>
+                        {comp.volume_ul} uL
+                        {testCount && parseInt(testCount, 10) > 0 && (
+                          <span> ({(comp.volume_ul * parseInt(testCount, 10)).toLocaleString()} total)</span>
+                        )}
+                      </span>
+                    )}
+                    <span style={{ fontSize: "0.75rem", fontWeight: 500, display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                      <span style={{ minWidth: "1.2rem", textAlign: "center", fontWeight: 600, color: "var(--text-secondary)", fontSize: "0.65rem" }}>
+                        {comp.ordinal}
+                      </span>
                       {isFreeText ? <em>{label}</em> : label}
-                      {comp.volume_ul != null && (
-                        <span style={{ color: "var(--text-secondary)", fontWeight: 400, fontSize: "0.85em" }}>
-                          {" "}— {comp.volume_ul} uL
-                          {testCount && parseInt(testCount, 10) > 0 && (
-                            <span> = {(comp.volume_ul * parseInt(testCount, 10)).toLocaleString()} uL total</span>
-                          )}
-                        </span>
-                      )}
                     </span>
                     {isFreeText ? (
-                      <span style={{ flex: 2, color: "var(--text-muted)", fontSize: "0.85em", fontStyle: "italic" }}>
-                        Custom component — no source lot needed
+                      <span style={{ fontSize: "0.65rem", color: "var(--text-muted)", fontStyle: "italic", paddingLeft: "1.55rem" }}>
+                        No source lot needed
                       </span>
                     ) : (
                       <select
                         value={sourceEntry?.source_lot_id || ""}
                         onChange={(e) => handleSourceChange(comp.id, e.target.value)}
-                        style={{ flex: 2 }}
                         required
                       >
                         <option value="">Select lot...</option>
@@ -342,12 +338,12 @@ export function CocktailLotPreparationForm({ recipe, onSubmit, onCancel, loading
 
           {error && <p className="error">{error}</p>}
 
-          <div className="action-btns" style={{ marginTop: "0.5rem" }}>
-            <button type="submit" disabled={loading || lotsLoading}>
-              {loading ? "Preparing..." : "Prepare Lot"}
-            </button>
-            <button type="button" className="btn-secondary" onClick={onCancel}>
+          <div className="cf-actions">
+            <button type="button" className="cf-action-cancel" onClick={onCancel}>
               Cancel
+            </button>
+            <button type="submit" className="cf-action-submit" disabled={loading || lotsLoading}>
+              {loading ? "Preparing..." : "+ New Lot"}
             </button>
           </div>
         </form>

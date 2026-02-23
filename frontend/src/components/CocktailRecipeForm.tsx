@@ -4,6 +4,7 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -16,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Plus, Trash2, List, PenLine } from "lucide-react";
 import type { Antibody } from "../api/types";
 import { Modal } from "./Modal";
 
@@ -28,13 +29,12 @@ export interface CocktailRecipeFormValues {
 }
 
 export interface ComponentRow {
-  id?: string;  // present for existing components (preserves FK refs on update)
+  id?: string;
   antibody_id: string;
   volume_ul: string;
   free_text_name: string;
 }
 
-// Internal row with stable key for drag-and-drop
 interface ComponentRowWithKey extends ComponentRow {
   _key: number;
   _customMode: boolean;
@@ -56,10 +56,9 @@ interface Props {
   title?: string;
 }
 
-// ── Sortable Row Component ─────────────────────────────────────────────────
+// ── Sortable Row ──────────────────────────────────────────────────────────
 interface SortableRowProps {
   row: ComponentRowWithKey;
-  index: number;
   availableAntibodies: Antibody[];
   onFieldChange: (field: keyof ComponentRow, value: string) => void;
   onToggleCustomMode: () => void;
@@ -70,7 +69,6 @@ interface SortableRowProps {
 
 function SortableRow({
   row,
-  index,
   availableAntibodies,
   onFieldChange,
   onToggleCustomMode,
@@ -90,46 +88,46 @@ function SortableRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.8 : 1,
-    zIndex: isDragging ? 10 : undefined,
+    opacity: isDragging ? 0.85 : 1,
+    zIndex: isDragging ? 100 : undefined,
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`component-row ${isDragging ? "component-row-dragging" : ""}`}
+      className={`cf-row${isDragging ? " dragging" : ""}`}
     >
-      {/* Drag handle */}
       <button
         type="button"
-        className="drag-handle"
+        className="cf-icon-btn cf-drag"
         {...attributes}
         {...listeners}
         aria-label="Drag to reorder"
       >
-        <GripVertical size={16} />
+        <GripVertical size={14} />
       </button>
 
-      {/* Row number */}
-      <span className="component-row-number">{index + 1}</span>
-
-      {/* Antibody select or custom input */}
       {row._customMode ? (
         <input
           type="text"
-          placeholder="Custom component name..."
+          placeholder="Custom reagent..."
           value={row.free_text_name}
           onChange={(e) => onFieldChange("free_text_name", e.target.value)}
-          className="component-select"
-          required
+          className="cf-input"
+          autoComplete="one-time-code"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-form-type="other"
         />
       ) : (
         <select
           value={row.antibody_id}
           onChange={(e) => onFieldChange("antibody_id", e.target.value)}
-          className="component-select"
-          required
+          className="cf-select"
         >
           <option value="">Select antibody...</option>
           {availableAntibodies.map((ab) => (
@@ -140,42 +138,41 @@ function SortableRow({
         </select>
       )}
 
-      {/* Toggle custom/antibody mode */}
       <button
         type="button"
-        className={`btn-sm component-mode-toggle ${row._customMode ? "btn-green" : "btn-secondary"}`}
+        className={`cf-icon-btn cf-mode${row._customMode ? " active" : ""}`}
         onClick={onToggleCustomMode}
-        title={row._customMode ? "Switch to antibody selection" : "Switch to custom text"}
+        title={row._customMode ? "Switch to antibody list" : "Switch to free text"}
       >
-        {row._customMode ? "Ab" : "Custom"}
+        {row._customMode ? <List size={13} /> : <PenLine size={13} />}
       </button>
 
-      {/* Volume input */}
       <input
-        type="number"
-        min="0"
-        step="0.1"
+        type="text"
+        inputMode="decimal"
+        pattern="[0-9]*\.?[0-9]*"
         placeholder="μL"
         value={row.volume_ul}
         onChange={(e) => onFieldChange("volume_ul", e.target.value)}
-        className="component-volume"
+        className="cf-vol"
+        autoComplete="one-time-code"
+        data-lpignore="true"
       />
 
-      {/* Remove button */}
       <button
         type="button"
-        className="btn-sm btn-danger component-remove"
+        className="cf-icon-btn cf-remove"
         onClick={onRemove}
         disabled={!canRemove}
         aria-label="Remove component"
       >
-        ×
+        <Trash2 size={13} />
       </button>
     </div>
   );
 }
 
-// ── Main Form Component ────────────────────────────────────────────────────
+// ── Main Form ──────────────────────────────────────────────────────────────
 export function CocktailRecipeForm({
   onSubmit,
   onCancel,
@@ -184,11 +181,9 @@ export function CocktailRecipeForm({
   loading = false,
   title = "New Cocktail",
 }: Props) {
-  // Generate stable keys for rows
   const keyCounterRef = useRef(0);
   const generateKey = () => ++keyCounterRef.current;
 
-  // Initialize rows with keys and custom mode
   const [rows, setRows] = useState<ComponentRowWithKey[]>(() => {
     const initial = initialValues?.components || EMPTY_RECIPE_FORM.components;
     return initial.map((c) => ({
@@ -203,7 +198,6 @@ export function CocktailRecipeForm({
   const [maxRenewals, setMaxRenewals] = useState(initialValues?.max_renewals || "");
   const [error, setError] = useState<string | null>(null);
 
-  // Collect all selected antibody IDs to filter from other dropdowns
   const selectedAntibodyIds = useMemo(() => {
     const ids = new Set<string>();
     rows.forEach((r) => {
@@ -212,16 +206,10 @@ export function CocktailRecipeForm({
     return ids;
   }, [rows]);
 
-  // Drag-and-drop sensors
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5, // 5px movement before drag starts
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -247,13 +235,9 @@ export function CocktailRecipeForm({
     setRows((prev) => {
       const updated = [...prev];
       const row = updated[index];
-      if (row._customMode) {
-        // Switching from custom to antibody: clear free_text_name
-        updated[index] = { ...row, _customMode: false, free_text_name: "" };
-      } else {
-        // Switching from antibody to custom: clear antibody_id
-        updated[index] = { ...row, _customMode: true, antibody_id: "" };
-      }
+      updated[index] = row._customMode
+        ? { ...row, _customMode: false, free_text_name: "" }
+        : { ...row, _customMode: true, antibody_id: "" };
       return updated;
     });
   };
@@ -275,105 +259,109 @@ export function CocktailRecipeForm({
     setError(null);
 
     if (!name.trim()) {
-      setError("Cocktail name is required.");
+      setError("Name is required.");
       return;
     }
     if (!shelfLifeDays || parseInt(shelfLifeDays, 10) < 1) {
       setError("Shelf life must be at least 1 day.");
       return;
     }
-    const hasEmptyComponent = rows.some((r) => !r.antibody_id && !r.free_text_name.trim());
-    if (hasEmptyComponent) {
-      setError("All components must have an antibody selected or a custom name entered.");
+    const hasEmpty = rows.some((r) => !r.antibody_id && !r.free_text_name.trim());
+    if (hasEmpty) {
+      setError("All components need an antibody or custom name.");
       return;
     }
 
-    // Build form values without internal keys
-    const formValues: CocktailRecipeFormValues = {
-      name: name.trim(),
-      shelf_life_days: shelfLifeDays,
-      max_renewals: maxRenewals,
-      components: rows.map((r) => ({
-        id: r.id,
-        antibody_id: r.antibody_id,
-        volume_ul: r.volume_ul,
-        free_text_name: r.free_text_name,
-      })),
-    };
-
     try {
-      await onSubmit(formValues);
+      await onSubmit({
+        name: name.trim(),
+        shelf_life_days: shelfLifeDays,
+        max_renewals: maxRenewals,
+        components: rows.map((r) => ({
+          id: r.id,
+          antibody_id: r.antibody_id,
+          volume_ul: r.volume_ul,
+          free_text_name: r.free_text_name,
+        })),
+      });
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || "Failed to save cocktail.");
+      setError(err.response?.data?.detail || err.message || "Failed to save.");
     }
   };
 
-  const antibodyLabel = (ab: Antibody) => {
-    if (ab.name) return ab.name;
-    return [ab.target, ab.fluorochrome].filter(Boolean).join(" - ") || "Unnamed";
-  };
+  const antibodyLabel = (ab: Antibody) =>
+    ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join("-") || "Unnamed";
 
-  const getAvailableAntibodies = (currentAntibodyId: string) => {
-    return antibodies.filter(
-      (ab) => ab.is_active && ab.designation !== "ivd" && (!selectedAntibodyIds.has(ab.id) || ab.id === currentAntibodyId)
+  const getAvailableAntibodies = (currentId: string) =>
+    antibodies.filter(
+      (ab) => ab.is_active && ab.designation !== "ivd" && (!selectedAntibodyIds.has(ab.id) || ab.id === currentId)
     );
-  };
 
   return (
     <Modal onClose={onCancel} ariaLabel={title}>
-      <div className="modal-content">
+      <div className="modal-content cf-modal">
         <h2>{title}</h2>
-        <form onSubmit={handleSubmit} className="cocktail-form">
+
+        <form onSubmit={handleSubmit} autoComplete="off" data-form-type="other" data-lpignore="true">
           <div className="form-group">
-            <label>Cocktail Name</label>
+            <label htmlFor="cf-recipe-name">Recipe Name</label>
             <input
+              id="cf-recipe-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. T-Cell Panel"
               required
+              autoComplete="one-time-code"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
             />
           </div>
 
-          <div className="cocktail-form-row">
+          <div className="cf-meta">
             <div className="form-group">
-              <label>Shelf Life (days)</label>
+              <label htmlFor="cf-shelf-life">Shelf Life</label>
               <input
-                type="number"
-                min="1"
+                id="cf-shelf-life"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={shelfLifeDays}
                 onChange={(e) => setShelfLifeDays(e.target.value)}
                 required
+                placeholder="days"
+                autoComplete="one-time-code"
+                data-lpignore="true"
               />
             </div>
             <div className="form-group">
-              <label>Max Renewals (optional)</label>
+              <label htmlFor="cf-max-renewals">Max Renewals</label>
               <input
-                type="number"
-                min="0"
+                id="cf-max-renewals"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={maxRenewals}
                 onChange={(e) => setMaxRenewals(e.target.value)}
-                placeholder="Unlimited"
+                placeholder="∞"
+                autoComplete="one-time-code"
+                data-lpignore="true"
               />
             </div>
           </div>
 
-          <div className="form-group">
-            <label>Components</label>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={rows.map((r) => r._key)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="component-list">
+          <div className="cf-section">
+            <label>Components ({rows.length})</label>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={rows.map((r) => r._key)} strategy={verticalListSortingStrategy}>
+                <div className="cf-list">
                   {rows.map((row, i) => (
                     <SortableRow
                       key={row._key}
                       row={row}
-                      index={i}
                       availableAntibodies={getAvailableAntibodies(row.antibody_id)}
                       onFieldChange={(field, value) => handleFieldChange(i, field, value)}
                       onToggleCustomMode={() => toggleCustomMode(i)}
@@ -385,23 +373,19 @@ export function CocktailRecipeForm({
                 </div>
               </SortableContext>
             </DndContext>
-            <button
-              type="button"
-              className="btn-sm btn-secondary"
-              onClick={addComponent}
-            >
-              + Add Component
+            <button type="button" className="cf-icon-btn cf-add" onClick={addComponent}>
+              <Plus size={14} /> Component
             </button>
           </div>
 
           {error && <p className="error">{error}</p>}
 
-          <div className="action-btns">
-            <button type="submit" disabled={loading}>
-              {loading ? "Saving..." : initialValues ? "Save Changes" : "Create Cocktail"}
-            </button>
-            <button type="button" className="btn-secondary" onClick={onCancel}>
+          <div className="cf-actions">
+            <button type="button" className="cf-action-cancel" onClick={onCancel}>
               Cancel
+            </button>
+            <button type="submit" className="cf-action-submit" disabled={loading}>
+              {loading ? "Saving..." : initialValues ? "Save" : "Create"}
             </button>
           </div>
         </form>
