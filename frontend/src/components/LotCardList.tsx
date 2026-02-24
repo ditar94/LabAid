@@ -116,7 +116,7 @@ export default function LotCardList({
             )}
             <div className="lot-card-row">
               <span>Expiration</span>
-              <span>{lot.expiration_date || "\u2014"}</span>
+              <span>{lot.expiration_date ? formatDate(lot.expiration_date) : "\u2014"}</span>
             </div>
             <div className="lot-card-row">
               <span>Sealed</span>

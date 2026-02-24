@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { Outlet, NavLink, Link, useNavigate } from "react-router-dom";
+import { useState, useMemo, useCallback, useRef, useEffect, lazy, Suspense } from "react";
+import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Antibody, Lot, User } from "../api/types";
@@ -33,14 +33,18 @@ import {
   ChevronUp,
   ChevronDown,
   MoreHorizontal,
+  Play,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 import { version } from "../../package.json";
+
+const TermsModal = lazy(() => import("./TermsModal"));
 
 export default function Layout() {
   const { user, logout, impersonatingLab, endImpersonation, labSettings } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
@@ -91,6 +95,9 @@ export default function Layout() {
 
   const accountBanner = useMemo(() => {
     if (!hasLabContext) return null;
+    if (labSettings.is_demo) {
+      return { variant: "trial", icon: Info, message: "This is a demo lab. Explore freely \u2014 all data resets automatically." };
+    }
     const billing = labSettings.billing_status;
     const active = labSettings.is_active;
     const billingUrl = labSettings.billing_url;
@@ -131,7 +138,7 @@ export default function Layout() {
       return { variant: "trial", icon: Info, message: trialMsg };
     }
     return null;
-  }, [hasLabContext, labSettings.billing_status, labSettings.is_active, labSettings.trial_ends_at, labSettings.billing_url]);
+  }, [hasLabContext, labSettings.is_demo, labSettings.billing_status, labSettings.is_active, labSettings.trial_ends_at, labSettings.billing_url]);
 
   const { selectedLab } = useSharedData();
   const queryClient = useQueryClient();
@@ -273,6 +280,12 @@ export default function Layout() {
                 </NavLink>
               )}
               {isSuperAdmin && (
+                <NavLink to="/demos" onClick={handleNavClick}>
+                  <Play className="nav-icon" />
+                  Demos
+                </NavLink>
+              )}
+              {isSuperAdmin && (
                 <NavLink to="/global-search" onClick={handleNavClick}>
                   <Search className="nav-icon" />
                   Global Search
@@ -363,7 +376,7 @@ export default function Layout() {
               <> &middot; {import.meta.env.VITE_GIT_SHA.slice(0, 7)}</>
             )}
           </div>
-          <Link to="/terms">Terms of Use</Link>
+          <button type="button" className="link-button" onClick={() => setShowTerms(true)}>Terms of Use</button>
         </div>
       </nav>
       <main className="main-content">
@@ -385,6 +398,11 @@ export default function Layout() {
         )}
         <Outlet />
       </main>
+      {showTerms && (
+        <Suspense fallback={null}>
+          <TermsModal onClose={() => setShowTerms(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

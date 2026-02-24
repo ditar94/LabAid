@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
@@ -6,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import decode_access_token
-from app.models.models import User, UserRole
+from app.models.models import Lab, User, UserRole
 
 # auto_error=False so we can fall back to cookie auth
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -53,6 +54,16 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+
+    # Demo expiry: if JWT carries is_demo, verify the lab hasn't expired
+    if payload.get("is_demo"):
+        lab = db.query(Lab).filter(Lab.id == user.lab_id).first()
+        if lab and lab.demo_expires_at and lab.demo_expires_at < datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your demo session has expired.",
+            )
+
     # Flag impersonation for audit trail attribution
     if payload.get("impersonating"):
         user._is_impersonating = True

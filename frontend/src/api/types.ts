@@ -33,6 +33,7 @@ export interface LabSettings {
   is_active?: boolean;
   trial_ends_at?: string | null;
   billing_url?: string;
+  is_demo?: boolean;
 }
 
 export type BillingStatus = "trial" | "active" | "past_due" | "cancelled";
@@ -44,6 +45,44 @@ export interface Lab {
   billing_status: BillingStatus;
   trial_ends_at: string | null;
   settings: LabSettings;
+  created_at: string;
+  is_demo?: boolean;
+  demo_status?: string | null;
+  demo_assigned_email?: string | null;
+  demo_expires_at?: string | null;
+  demo_assigned_at?: string | null;
+  demo_reset_at?: string | null;
+  demo_cycle_count?: number;
+}
+
+// ── Demo Environment ─────────────────────────────────────────────────────
+
+export interface TryDemoResponse {
+  status: "assigned" | "waitlisted";
+  login_link: string | null;
+  expires_at: string | null;
+  message: string;
+  auto_login: boolean;
+}
+
+export interface DemoLab {
+  id: string;
+  name: string;
+  demo_status: string | null;
+  demo_assigned_email: string | null;
+  demo_expires_at: string | null;
+  demo_assigned_at: string | null;
+  demo_reset_at: string | null;
+  demo_cycle_count: number;
+  created_at: string;
+}
+
+export interface DemoLead {
+  id: string;
+  email: string;
+  status: string;
+  demo_lab_id: string | null;
+  source: string | null;
   created_at: string;
 }
 

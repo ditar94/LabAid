@@ -51,6 +51,10 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "APP_URL"
         value = var.app_url
       }
+      env {
+        name  = "DEMO_SEND_EMAIL"
+        value = var.email_backend == "resend" ? "True" : "False"
+      }
 
       # Secrets
       env {

@@ -98,7 +98,7 @@ def _send_via_resend(to: str, subject: str, html_body: str) -> bool:
         import resend
         resend.api_key = settings.RESEND_API_KEY
         result = resend.Emails.send({
-            "from": "LabAid <noreply@labaid.io>",
+            "from": "LabAid <team@mail.labaid.io>",
             "to": [to],
             "subject": subject,
             "html": html_body,
@@ -159,3 +159,23 @@ def send_forgot_password_email(to: str, full_name: str, token: str) -> tuple[boo
         import sys
         print(f"[EMAIL] Forgot password link for {to}: {link}", file=sys.stderr, flush=True)
     return success, link
+
+
+def _demo_ready_html(login_link: str) -> str:
+    return (
+        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">'
+        "<h2>Your LabAid Demo Is Ready!</h2>"
+        "<p>A demo slot just opened up. Click below to log in and start exploring — "
+        "you'll have 72 hours of full access.</p>"
+        f'<p style="text-align:center;margin:32px 0">'
+        f'<a href="{login_link}" style="background:#2563eb;color:#fff;padding:12px 28px;'
+        'border-radius:6px;text-decoration:none;font-weight:600">Log In to Your Demo</a></p>'
+        '<p style="color:#666;font-size:13px">This link expires in 15 minutes. '
+        "If it expires, just visit labaid.io and enter your email again.</p>"
+        "</div>"
+    )
+
+
+def send_demo_ready_email(to: str, login_link: str) -> bool:
+    html = _demo_ready_html(login_link)
+    return _send_invite_or_reset(to, "Your LabAid Demo Is Ready", html)

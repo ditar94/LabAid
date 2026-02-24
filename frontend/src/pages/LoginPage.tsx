@@ -1,9 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useState, lazy, Suspense, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Navigate, useNavigate, Link } from "react-router-dom";
-import { FlaskConical } from "lucide-react";
+import { ArrowLeft, FlaskConical } from "lucide-react";
 import { version } from "../../package.json";
 import { preloadAppChunks } from "../App";
+
+const TermsModal = lazy(() => import("../components/TermsModal"));
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -15,6 +17,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [shaking, setShaking] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
   // Already authenticated (e.g. page refresh while logged in) — go to dashboard
   if (user) return <Navigate to="/dashboard" replace />;
@@ -52,8 +55,9 @@ export default function LoginPage() {
       <div className="login-orb login-orb-2" aria-hidden="true" />
       <div className="login-orb login-orb-3" aria-hidden="true" />
 
+      <a href="/" className="login-back-link"><ArrowLeft size={16} /> Back to home</a>
       <div className={`login-card${shaking ? " shake" : ""}`}>
-        <div className="login-brand">
+        <a href="/" className="login-brand">
           <div className="login-icon">
             <FlaskConical size={26} />
           </div>
@@ -61,7 +65,7 @@ export default function LoginPage() {
             <h1>LabAid</h1>
             <p className="subtitle">Laboratory Inventory Management</p>
           </div>
-        </div>
+        </a>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="login-email">Email</label>
@@ -93,7 +97,7 @@ export default function LoginPage() {
           </button>
         </form>
         <p className="login-footer">
-          Laboratory inventory management &middot; <Link to="/terms">Terms of Use</Link>
+          Laboratory inventory management &middot; <button type="button" className="link-button" onClick={() => setShowTerms(true)}>Terms of Use</button>
         </p>
         <p className="login-version">
           v{version}
@@ -105,6 +109,11 @@ export default function LoginPage() {
           )}
         </p>
       </div>
+      {showTerms && (
+        <Suspense fallback={null}>
+          <TermsModal onClose={() => setShowTerms(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

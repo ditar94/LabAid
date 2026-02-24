@@ -95,6 +95,13 @@ class Lab(BaseModel):
     trial_ends_at: datetime | None = None
     settings: dict = {}
     created_at: datetime
+    is_demo: bool = False
+    demo_status: str | None = None
+    demo_assigned_email: str | None = None
+    demo_expires_at: datetime | None = None
+    demo_assigned_at: datetime | None = None
+    demo_reset_at: datetime | None = None
+    demo_cycle_count: int = 0
 
     class Config:
         from_attributes = True
@@ -890,6 +897,53 @@ class CocktailLotStoreRequest(BaseModel):
 class CocktailRecipeWithLots(CocktailRecipeOut):
     lots: list[CocktailLotWithDetails] = []
     active_lot_count: int = 0
+
+
+# ── Demo Environment ──────────────────────────────────────────────────────
+
+
+class TryDemoRequest(BaseModel):
+    email: EmailStr
+    source: str = "landing_page"
+
+
+class TryDemoResponse(BaseModel):
+    status: str  # "assigned" or "waitlisted"
+    login_link: str | None = None
+    expires_at: datetime | None = None
+    message: str
+    auto_login: bool = False  # True when email is not configured (local/beta)
+
+
+class DemoLabOut(BaseModel):
+    id: UUID
+    name: str
+    demo_status: str | None
+    demo_assigned_email: str | None
+    demo_expires_at: datetime | None
+    demo_assigned_at: datetime | None
+    demo_reset_at: datetime | None
+    demo_cycle_count: int = 0
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DemoLeadOut(BaseModel):
+    id: UUID
+    email: str
+    status: str
+    demo_lab_id: UUID | None
+    source: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DemoExtendRequest(BaseModel):
+    hours: int = 24
 
 
 # Rebuild forward references now that all classes are defined

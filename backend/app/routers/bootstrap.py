@@ -45,6 +45,7 @@ def bootstrap(
                 "billing_status": lab.billing_status,
                 "is_active": lab.is_active,
                 "trial_ends_at": lab.trial_ends_at.isoformat() if lab.trial_ends_at else None,
+                "is_demo": lab.is_demo,
             }
 
     # 2. Fluorochromes
@@ -73,7 +74,7 @@ def bootstrap(
     labs = None
     is_impersonating = getattr(current_user, "_is_impersonating", False)
     if current_user.role == UserRole.SUPER_ADMIN and not is_impersonating:
-        labs = db.query(Lab).order_by(Lab.name).all()
+        labs = db.query(Lab).filter(Lab.is_demo.is_(False)).order_by(Lab.name).all()
 
     return BootstrapResponse(
         user=UserOut.model_validate(current_user),

@@ -66,7 +66,7 @@ def read_labs(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
         )
-    labs = db.query(models.Lab).all()
+    labs = db.query(models.Lab).filter(models.Lab.is_demo.is_(False)).all()
     return labs
 
 
@@ -85,6 +85,7 @@ def get_my_lab_settings(
         "billing_status": lab.billing_status,
         "is_active": lab.is_active,
         "trial_ends_at": lab.trial_ends_at.isoformat() if lab.trial_ends_at else None,
+        "is_demo": lab.is_demo,
     }
 
 

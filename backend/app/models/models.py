@@ -95,6 +95,14 @@ class Lab(Base):
     settings = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    demo_status = Column(String(20), nullable=True)
+    demo_assigned_email = Column(String(255), nullable=True)
+    demo_expires_at = Column(DateTime(timezone=True), nullable=True)
+    demo_assigned_at = Column(DateTime(timezone=True), nullable=True)
+    demo_reset_at = Column(DateTime(timezone=True), nullable=True)
+    demo_cycle_count = Column(Integer, nullable=False, default=0, server_default="0")
+
     users = relationship("User", back_populates="lab")
     antibodies = relationship("Antibody", back_populates="lab")
     storage_units = relationship("StorageUnit", back_populates="lab")
@@ -505,6 +513,24 @@ class CocktailLotDocument(Base):
 
     cocktail_lot = relationship("CocktailLot", back_populates="documents")
     user = relationship("User", foreign_keys=[user_id])
+
+
+# ── Demo Environment ──────────────────────────────────────────────────────
+
+
+class DemoLead(Base):
+    __tablename__ = "demo_leads"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), nullable=False)
+    status = Column(String(20), nullable=False, default="claimed", server_default="claimed")
+    demo_lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=True)
+    source = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    claimed_ip = Column(String(45), nullable=True)
+    notified_at = Column(DateTime(timezone=True), nullable=True)
+
+    demo_lab = relationship("Lab")
 
 
 # ── Shared Vendor Catalog ─────────────────────────────────────────────────

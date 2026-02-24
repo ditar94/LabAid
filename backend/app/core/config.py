@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str | None = None
     APP_URL: str = "http://localhost:5173"
 
+    # Demo environment
+    DEMO_SEND_EMAIL: bool = False  # True on staging/prod to email magic links
+
     class Config:
         env_file = ".env"
 

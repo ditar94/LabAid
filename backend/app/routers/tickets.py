@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.middleware.auth import get_current_user, require_role
 from app.models.models import Lab, SupportTicket, TicketReply, TicketStatus, User, UserRole
+
+_DEMO_BLOCKED = "This action is not available in demo mode."
 from app.schemas.schemas import (
     TicketCreate,
     TicketOut,
@@ -55,6 +57,12 @@ def create_ticket(
 ):
     if not current_user.lab_id and current_user.role != UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=400, detail="User has no lab")
+
+    # Block demo labs from creating tickets
+    if current_user.lab_id:
+        lab = db.query(Lab).filter(Lab.id == current_user.lab_id).first()
+        if lab and lab.is_demo:
+            raise HTTPException(status_code=403, detail=_DEMO_BLOCKED)
 
     lab_id = current_user.lab_id
     if current_user.role == UserRole.SUPER_ADMIN and not lab_id:

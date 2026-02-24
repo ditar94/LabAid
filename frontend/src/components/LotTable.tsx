@@ -168,7 +168,7 @@ export default function LotTable({
             {/* Received date */}
             {!hideReceived && <td>{formatDate(lot.created_at)}</td>}
 
-            <td>{lot.expiration_date || "\u2014"}</td>
+            <td>{lot.expiration_date ? formatDate(lot.expiration_date) : "\u2014"}</td>
             <td>{lot.vial_counts?.sealed ?? 0}</td>
             {!sealedOnly && <td>{lot.vial_counts?.opened ?? 0}</td>}
             {showDepleted && <td>{lot.vial_counts?.depleted ?? 0}</td>}

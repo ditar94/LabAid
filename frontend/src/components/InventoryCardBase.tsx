@@ -69,6 +69,21 @@ export default function InventoryCardBase({
     const offsetLeft = wrapperRect.left - gridRect.left;
     card.style.setProperty("--expand-left", `-${offsetLeft + 1}px`);
     card.style.setProperty("--expand-width", `${gridRect.width + 2}px`);
+
+    // The expanded card uses position:absolute so it doesn't contribute to
+    // the wrapper's height. Sync wrapper min-height so the grid cell grows.
+    const syncHeight = () => {
+      if (cardRef.current) {
+        wrapper.style.minHeight = `${cardRef.current.scrollHeight}px`;
+      }
+    };
+    syncHeight();
+    const ro = new ResizeObserver(syncHeight);
+    ro.observe(card);
+    return () => {
+      ro.disconnect();
+      wrapper.style.minHeight = "";
+    };
   }, [expanded, collapsing]);
 
   return (

@@ -197,6 +197,22 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - [ ] Expiring reagent alerts — daily digest of lots expiring within configurable window
 - [ ] QC pending alerts — notify supervisors of lots awaiting QC approval
 
+### Pending: Demo Environment
+
+> Self-service demo access from the landing page. Full plan in [.claude/plans/iterative-weaving-firefly.md](.claude/plans/iterative-weaving-firefly.md).
+
+- [x] Phase 1 — Database migration (demo columns on labs, demo_leads table, SECURITY DEFINER wipe function)
+- [x] Phase 2 — Pydantic schemas
+- [x] Phase 3 — Demo service (wipe + seed helpers)
+- [x] Phase 4 — Demo router (try, magic link login, admin endpoints)
+- [x] Phase 5 — Safety guards (filter demo labs from billing/bootstrap/search, block user mgmt in demo)
+- [x] Phase 6 — Frontend TypeScript types
+- [x] Phase 7 — Admin demo management page
+- [x] Phase 8 — Landing page demo form (email → magic link)
+- [x] Phase 9 — Seed script (`scripts/seed_demo_labs.py`)
+- [ ] Provision demo labs on beta and production
+- [ ] End-to-end test on beta (full prospect flow + admin reset)
+
 ### Backlog
 
 - [ ] Catalog number auto-lookup — auto-populate vendor/catalog fields by querying vendor databases (BD, Cytek, Sysmex, BioLegend) during antibody registration; deferred due to fragile web scraping dependencies
@@ -259,5 +275,12 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - Cloud SQL with SSL, pgAudit, password policies, deletion protection
 - Dedicated Cloud Run service account with minimal permissions
 - Terraform IaC for all GCP resources
+
+### Demo Environment
+- Self-service demo access from landing page (email → magic link → 72h session)
+- Pool of pre-provisioned demo labs with realistic seed data
+- Admin management: provision, reset, extend, revoke, expire stale
+- Lead capture with waitlist when pool is exhausted
+- Full tenant isolation — demo labs excluded from billing, bootstrap, and search
 
 </details>

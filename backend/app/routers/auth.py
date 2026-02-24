@@ -53,6 +53,17 @@ _ROLE_RANK = {
 
 MIN_PASSWORD_LENGTH = 8
 
+_DEMO_BLOCKED = "This action is not available in demo mode."
+
+
+def _check_demo(db: Session, lab_id) -> None:
+    """Raise 403 if the lab is a demo lab."""
+    if not lab_id:
+        return
+    lab = db.query(Lab).filter(Lab.id == lab_id).first()
+    if lab and lab.is_demo:
+        raise HTTPException(status_code=403, detail=_DEMO_BLOCKED)
+
 
 def _set_auth_cookies(response: Response, token: str) -> None:
     """Set HttpOnly JWT cookie on the response.
@@ -87,6 +98,18 @@ def login(request: Request, response: Response, body: LoginRequest, db: Session 
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
+
+    if user.lab_id:
+        lab = db.query(Lab).filter(Lab.id == user.lab_id).first()
+        if lab and lab.is_demo and lab.demo_expires_at and lab.demo_expires_at < datetime.now(timezone.utc):
+            lab.demo_status = "expired"
+            user.is_active = False
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your demo has expired. Request a new demo at labaid.io",
+            )
+
     token = create_access_token(
         {"sub": str(user.id), "lab_id": str(user.lab_id) if user.lab_id else None, "role": user.role.value}
     )
@@ -105,6 +128,10 @@ def forgot_password(request: Request, body: ForgotPasswordRequest, db: Session =
     ).first()
 
     if user:
+        if user.lab_id:
+            lab = db.query(Lab).filter(Lab.id == user.lab_id).first()
+            if lab and lab.is_demo:
+                return {"message": "If that email is registered, a password reset link has been sent."}
         invite_token = generate_invite_token()
         user.invite_token = invite_token
         user.invite_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -180,6 +207,8 @@ def create_user(
         require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
     ),
 ):
+    _check_demo(db, current_user.lab_id)
+
     # Scope check: can't create users above your own role level
     if _ROLE_RANK.get(body.role, 0) > _ROLE_RANK[current_user.role]:
         raise HTTPException(
@@ -267,6 +296,8 @@ def reset_password(
         require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
     ),
 ):
+    _check_demo(db, current_user.lab_id)
+
     q = db.query(User).filter(User.id == user_id)
     if current_user.role != UserRole.SUPER_ADMIN:
         q = q.filter(User.lab_id == current_user.lab_id)
@@ -369,6 +400,8 @@ def update_user_role(
         require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
     ),
 ):
+    _check_demo(db, current_user.lab_id)
+
     q = db.query(User).filter(User.id == user_id)
     if current_user.role != UserRole.SUPER_ADMIN:
         q = q.filter(User.lab_id == current_user.lab_id)
@@ -415,6 +448,8 @@ def update_user(
         require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)
     ),
 ):
+    _check_demo(db, current_user.lab_id)
+
     q = db.query(User).filter(User.id == user_id)
     if current_user.role != UserRole.SUPER_ADMIN:
         q = q.filter(User.lab_id == current_user.lab_id)
@@ -472,6 +507,8 @@ def change_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _check_demo(db, current_user.lab_id)
+
     if len(body.new_password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(
             status_code=400,

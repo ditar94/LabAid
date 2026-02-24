@@ -52,6 +52,7 @@ const GlobalSearchPage = lazy(() => import("./pages/GlobalSearchPage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const CocktailsPage = lazy(() => import("./pages/CocktailsPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
+const DemoPage = lazy(() => import("./pages/DemoPage"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, labSettings } = useAuth();
@@ -117,6 +118,7 @@ function AppRoutes() {
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/labs" element={<LabsPage />} />
+          <Route path="/demos" element={<DemoPage />} />
           <Route path="/fluorochromes" element={<FluorochromesPage />} />
           <Route path="/tickets" element={<TicketsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

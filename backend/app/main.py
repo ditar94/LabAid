@@ -16,7 +16,7 @@ from app.middleware.auth import COOKIE_NAME
 from app.models.models import Lab, UserRole
 from app.routers.auth import _set_auth_cookies
 
-from app.routers import admin, antibodies, audit, auth, bootstrap, cocktail_documents, cocktails, lots, lot_requests, reports, scan, search, storage, vials, labs, documents, fluorochromes, tickets
+from app.routers import admin, antibodies, audit, auth, bootstrap, cocktail_documents, cocktails, demo, lots, lot_requests, reports, scan, search, storage, vials, labs, documents, fluorochromes, tickets
 
 # ── Structured JSON logging ──────────────────────────────────────────────
 
@@ -64,6 +64,8 @@ _SUSPENSION_EXEMPT = {
     "/api/auth/accept-invite",
     "/api/auth/impersonate",
     "/api/auth/end-impersonate",
+    "/api/demo/try",
+    "/api/demo/login",
     "/api/health",
 }
 
@@ -109,8 +111,8 @@ class SlidingWindowMiddleware(BaseHTTPMiddleware):
         total_lifetime = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
         remaining = exp - time.time()
 
-        # Reissue if past 50% of lifetime
-        if remaining < total_lifetime * 0.5:
+        # Reissue if past 50% of lifetime (skip demo sessions — they have fixed expiry)
+        if remaining < total_lifetime * 0.5 and not payload.get("is_demo"):
             new_token = create_access_token({
                 "sub": payload["sub"],
                 "lab_id": payload.get("lab_id"),
@@ -266,6 +268,7 @@ app.include_router(reports.router)
 app.include_router(cocktails.router)
 app.include_router(cocktail_documents.router)
 app.include_router(admin.router)
+app.include_router(demo.router)
 
 
 @app.get("/api/health")

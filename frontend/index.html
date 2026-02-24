@@ -159,11 +159,13 @@
     /* ===== HERO ===== */
     .hero {
       position: relative;
-      min-height: 100vh;
-      min-height: 100svh;
+      height: 100vh;
+      height: 100svh;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
+      padding-top: clamp(7rem, 15vh, 10rem);
       background: var(--navy-900);
       overflow: hidden;
     }
@@ -176,16 +178,17 @@
       background-size: 32px 32px;
       z-index: 1;
     }
-    /* Bottom gradient fade to light */
+    /* Bottom gradient fade over peeking screenshot */
     .hero::after {
       content: '';
       position: absolute;
       bottom: 0;
       left: 0;
       right: 0;
-      height: 200px;
-      background: linear-gradient(to bottom, transparent, var(--light-bg));
-      z-index: 2;
+      height: 300px;
+      background: linear-gradient(to bottom, transparent, rgba(8, 11, 22, 0.7) 50%, var(--navy-900) 80%);
+      z-index: 4;
+      pointer-events: none;
     }
     .orb {
       position: absolute;
@@ -298,42 +301,74 @@
       align-items: center;
       gap: 0.5rem;
       padding: 0.8rem 2rem;
-      background: transparent;
-      color: var(--slate-400);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--slate-100);
       font-size: 0.95rem;
       font-weight: 600;
       border-radius: 12px;
-      border: 1px solid rgba(148, 163, 184, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       transition: border-color 0.25s, color 0.25s, transform 0.25s, background 0.25s;
     }
     .btn-outline:hover {
       border-color: rgba(99, 102, 241, 0.5);
       color: var(--white);
       transform: translateY(-2px);
-      background: rgba(99, 102, 241, 0.06);
+      background: rgba(99, 102, 241, 0.1);
+    }
+    .hero-preview {
+      position: relative;
+      z-index: 3;
+      width: min(1100px, 88vw);
+      margin-top: 3rem;
+      animation: heroEnter 0.9s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .hero-preview-inner {
+      border-radius: 16px 16px 0 0;
+      overflow: hidden;
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-bottom: none;
+      box-shadow: 0 -8px 60px rgba(99, 102, 241, 0.15), 0 4px 40px rgba(0, 0, 0, 0.4);
+    }
+    .hero-preview-inner img {
+      width: 100%;
+      display: block;
+    }
+    .hero-preview-fade {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 50%;
+      background: linear-gradient(to bottom, transparent 0%, rgba(8, 11, 22, 0.6) 50%, var(--navy-900) 100%);
+      pointer-events: none;
+    }
+
+    @keyframes bounceDown {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(8px); }
     }
     .hero-scroll-hint {
       position: absolute;
-      bottom: 3rem;
+      bottom: 1rem;
       left: 50%;
       transform: translateX(-50%);
-      z-index: 3;
+      z-index: 5;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.35rem;
       color: var(--slate-400);
-      font-size: 0.75rem;
-      font-weight: 500;
-      letter-spacing: 0.08em;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
-      opacity: 0.6;
+      animation: bounceDown 2s ease-in-out infinite;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
     }
-    .scroll-line {
-      width: 1px;
-      height: 40px;
-      background: linear-gradient(to bottom, var(--slate-400), transparent);
-      animation: pulse 2.5s ease-in-out infinite;
+
+    .hero-to-features {
+      height: 120px;
+      background: linear-gradient(to bottom, var(--navy-900), var(--light-bg));
     }
 
     /* ===== FEATURES ===== */
@@ -680,13 +715,141 @@
       .hero-content { animation: none; opacity: 1; transform: none; }
     }
 
+    /* ===== DEMO MODAL ===== */
+    .demo-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      animation: fadeIn 0.25s ease;
+    }
+    .demo-overlay.open { display: flex; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .demo-modal {
+      background: var(--navy-800);
+      border: 1px solid rgba(99, 102, 241, 0.15);
+      border-radius: 20px;
+      padding: 2.5rem;
+      max-width: 420px;
+      width: 100%;
+      position: relative;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 80px -20px rgba(99, 102, 241, 0.15);
+      animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+    .demo-modal-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--slate-400);
+      transition: background 0.2s, color 0.2s;
+    }
+    .demo-modal-close:hover { background: rgba(255,255,255,0.06); color: var(--white); }
+    .demo-modal h2 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--white);
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .demo-modal p {
+      font-size: 0.9rem;
+      color: var(--slate-400);
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+    .demo-modal label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: rgba(241, 245, 249, 0.8);
+      margin-bottom: 0.4rem;
+    }
+    .demo-modal input[type="email"] {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      color: #f1f5f9;
+      font-size: 0.95rem;
+      font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
+    }
+    .demo-modal input[type="email"]::placeholder { color: var(--slate-500); }
+    .demo-modal input[type="email"]:focus {
+      border-color: var(--indigo-400);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+    .demo-modal-submit {
+      width: 100%;
+      margin-top: 1.25rem;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--white);
+      background: linear-gradient(135deg, #10b981, #059669);
+      border-radius: 10px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .demo-modal-submit:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);
+    }
+    .demo-modal-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+    .demo-error {
+      margin-top: 0.75rem;
+      padding: 0.6rem 0.85rem;
+      background: rgba(244, 63, 94, 0.1);
+      border: 1px solid rgba(244, 63, 94, 0.2);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: #fda4af;
+    }
+    .demo-result {
+      text-align: center;
+      padding: 1rem 0;
+    }
+    .demo-result-icon {
+      font-size: 3rem;
+      margin-bottom: 0.5rem;
+    }
+    .demo-result h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 0.5rem;
+    }
+    .demo-result p {
+      color: var(--slate-400);
+      font-size: 0.9rem;
+      margin-bottom: 0.25rem;
+    }
+    .demo-result .demo-expires {
+      font-size: 0.8rem;
+      color: var(--slate-500);
+      margin-top: 0.75rem;
+      margin-bottom: 0;
+    }
+
     /* ===== MOBILE ===== */
     @media (max-width: 640px) {
-      .nav-links { gap: 1rem; }
-      .nav-link { display: none; }
+      .nav-links { gap: 0.75rem; }
       .hero h1 { font-size: 2rem; }
       .hero-sub { font-size: 0.95rem; }
-      .hero-scroll-hint { display: none; }
       .hero-actions { flex-direction: column; width: 100%; padding: 0 1rem; }
       .hero-actions a { width: 100%; text-align: center; justify-content: center; }
       .feature-card { padding: 1.75rem; }
@@ -713,6 +876,7 @@
       </a>
       <div class="nav-links">
         <a href="/pricing" class="nav-link">Pricing</a>
+        <button class="nav-link" onclick="openDemoModal()" style="font-size:0.9rem">Try Demo</button>
         <a href="/login" class="nav-login">Log In</a>
       </div>
     </div>
@@ -725,26 +889,31 @@
     <div class="orb orb-3" aria-hidden="true"></div>
 
     <div class="hero-content">
-      <div class="hero-badge">
-        <span class="hero-badge-dot"></span>
-        Now available for flow cytometry labs
-      </div>
       <h1>Inventory Management,<br><span>Simplified</span></h1>
-      <p class="hero-sub">Track reagents from receiving to depletion. Barcode scanning, FEFO logic, storage mapping, and complete audit trails — built for flow cytometry labs.</p>
+      <p class="hero-sub">Track reagents from receiving to depletion. Barcode scanning, lot &amp; QC tracking, storage mapping, and complete audit trails — built for flow cytometry labs.</p>
       <div class="hero-actions">
-        <a href="mailto:sales@labaid.io?subject=Free%20Trial%20Request" class="btn-primary">
-          Start Free Trial
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </a>
+        <a href="mailto:sales@labaid.io?subject=Free%20Trial%20Request" class="btn-outline">Start Free Trial</a>
         <a href="/pricing" class="btn-outline">View Pricing</a>
+        <button class="btn-primary" onclick="openDemoModal()">
+          Try Live Demo
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="hero-preview">
+      <div class="hero-preview-inner">
+        <img src="/screenshots/inventory-overview.png" alt="LabAid inventory dashboard showing antibody cards with stock levels and status" />
       </div>
     </div>
 
     <div class="hero-scroll-hint" aria-hidden="true">
       <span>Scroll</span>
-      <div class="scroll-line"></div>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
     </div>
   </section>
+
+  <div class="hero-to-features" aria-hidden="true"></div>
 
   <!-- FEATURES -->
   <section class="features">
@@ -891,10 +1060,10 @@
       <h2>Ready to streamline your lab?</h2>
       <p class="cta-sub">Start your 14-day free trial. No credit card required.</p>
       <div class="cta-actions">
-        <a href="mailto:sales@labaid.io?subject=Free%20Trial%20Request" class="btn-white">
-          Start Free Trial
+        <button class="btn-white" onclick="openDemoModal()">
+          Try Live Demo
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </a>
+        </button>
         <a href="/pricing" class="btn-outline-white">View Pricing</a>
       </div>
     </div>
@@ -920,7 +1089,8 @@
         </div>
         <div class="footer-links">
           <a href="/pricing">Pricing</a>
-          <a href="/terms">Terms</a>
+          <button onclick="openDemoModal()" style="font-size:0.88rem;font-weight:500;color:var(--slate-400);transition:color 0.25s" onmouseover="this.style.color='white'" onmouseout="this.style.color='var(--slate-400)'">Try Demo</button>
+          <button onclick="openTermsModal()" style="font-size:0.88rem;font-weight:500;color:var(--slate-400);transition:color 0.25s" onmouseover="this.style.color='white'" onmouseout="this.style.color='var(--slate-400)'">Terms</button>
           <a href="/login">Log In</a>
           <a href="mailto:sales@labaid.io">Contact</a>
         </div>
@@ -930,6 +1100,63 @@
       </div>
     </div>
   </footer>
+
+  <!-- DEMO MODAL -->
+  <div class="demo-overlay" id="demo-overlay">
+    <div class="demo-modal">
+      <button class="demo-modal-close" onclick="closeDemoModal()" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+      <div id="demo-form-view">
+        <h2>Try Live Demo</h2>
+        <p>Get instant access to a pre-loaded demo environment with realistic data. No account or credit card needed.</p>
+        <form id="demo-form" onsubmit="handleDemoSubmit(event)">
+          <label for="demo-email">Your Email</label>
+          <input id="demo-email" type="email" placeholder="you@company.com" required autocomplete="email" />
+          <button type="submit" class="demo-modal-submit" id="demo-submit-btn">Start Demo</button>
+        </form>
+        <div id="demo-error" class="demo-error" style="display:none"></div>
+      </div>
+      <div id="demo-result-view" class="demo-result" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- TERMS MODAL -->
+  <div class="demo-overlay" id="terms-overlay">
+    <div class="demo-modal" style="max-width:700px;max-height:85vh;display:flex;flex-direction:column">
+      <button class="demo-modal-close" onclick="closeTermsModal()" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+      <h2>Terms of Use</h2>
+      <p style="margin-bottom:1rem">Effective Date: February 8, 2026</p>
+      <div style="flex:1;overflow-y:auto;padding-right:0.5rem;font-size:0.88rem;color:var(--slate-400);line-height:1.7">
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">1. Acceptance of Terms</h3>
+        <p>By accessing or using LabAid ("the Service"), you agree to be bound by these Terms of Use. If you do not agree, do not use the Service.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">2. Service Description</h3>
+        <p>LabAid is a cloud-based laboratory inventory management platform designed for flow cytometry laboratories. LabAid is an inventory management tool and does not provide medical advice, diagnostic services, or laboratory testing services.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">3. Accounts and Access</h3>
+        <p>You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your credentials and for all activities under your account.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">4. Data and Privacy</h3>
+        <p>Your laboratory data remains yours. We act as a data processor on your behalf. We will not sell, share, or use your data for purposes other than providing the Service. The Service is not intended to store Protected Health Information (PHI).</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">5. Regulatory Compliance</h3>
+        <p>LabAid provides tools to assist with inventory management and audit trails. However, <strong style="color:#f1f5f9">each laboratory is solely responsible for its own regulatory compliance</strong>, including CLIA, HIPAA, CAP accreditation, state/local regulations, and IRB requirements.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">6. Intellectual Property</h3>
+        <p>The Service is the intellectual property of LabAid. You are granted a limited, non-exclusive, non-transferable license to use the Service for your internal laboratory operations.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">7. Availability and Support</h3>
+        <p>We strive to maintain high availability but do not guarantee uninterrupted access. Support is available through the in-app ticketing system.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">8. Limitation of Liability</h3>
+        <p>To the maximum extent permitted by law, LabAid shall not be liable for any indirect, incidental, special, consequential, or punitive damages. Our total liability shall not exceed the amount you paid in the twelve months preceding the claim.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">9. Payment and Billing</h3>
+        <p>Paid plans are billed on a recurring basis. Failure to pay may result in suspension of write access or transition to read-only mode.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">10. Termination</h3>
+        <p>Either party may terminate the agreement at any time. Upon request, you may export your data within 30 days.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">11. Changes to Terms</h3>
+        <p>We may update these Terms of Use from time to time. Material changes will be communicated via the Service or email.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">12. Contact</h3>
+        <p>For questions about these terms, please reach out through the in-app support system or contact your laboratory administrator.</p>
+      </div>
+    </div>
+  </div>
 
   <script>
     /* Nav scroll effect */
@@ -969,6 +1196,115 @@
     });
 
     startTimer();
+
+    /* Demo modal */
+    function openDemoModal() {
+      document.getElementById('demo-overlay').classList.add('open');
+      document.getElementById('demo-form-view').style.display = '';
+      document.getElementById('demo-result-view').style.display = 'none';
+      document.getElementById('demo-error').style.display = 'none';
+      document.getElementById('demo-email').value = '';
+      document.getElementById('demo-submit-btn').disabled = false;
+      document.getElementById('demo-submit-btn').textContent = 'Start Demo';
+      setTimeout(() => document.getElementById('demo-email').focus(), 100);
+    }
+    function closeDemoModal() {
+      document.getElementById('demo-overlay').classList.remove('open');
+    }
+    // Close on overlay click (not modal itself)
+    document.getElementById('demo-overlay').addEventListener('click', function(e) {
+      if (e.target === this) closeDemoModal();
+    });
+    // Close on Escape
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeDemoModal();
+    });
+
+    async function handleDemoSubmit(e) {
+      e.preventDefault();
+      var email = document.getElementById('demo-email').value.trim();
+      var btn = document.getElementById('demo-submit-btn');
+      var errEl = document.getElementById('demo-error');
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Setting up...';
+
+      try {
+        var res = await fetch('/api/demo/try', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, source: 'landing_page' }),
+        });
+        var data = await res.json();
+
+        if (!res.ok) {
+          var detail = data.detail || 'Something went wrong.';
+          if (detail === 'DEMO_ALREADY_USED') {
+            detail = 'A demo was already started with this email. Each email can only be used once.';
+          }
+          if (res.status === 429) {
+            detail = 'Too many requests. Please wait a moment and try again.';
+          }
+          throw new Error(detail);
+        }
+
+        // Auto-login: redirect directly (local/beta)
+        if (data.status === 'assigned' && data.auto_login && data.login_link) {
+          document.getElementById('demo-form-view').style.display = 'none';
+          document.getElementById('demo-result-view').style.display = '';
+          document.getElementById('demo-result-view').innerHTML =
+            '<div class="demo-result-icon">&#8987;</div>' +
+            '<h3>Redirecting to your demo...</h3>';
+          window.location.href = data.login_link;
+          return;
+        }
+
+        // Show result
+        document.getElementById('demo-form-view').style.display = 'none';
+        var rv = document.getElementById('demo-result-view');
+        rv.style.display = '';
+
+        if (data.status === 'assigned') {
+          var expires = data.expires_at ? '<p class="demo-expires">Expires ' + new Date(data.expires_at).toLocaleString() + '</p>' : '';
+          rv.innerHTML =
+            '<div class="demo-result-icon">&#9993;</div>' +
+            '<h3>Check your email</h3>' +
+            '<p>We sent a login link to <strong>' + email + '</strong>. Click it to access your demo.</p>' +
+            expires;
+        } else if (data.status === 'waitlisted') {
+          rv.innerHTML =
+            '<div class="demo-result-icon">&#128203;</div>' +
+            '<h3>You\'re on the list</h3>' +
+            '<p>' + data.message + '</p>';
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Start Demo';
+        errEl.textContent = err.message;
+        errEl.style.display = '';
+      }
+    }
+    // Make functions globally accessible
+    window.openDemoModal = openDemoModal;
+    window.closeDemoModal = closeDemoModal;
+    window.handleDemoSubmit = handleDemoSubmit;
+
+    /* Terms modal */
+    function openTermsModal() {
+      document.getElementById('terms-overlay').classList.add('open');
+    }
+    function closeTermsModal() {
+      document.getElementById('terms-overlay').classList.remove('open');
+    }
+    document.getElementById('terms-overlay').addEventListener('click', function(e) {
+      if (e.target === this) closeTermsModal();
+    });
+    window.openTermsModal = openTermsModal;
+    window.closeTermsModal = closeTermsModal;
+
+    // Open modals if navigated with hash
+    if (window.location.hash === '#demo') openDemoModal();
+    if (window.location.hash === '#terms') openTermsModal();
   </script>
 </body>
 </html>
