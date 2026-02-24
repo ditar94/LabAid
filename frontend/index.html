@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
   <style>
     /* ===== RESET & BASE ===== */
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -145,13 +145,13 @@
       font-size: 0.85rem;
       font-weight: 600;
       color: var(--white);
-      background: var(--indigo-500);
+      background: var(--indigo-600);
       padding: 0.5rem 1.25rem;
       border-radius: 100px;
       transition: background 0.25s, transform 0.25s, box-shadow 0.25s;
     }
     .nav-login:hover {
-      background: var(--indigo-600);
+      background: var(--indigo-700);
       transform: translateY(-1px);
       box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
     }
@@ -686,7 +686,7 @@
     .footer-bottom {
       padding-top: 1.5rem;
       font-size: 0.8rem;
-      color: rgba(148, 163, 184, 0.5);
+      color: var(--slate-400);
     }
 
     /* ===== SCROLL REVEAL ===== */
@@ -882,6 +882,8 @@
     </div>
   </nav>
 
+  <main>
+
   <!-- HERO -->
   <section class="hero">
     <div class="orb orb-1" aria-hidden="true"></div>
@@ -903,7 +905,10 @@
 
     <div class="hero-preview">
       <div class="hero-preview-inner">
-        <img src="/screenshots/inventory-overview.png" alt="LabAid inventory dashboard showing antibody cards with stock levels and status" />
+        <picture>
+          <source srcset="/screenshots/inventory-overview.webp" type="image/webp" />
+          <img src="/screenshots/inventory-overview.png" alt="LabAid inventory dashboard showing antibody cards with stock levels and status" width="2560" height="1800" fetchpriority="high" />
+        </picture>
       </div>
     </div>
 
@@ -984,7 +989,10 @@
       </div>
       <div class="slideshow-viewport" id="slideshow">
         <div class="slide active" data-slide="0">
-          <img src="/screenshots/inventory-overview.png" alt="Inventory dashboard showing antibody cards with status badges, stock levels, and reorder alerts" />
+          <picture>
+            <source srcset="/screenshots/inventory-overview.webp" type="image/webp" />
+            <img src="/screenshots/inventory-overview.png" alt="Inventory dashboard showing antibody cards with status badges, stock levels, and reorder alerts" width="2560" height="1800" loading="lazy" />
+          </picture>
           <div class="slide-caption">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
@@ -994,7 +1002,10 @@
           </div>
         </div>
         <div class="slide" data-slide="1">
-          <img src="/screenshots/inventory.png" alt="Expanded antibody card showing per-lot tracking with QC status, expiration dates, and storage locations" />
+          <picture>
+            <source srcset="/screenshots/inventory.webp" type="image/webp" />
+            <img src="/screenshots/inventory.png" alt="Expanded antibody card showing per-lot tracking with QC status, expiration dates, and storage locations" width="2880" height="1800" loading="lazy" />
+          </picture>
           <div class="slide-caption">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
@@ -1005,7 +1016,10 @@
           </div>
         </div>
         <div class="slide" data-slide="2">
-          <img src="/screenshots/scan-search.png" alt="Barcode scan result showing lot details and storage location on a visual grid" />
+          <picture>
+            <source srcset="/screenshots/scan-search.webp" type="image/webp" />
+            <img src="/screenshots/scan-search.png" alt="Barcode scan result showing lot details and storage location on a visual grid" width="2880" height="2400" loading="lazy" />
+          </picture>
           <div class="slide-caption">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>
@@ -1016,7 +1030,10 @@
           </div>
         </div>
         <div class="slide" data-slide="3">
-          <img src="/screenshots/storage.png" alt="Storage transfer mode with source and destination grids, selected vials highlighted" />
+          <picture>
+            <source srcset="/screenshots/storage.webp" type="image/webp" />
+            <img src="/screenshots/storage.png" alt="Storage transfer mode with source and destination grids, selected vials highlighted" width="2880" height="1800" loading="lazy" />
+          </picture>
           <div class="slide-caption">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>
@@ -1025,7 +1042,10 @@
           </div>
         </div>
         <div class="slide" data-slide="4">
-          <img src="/screenshots/reports.png" alt="Compliance reports with lot activity preview showing per-lot milestones and QC dates" />
+          <picture>
+            <source srcset="/screenshots/reports.webp" type="image/webp" />
+            <img src="/screenshots/reports.png" alt="Compliance reports with lot activity preview showing per-lot milestones and QC dates" width="2880" height="1800" loading="lazy" />
+          </picture>
           <div class="slide-caption">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>
@@ -1034,7 +1054,10 @@
           </div>
         </div>
         <div class="slide" data-slide="5">
-          <img src="/screenshots/audit.png" alt="Audit log showing timestamped entries with user actions and detailed notes" />
+          <picture>
+            <source srcset="/screenshots/audit.webp" type="image/webp" />
+            <img src="/screenshots/audit.png" alt="Audit log showing timestamped entries with user actions and detailed notes" width="2880" height="1800" loading="lazy" />
+          </picture>
           <div class="slide-caption">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/>
@@ -1043,7 +1066,10 @@
           </div>
         </div>
         <div class="slide" data-slide="6">
-          <img src="/screenshots/cocktail-tracking.png" alt="Cocktail tracking page showing expanded T-Cell Panel recipe with active prepared lot" />
+          <picture>
+            <source srcset="/screenshots/cocktail-tracking.webp" type="image/webp" />
+            <img src="/screenshots/cocktail-tracking.png" alt="Cocktail tracking page showing expanded T-Cell Panel recipe with active prepared lot" width="2264" height="1174" loading="lazy" />
+          </picture>
           <div class="slide-caption">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9 3h6v3H9z"/><path d="M10 6v4.5L6 20h12l-4-9.5V6"/>
@@ -1078,6 +1104,8 @@
       </div>
     </div>
   </section>
+
+  </main>
 
   <!-- FOOTER -->
   <footer class="footer">

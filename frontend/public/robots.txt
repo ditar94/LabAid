@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /pricing
+
+Disallow: /app.html
+Disallow: /api/
+
+Sitemap: https://labaid.io/sitemap.xml
