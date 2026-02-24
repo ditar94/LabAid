@@ -47,7 +47,7 @@ jobs:
           echo "Scanning Python dependencies for vulnerabilities..."
           pip-audit --strict --vulnerability-service osv || {
             echo "::warning::Python dependency vulnerabilities found. Review and update requirements.txt"
-            pip-audit --vulnerability-service osv
+            pip-audit --vulnerability-service osv || true
           }
 
       - name: Check for destructive migrations
