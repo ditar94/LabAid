@@ -122,10 +122,13 @@ def try_demo(
             demo_user.invite_token = token
             demo_user.invite_token_expires_at = now + timedelta(minutes=DEMO_MAGIC_LINK_EXPIRY_MINUTES)
             db.commit()
+            login_link = f"{settings.APP_URL}/api/demo/login?token={token}"
             auto = not settings.DEMO_SEND_EMAIL
+            if settings.DEMO_SEND_EMAIL:
+                send_demo_ready_email(email, login_link)
             return TryDemoResponse(
                 status="assigned",
-                login_link=f"{settings.APP_URL}/api/demo/login?token={token}",
+                login_link=login_link,
                 expires_at=lab.demo_expires_at,
                 message="Welcome back! Click the link to continue your demo.",
                 auto_login=auto,
