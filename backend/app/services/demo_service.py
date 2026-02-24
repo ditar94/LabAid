@@ -14,6 +14,7 @@ from app.models.models import (
     CocktailLot,
     CocktailLotDocument,
     CocktailLotSource,
+    CocktailLotStatus,
     CocktailRecipe,
     CocktailRecipeComponent,
     Fluorochrome,
@@ -32,6 +33,8 @@ from app.models.models import (
 )
 from app.services.audit import (
     snapshot_antibody,
+    snapshot_cocktail_lot,
+    snapshot_cocktail_recipe,
     snapshot_fluorochrome,
     snapshot_lot,
     snapshot_vial,
@@ -340,14 +343,51 @@ def seed_demo_lab(db: Session, lab: Lab, demo_user: User) -> None:
                 {"lot_number": "SX25-12456", "vial_count": 2, "interval_days": 32, "lot_offset_days": None},
             ],
         },
+        {
+            "target": "CD4", "fluorochrome": "PerCP-Cy5.5", "fluoro_color": "#911eb4",
+            "clone": "SK3", "vendor": "Sysmex", "catalog_number": "21-PC4-100",
+            "stability_days": 90, "low_stock_threshold": 3, "approved_low_threshold": 2,
+            "created_offset_days": 7,
+            "lots": [
+                {"lot_number": "SX24-03201", "vial_count": 5, "interval_days": 28, "lot_offset_days": 10},
+                {"lot_number": "SX24-08114", "vial_count": 5, "interval_days": 28, "lot_offset_days": None},
+                {"lot_number": "SX24-12780", "vial_count": 5, "interval_days": 28, "lot_offset_days": None},
+                {"lot_number": "SX25-04390", "vial_count": 5, "interval_days": 28, "lot_offset_days": None},
+                {"lot_number": "SX25-09561", "vial_count": 5, "interval_days": 28, "lot_offset_days": None},
+                {"lot_number": "SX25-13200", "vial_count": 4, "interval_days": 28, "lot_offset_days": None},
+            ],
+        },
+        {
+            "target": "CD8", "fluorochrome": "APC", "fluoro_color": "#4363d8",
+            "clone": "SK1", "vendor": "Sysmex", "catalog_number": "21-AC8-050",
+            "stability_days": 60, "low_stock_threshold": 2, "approved_low_threshold": 1,
+            "created_offset_days": 21,
+            "lots": [
+                {"lot_number": "SX24-05530", "vial_count": 4, "interval_days": 30, "lot_offset_days": 24},
+                {"lot_number": "SX24-10215", "vial_count": 4, "interval_days": 30, "lot_offset_days": None},
+                {"lot_number": "SX25-02678", "vial_count": 4, "interval_days": 30, "lot_offset_days": None},
+                {"lot_number": "SX25-07344", "vial_count": 4, "interval_days": 30, "lot_offset_days": None},
+                {"lot_number": "SX25-11890", "vial_count": 3, "interval_days": 30, "lot_offset_days": None},
+            ],
+        },
     ]
 
     # ── Lab settings (origin) ──
+    lab.settings = {
+        "storage_enabled": True,
+        "qc_doc_required": True,
+        "cocktails_enabled": True,
+        "setup_complete": True,
+    }
     _audit(
         "lab.settings_updated", "lab", lab_id,
         _work_hour(origin),
-        after_state=json.dumps({"storage_enabled": True}),
-        note="Enabled storage feature",
+        after_state=json.dumps({
+            "storage_enabled": True,
+            "qc_doc_required": True,
+            "cocktails_enabled": True,
+        }),
+        note="Enabled storage, QC requirement, and cocktail tracking",
     )
 
     # ── Fluorochromes ──
@@ -363,17 +403,6 @@ def seed_demo_lab(db: Session, lab: Lab, demo_user: User) -> None:
         _audit(
             "fluorochrome.created", "fluorochrome", f.id,
             _work_hour(origin + timedelta(hours=i)),
-            after_state=json.dumps(snapshot_fluorochrome(f)),
-        )
-    # Also add APC (not used by any antibody yet, but available)
-    if "APC" not in fluoro_map:
-        f = Fluorochrome(lab_id=lab_id, name="APC", color="#4363d8")
-        db.add(f)
-        db.flush()
-        fluoro_map["APC"] = f
-        _audit(
-            "fluorochrome.created", "fluorochrome", f.id,
-            _work_hour(origin + timedelta(hours=2)),
             after_state=json.dumps(snapshot_fluorochrome(f)),
         )
 
@@ -425,6 +454,8 @@ def seed_demo_lab(db: Session, lab: Lab, demo_user: User) -> None:
         free_cells.append(cell)
 
     # ── Process each antibody ──
+    ab_map = {}  # target -> Antibody object (for cocktail references)
+    lot_map = {}  # target -> list of approved Lot objects
     for ab_cfg in ANTIBODIES:
         ab_created = _work_hour(origin + timedelta(days=ab_cfg["created_offset_days"]))
 
@@ -441,6 +472,8 @@ def seed_demo_lab(db: Session, lab: Lab, demo_user: User) -> None:
         )
         db.add(ab)
         db.flush()
+        ab_map[ab_cfg["target"]] = ab
+        lot_map[ab_cfg["target"]] = []
 
         _audit(
             "antibody.created", "antibody", ab.id, ab_created,
@@ -529,6 +562,7 @@ def seed_demo_lab(db: Session, lab: Lab, demo_user: User) -> None:
             )
             db.add(lot)
             db.flush()
+            lot_map[ab_cfg["target"]].append(lot)
 
             _audit("lot.created", "lot", lot.id, lot_created,
                    after_state=json.dumps(snapshot_lot(lot)))
@@ -673,5 +707,98 @@ def seed_demo_lab(db: Session, lab: Lab, demo_user: User) -> None:
                         after_state=json.dumps(snapshot_lot(lot)),
                         note="All vials depleted",
                     )
+
+    # ── Cocktail recipe + prepared lot ──
+    cocktail_created = _work_hour(now - timedelta(days=30))
+
+    recipe = CocktailRecipe(
+        lab_id=lab_id,
+        name="T-Cell Panel",
+        description="Basic T-cell immunophenotyping panel",
+        shelf_life_days=14,
+        max_renewals=2,
+        created_at=cocktail_created,
+    )
+    db.add(recipe)
+    db.flush()
+
+    # 4 components: CD3 (7 µL), CD4 (3 µL), CD8 (2 µL), BSA custom (50 µL)
+    comp_cd3 = CocktailRecipeComponent(
+        recipe_id=recipe.id,
+        antibody_id=ab_map["CD3"].id,
+        volume_ul=7,
+        ordinal=0,
+    )
+    comp_cd4 = CocktailRecipeComponent(
+        recipe_id=recipe.id,
+        antibody_id=ab_map["CD4"].id,
+        volume_ul=3,
+        ordinal=1,
+    )
+    comp_cd8 = CocktailRecipeComponent(
+        recipe_id=recipe.id,
+        antibody_id=ab_map["CD8"].id,
+        volume_ul=2,
+        ordinal=2,
+    )
+    comp_bsa = CocktailRecipeComponent(
+        recipe_id=recipe.id,
+        free_text_name="BSA",
+        volume_ul=50,
+        ordinal=3,
+    )
+    db.add_all([comp_cd3, comp_cd4, comp_cd8, comp_bsa])
+    db.flush()
+
+    _audit(
+        "cocktail_recipe.created", "cocktail_recipe", recipe.id,
+        cocktail_created,
+        after_state=json.dumps(snapshot_cocktail_recipe(recipe)),
+    )
+
+    # Prepared cocktail lot — created 5 days ago, approved
+    cl_prepared = _work_hour(now - timedelta(days=5))
+    cl_approved = _work_hour(now - timedelta(days=5) + timedelta(hours=2))
+    cl_exp = (cl_prepared + timedelta(days=recipe.shelf_life_days)).date()
+
+    cocktail_lot = CocktailLot(
+        recipe_id=recipe.id,
+        lab_id=lab_id,
+        lot_number="CK-2026-001",
+        preparation_date=cl_prepared.date(),
+        expiration_date=cl_exp,
+        status=CocktailLotStatus.ACTIVE,
+        qc_status=QCStatus.APPROVED,
+        qc_approved_by=user_id,
+        qc_approved_at=cl_approved,
+        created_by=user_id,
+        location_cell_id=free_cells.pop(0).id if free_cells else None,
+        created_at=cl_prepared,
+    )
+    db.add(cocktail_lot)
+    db.flush()
+
+    # Link source lots — pick the most recent approved lot for each antibody
+    for comp, target in [(comp_cd3, "CD3"), (comp_cd4, "CD4"), (comp_cd8, "CD8")]:
+        source_lot = lot_map[target][-1] if lot_map[target] else None
+        if source_lot:
+            db.add(CocktailLotSource(
+                cocktail_lot_id=cocktail_lot.id,
+                component_id=comp.id,
+                source_lot_id=source_lot.id,
+            ))
+    db.flush()
+
+    _audit(
+        "cocktail_lot.created", "cocktail_lot", cocktail_lot.id,
+        cl_prepared,
+        after_state=json.dumps(snapshot_cocktail_lot(cocktail_lot)),
+    )
+    _audit(
+        "cocktail_lot.qc_approved", "cocktail_lot", cocktail_lot.id,
+        cl_approved,
+        before_state=json.dumps({"qc_status": "pending"}),
+        after_state=json.dumps(snapshot_cocktail_lot(cocktail_lot)),
+    )
 
     db.flush()

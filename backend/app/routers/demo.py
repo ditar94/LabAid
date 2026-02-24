@@ -371,7 +371,7 @@ def provision_demo_labs(
             is_active=True,
             is_demo=True,
             demo_status="available",
-            settings={"storage_enabled": True, "setup_complete": True},
+            settings={"storage_enabled": True, "qc_doc_required": True, "cocktails_enabled": True, "setup_complete": True},
         )
         db.add(lab)
         db.flush()
