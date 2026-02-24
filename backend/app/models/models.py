@@ -85,6 +85,9 @@ class CocktailLotStatus(str, enum.Enum):
 
 class Lab(Base):
     __tablename__ = "labs"
+    __table_args__ = (
+        Index('ix_labs_demo_available', 'is_demo', postgresql_where=text("is_demo = true AND demo_status = 'available'")),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(200), nullable=False, unique=True)
