@@ -74,6 +74,10 @@
       from { opacity: 0; transform: translateY(48px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    @keyframes heroContentEnter {
+      from { transform: translateY(24px); }
+      to { transform: translateY(0); }
+    }
     @keyframes pulse {
       0%, 100% { opacity: 0.6; }
       50% { opacity: 1; }
@@ -227,7 +231,7 @@
       text-align: center;
       max-width: 780px;
       padding: 0 1.5rem;
-      animation: heroEnter 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+      animation: heroContentEnter 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
     .hero-badge {
       display: inline-flex;
@@ -907,7 +911,7 @@
     <div class="hero-preview">
       <div class="hero-preview-inner">
         <picture>
-          <source srcset="/screenshots/inventory-overview-1280.webp 1280w, /screenshots/inventory-overview.webp 2560w" sizes="(max-width: 1300px) 100vw, 1200px" type="image/webp" />
+          <source srcset="/screenshots/inventory-overview-640.webp 640w, /screenshots/inventory-overview-1280.webp 1280w, /screenshots/inventory-overview.webp 2560w" sizes="(max-width: 768px) 100vw, (max-width: 1300px) 100vw, 1200px" type="image/webp" />
           <img src="/screenshots/inventory-overview.png" alt="LabAid inventory dashboard showing antibody cards with stock levels and status" width="2560" height="1800" fetchpriority="high" />
         </picture>
       </div>
@@ -991,7 +995,7 @@
       <div class="slideshow-viewport" id="slideshow">
         <div class="slide active" data-slide="0">
           <picture>
-            <source srcset="/screenshots/inventory-overview-1280.webp 1280w, /screenshots/inventory-overview.webp 2560w" sizes="(max-width: 1300px) 100vw, 1200px" type="image/webp" />
+            <source srcset="/screenshots/inventory-overview-640.webp 640w, /screenshots/inventory-overview-1280.webp 1280w, /screenshots/inventory-overview.webp 2560w" sizes="(max-width: 768px) 100vw, (max-width: 1300px) 100vw, 1200px" type="image/webp" />
             <img src="/screenshots/inventory-overview.png" alt="Inventory dashboard showing antibody cards with status badges, stock levels, and reorder alerts" width="2560" height="1800" loading="lazy" />
           </picture>
           <div class="slide-caption">
