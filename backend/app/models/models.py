@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -360,7 +361,7 @@ class LotRequest(Base):
     proposed_antibody = Column(JSON, nullable=False)
     notes = Column(Text, nullable=True)
     status = Column(
-        Enum(LotRequestStatus, values_callable=lambda e: [x.value for x in e]),
+        Enum(LotRequestStatus, name='lotrequestatus', values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=LotRequestStatus.PENDING,
     )
@@ -516,8 +517,8 @@ class VendorCatalog(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Lookup keys (exactly one should be set)
-    gtin = Column(String(14), nullable=True, unique=True)  # For GS1 barcodes (globally unique)
-    catalog_number = Column(String(50), nullable=True, unique=True)  # For vendor-specific formats
+    gtin = Column(String(14), nullable=True)  # For GS1 barcodes (globally unique)
+    catalog_number = Column(String(50), nullable=True)  # For vendor-specific formats
 
     # Vendor is informational only (from GUDID or inferred from barcode format)
     vendor = Column(String(255), nullable=True)
@@ -545,4 +546,6 @@ class VendorCatalog(Base):
 
     __table_args__ = (
         Index('idx_vendor_catalog_normalized', 'target_normalized', 'fluorochrome_normalized'),
+        Index('idx_vendor_catalog_gtin', 'gtin', unique=True, postgresql_where=text("gtin IS NOT NULL")),
+        Index('idx_vendor_catalog_catalog_number', 'catalog_number', unique=True, postgresql_where=text("catalog_number IS NOT NULL")),
     )
