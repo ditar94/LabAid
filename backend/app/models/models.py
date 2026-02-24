@@ -118,7 +118,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=True)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=True, index=True)
     email = Column(String(255), nullable=False, unique=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(200), nullable=False)
@@ -172,7 +172,7 @@ class ReagentComponent(Base):
     __tablename__ = "reagent_components"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    antibody_id = Column(UUID(as_uuid=True), ForeignKey("antibodies.id", ondelete="CASCADE"), nullable=False)
+    antibody_id = Column(UUID(as_uuid=True), ForeignKey("antibodies.id", ondelete="CASCADE"), nullable=False, index=True)
     target = Column(String(100), nullable=False)
     fluorochrome = Column(String(100), nullable=False)
     clone = Column(String(100), nullable=True)
@@ -186,11 +186,11 @@ class Lot(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     antibody_id = Column(
-        UUID(as_uuid=True), ForeignKey("antibodies.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("antibodies.id"), nullable=False, index=True
     )
-    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False, index=True)
     lot_number = Column(String(100), nullable=False)
-    vendor_barcode = Column(String(255))  # what the scanner reads
+    vendor_barcode = Column(String(255), index=True)  # what the scanner reads
     gs1_ai = Column(JSON, nullable=True)  # parsed GS1 Application Identifiers
     expiration_date = Column(Date)
     qc_status = Column(Enum(QCStatus, values_callable=lambda e: [x.value for x in e]), nullable=False, default=QCStatus.PENDING)
@@ -208,9 +208,12 @@ class Lot(Base):
 
 class LotDocument(Base):
     __tablename__ = "lot_documents"
+    __table_args__ = (
+        Index('ix_lot_documents_lot_id_not_deleted', 'lot_id', postgresql_where=text("is_deleted = false")),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False)
+    lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False, index=True)
     lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     file_path = Column(String(500), nullable=False)
@@ -232,11 +235,14 @@ class LotDocument(Base):
 
 class Vial(Base):
     __tablename__ = "vials"
+    __table_args__ = (
+        Index('ix_vials_location_cell_unique', 'location_cell_id', unique=True, postgresql_where=text("location_cell_id IS NOT NULL")),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False)
-    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
-    status = Column(Enum(VialStatus, values_callable=lambda e: [x.value for x in e]), nullable=False, default=VialStatus.SEALED)
+    lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False, index=True)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False, index=True)
+    status = Column(Enum(VialStatus, values_callable=lambda e: [x.value for x in e]), nullable=False, default=VialStatus.SEALED, index=True)
     location_cell_id = Column(
         UUID(as_uuid=True), ForeignKey("storage_cells.id"), nullable=True
     )
@@ -275,6 +281,9 @@ class StorageUnit(Base):
 
 class StorageCell(Base):
     __tablename__ = "storage_cells"
+    __table_args__ = (
+        Index('ix_storage_cells_unit_id', 'storage_unit_id'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     storage_unit_id = Column(
@@ -349,7 +358,7 @@ class LotRequest(Base):
     __tablename__ = "lot_requests"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     barcode = Column(String(255), nullable=False)
     lot_number = Column(String(100), nullable=True)
@@ -364,6 +373,7 @@ class LotRequest(Base):
         Enum(LotRequestStatus, name='lotrequestatus', values_callable=lambda e: [x.value for x in e]),
         nullable=False,
         default=LotRequestStatus.PENDING,
+        index=True,
     )
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
@@ -382,7 +392,7 @@ class CocktailRecipe(Base):
     __tablename__ = "cocktail_recipes"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False, index=True)
     name = Column(String(300), nullable=False)
     description = Column(Text, nullable=True)
     shelf_life_days = Column(Integer, nullable=False)
@@ -402,7 +412,7 @@ class CocktailRecipeComponent(Base):
     __tablename__ = "cocktail_recipe_components"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    recipe_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_recipes.id", ondelete="CASCADE"), nullable=False)
+    recipe_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_recipes.id", ondelete="CASCADE"), nullable=False, index=True)
     antibody_id = Column(UUID(as_uuid=True), ForeignKey("antibodies.id"), nullable=True)
     free_text_name = Column(String(300), nullable=True)
     volume_ul = Column(Integer, nullable=True)
@@ -422,7 +432,7 @@ class CocktailLot(Base):
     recipe_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_recipes.id"), nullable=False)
     lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
     lot_number = Column(String(100), nullable=False)
-    vendor_barcode = Column(String(255), nullable=True)
+    vendor_barcode = Column(String(255), nullable=True, index=True)
     preparation_date = Column(Date, nullable=False)
     expiration_date = Column(Date, nullable=False)
     status = Column(
@@ -460,7 +470,7 @@ class CocktailLotSource(Base):
     __tablename__ = "cocktail_lot_sources"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    cocktail_lot_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_lots.id", ondelete="CASCADE"), nullable=False)
+    cocktail_lot_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_lots.id", ondelete="CASCADE"), nullable=False, index=True)
     component_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_recipe_components.id"), nullable=False)
     source_lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False)
 
@@ -471,6 +481,9 @@ class CocktailLotSource(Base):
 
 class CocktailLotDocument(Base):
     __tablename__ = "cocktail_lot_documents"
+    __table_args__ = (
+        Index('ix_cocktail_lot_documents_lot_id_not_deleted', 'cocktail_lot_id', postgresql_where=text("is_deleted = false")),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     cocktail_lot_id = Column(UUID(as_uuid=True), ForeignKey("cocktail_lots.id"), nullable=False)
