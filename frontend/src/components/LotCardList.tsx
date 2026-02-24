@@ -2,6 +2,7 @@
 // Mobile companion to LotTable. Uses the same LotListProps interface so both
 // components can be swapped via `isMobile ? <LotCardList> : <LotTable>`.
 
+import { Fragment } from "react";
 import type { LotListProps } from "./LotTable";
 import ActionMenu from "./ActionMenu";
 import CopyButton from "./CopyButton";
@@ -36,12 +37,22 @@ export default function LotCardList({
 }: LotListProps) {
   const { expandedBarcode, setExpandedBarcode } = useLotBarcodeCopy();
 
+  const isInactive = (l: typeof lots[0]) =>
+    l.is_archived || ((l.vial_counts?.sealed ?? 0) + (l.vial_counts?.opened ?? 0) === 0);
+  const activeLots = lots.filter((l) => !isInactive(l));
+  const inactiveLots = lots.filter(isInactive);
+  const sortedLots = [...activeLots, ...inactiveLots];
+
   return (
     <div className="lot-card-list">
-      {lots.map((lot) => (
-        <div key={lot.id} className="lot-card-wrapper">
+      {sortedLots.map((lot, i) => (
+        <Fragment key={lot.id}>
+          {inactiveLots.length > 0 && i === activeLots.length && (
+            <div className="lot-separator">Inactive</div>
+          )}
+        <div className="lot-card-wrapper">
           <div
-            className={`lot-card${lot.is_archived ? " lot-row-archived" : ""}${!lot.is_archived && (lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0 ? " lot-row-depleted" : ""}${onLotClick ? " clickable" : ""}${selectedLotId === lot.id ? " active" : ""}`}
+            className={`lot-card${isInactive(lot) ? " lot-row-inactive" : ""}${onLotClick ? " clickable" : ""}${selectedLotId === lot.id ? " active" : ""}`}
             onClick={() => onLotClick?.(lot)}
           >
             {/* Optional prefix (e.g., antibody name + vendor for Dashboard) */}
@@ -66,7 +77,7 @@ export default function LotCardList({
               </div>
               <span style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
                 {!hideActions && canQC && lot.qc_status !== "approved" && onApproveQC && (
-                  <button className="approve-chip" onClick={(e) => { e.stopPropagation(); onApproveQC(lot.id); }}>
+                  <button className="btn-sm btn-chip btn-chip-success" onClick={(e) => { e.stopPropagation(); onApproveQC(lot.id); }}>
                     Approve
                   </button>
                 )}
@@ -83,7 +94,7 @@ export default function LotCardList({
               <div className="lot-card-barcode">
                 <span
                   className={`lot-card-barcode-text${expandedBarcode === lot.id ? " expanded" : ""}`}
-                  onClick={() => setExpandedBarcode(expandedBarcode === lot.id ? null : lot.id)}
+                  onClick={(e) => { e.stopPropagation(); setExpandedBarcode(expandedBarcode === lot.id ? null : lot.id); }}
                 >
                   {expandedBarcode === lot.id
                     ? lot.vendor_barcode
@@ -157,6 +168,7 @@ export default function LotCardList({
             </span>
           )}
         </div>
+        </Fragment>
       ))}
     </div>
   );

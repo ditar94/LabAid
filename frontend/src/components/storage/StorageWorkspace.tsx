@@ -253,6 +253,14 @@ export default forwardRef(function StorageWorkspace(
     });
   }, []);
 
+  const removeVialIds = useCallback((ids: string[]) => {
+    setWorkspaceSelection((prev) => {
+      const next = new Set(prev.sourceVialIds);
+      for (const id of ids) next.delete(id);
+      return { sourceVialIds: next };
+    });
+  }, []);
+
   const handleMoveExecute = async () => {
     if (workspaceSelection.sourceVialIds.size === 0 || !move.targetUnitId) return;
     await move.executeMove(Array.from(workspaceSelection.sourceVialIds));
@@ -313,9 +321,9 @@ export default forwardRef(function StorageWorkspace(
   }, [lotFilter, displayGrids]);
 
   const resolvedMoveHeaderExtra = moveHeaderExtraProp
-    ? moveHeaderExtraProp({ selectAll, addVialIds })
+    ? moveHeaderExtraProp({ selectAll, addVialIds, removeVialIds, sourceVialIds: workspaceSelection.sourceVialIds })
     : (
-        <button className="sv-header-btn" onClick={selectAll}>
+        <button className="btn-chip btn-chip-outlined" onClick={selectAll}>
           Select All
         </button>
       );
@@ -329,17 +337,17 @@ export default forwardRef(function StorageWorkspace(
         </span>
       </div>
       {resolvedMoveHeaderExtra}
-      <button className="sv-header-btn" onClick={clearSelection} disabled={selectedCount === 0}>
+      <button className="btn-chip btn-chip-outlined" onClick={clearSelection} disabled={selectedCount === 0}>
         Clear
       </button>
-      <button className="sv-header-btn" onClick={exitMoveMode}>
+      <button className="btn-chip btn-chip-outlined" onClick={exitMoveMode}>
         Exit
       </button>
     </>
   ) : headerActionsProp
     ? headerActionsProp({ enterMoveMode: () => enterMoveMode() })
     : selectableVialIds.size > 0 && (
-        <button className="sv-header-btn sv-header-btn--primary" onClick={() => enterMoveMode()}>
+        <button className="btn-chip btn-chip-primary" onClick={() => enterMoveMode()}>
           Move Vials
         </button>
       );
@@ -510,7 +518,7 @@ export default forwardRef(function StorageWorkspace(
               </span>
             )}
             <button
-              className="move-go-btn"
+              className=""
               onClick={handleMoveExecute}
               disabled={selectedCount === 0 || !move.targetUnitId || move.loading || move.insufficientCells}
             >

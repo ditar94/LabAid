@@ -430,7 +430,7 @@ export default function CocktailsPage() {
           <div className="cocktail-lot-actions">
             {canEdit && lot.qc_status === "pending" && !lot.is_archived && (
               <button
-                className="cocktail-action-btn approve"
+                className="btn-chip btn-chip-success"
                 onClick={() => handleQC(lot.id, "approved")}
                 disabled={isLotLoading}
               >
@@ -440,7 +440,7 @@ export default function CocktailsPage() {
             )}
             {canRenew && (
               <button
-                className="cocktail-action-btn renew"
+                className="btn-chip btn-chip-primary"
                 onClick={() => handleRenew(lot.id)}
                 disabled={isLotLoading}
               >
@@ -450,7 +450,7 @@ export default function CocktailsPage() {
             )}
             {canPrepare && lot.status === "active" && !lot.is_archived && (
               <button
-                className="cocktail-action-btn deplete"
+                className="btn-chip btn-chip-danger"
                 onClick={() => handleDeplete(lot.id)}
                 disabled={isLotLoading}
               >
@@ -459,7 +459,7 @@ export default function CocktailsPage() {
               </button>
             )}
             <button
-              className="cocktail-action-btn docs"
+              className="btn-chip btn-chip-secondary"
               onClick={() => setDocModalLotId(lot.id)}
             >
               <FileText size={14} />
@@ -467,7 +467,7 @@ export default function CocktailsPage() {
             </button>
             {canEdit && !lot.is_archived && lot.status !== "depleted" && (
               <button
-                className="cocktail-action-btn archive"
+                className="btn-chip btn-chip-outlined"
                 onClick={() => {
                   setArchiveNote("");
                   setArchivePrompt({ lotId: lot.id, lotNumber: lot.lot_number });
@@ -480,7 +480,7 @@ export default function CocktailsPage() {
             )}
             {canEdit && lot.is_archived && (
               <button
-                className="cocktail-action-btn unarchive"
+                className="btn-chip btn-chip-outlined"
                 onClick={() => handleArchive(lot.id)}
                 disabled={isLotLoading}
               >
@@ -557,7 +557,7 @@ export default function CocktailsPage() {
         <div className="cocktail-recipe-actions">
           {canEdit && (
             <button
-              className="cocktail-recipe-btn edit"
+              className="btn-chip btn-chip-secondary"
               onClick={() => openEditRecipeForm(recipe)}
             >
               Edit Cocktail
@@ -565,7 +565,7 @@ export default function CocktailsPage() {
           )}
           {canPrepare && recipe.is_active && (
             <button
-              className="cocktail-recipe-btn prepare"
+              className="btn-chip btn-chip-success"
               onClick={() => setPrepareRecipe(recipe)}
             >
               <FlaskConical size={14} />
@@ -610,7 +610,7 @@ export default function CocktailsPage() {
         <h1>Cocktails</h1>
         <div className="filters">
           {canEdit && (
-            <button className="cocktails-new-btn" onClick={() => setShowRecipeForm(true)}>
+            <button className="btn-chip btn-chip-primary" onClick={() => setShowRecipeForm(true)}>
               + New
             </button>
           )}
@@ -705,7 +705,7 @@ export default function CocktailsPage() {
             </div>
 
             <div className="cocktail-info-actions">
-              <button className="cocktail-btn-close" onClick={() => setInfoRecipe(null)}>
+              <button className="btn-secondary" onClick={() => setInfoRecipe(null)}>
                 Close
               </button>
             </div>
@@ -770,15 +770,15 @@ export default function CocktailsPage() {
                 placeholder='e.g., "QC Failed"'
               />
             </div>
-            <div className="cocktail-archive-actions">
+            <div className="action-btns">
               <button
-                className="cocktail-btn-cancel"
+                className="btn-secondary"
                 onClick={() => setArchivePrompt(null)}
               >
                 Cancel
               </button>
               <button
-                className="cocktail-btn-archive"
+                className="btn-danger"
                 onClick={() =>
                   handleArchive(archivePrompt.lotId, archiveNote.trim() || undefined)
                 }

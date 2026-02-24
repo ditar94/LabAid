@@ -380,11 +380,11 @@ export function CocktailRecipeForm({
 
           {error && <p className="error">{error}</p>}
 
-          <div className="cf-actions">
-            <button type="button" className="cf-action-cancel" onClick={onCancel}>
+          <div className="action-btns" style={{ justifyContent: "center", marginTop: "var(--space-md)" }}>
+            <button type="button" className="btn-secondary" onClick={onCancel}>
               Cancel
             </button>
-            <button type="submit" className="cf-action-submit" disabled={loading}>
+            <button type="submit" disabled={loading}>
               {loading ? "Saving..." : initialValues ? "Save" : "Create"}
             </button>
           </div>

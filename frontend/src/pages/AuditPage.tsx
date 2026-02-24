@@ -469,7 +469,7 @@ export default function AuditPage() {
             {scopeLabel} has events outside {rangeNotice.currentLabel}. Earliest: {rangeNotice.earliestLabel}. Latest: {rangeNotice.latestLabel}. Include {rangeNotice.suggestedLabel}?
           </div>
           <div className="audit-range-actions">
-            <button className="btn-sm btn-green" onClick={() => setDateRange(rangeNotice.suggested)}>
+            <button className="btn-sm btn-success" onClick={() => setDateRange(rangeNotice.suggested)}>
               Include months
             </button>
             <button className="btn-sm btn-secondary" onClick={() => setRangeNoticeDismissed(true)}>
@@ -539,7 +539,7 @@ export default function AuditPage() {
                   <span className="scope-btns">
                     {log.lot_id && (
                       <button
-                        className="scope-btn"
+                        className="btn-chip btn-chip-primary"
                         onClick={() => handleScopeLot(log)}
                         title="Filter to this lot"
                       >
@@ -548,7 +548,7 @@ export default function AuditPage() {
                     )}
                     {log.antibody_id && (
                       <button
-                        className="scope-btn"
+                        className="btn-chip btn-chip-primary"
                         onClick={() => handleScopeAntibody(log)}
                         title="Filter to this antibody"
                       >
@@ -583,6 +583,20 @@ export default function AuditPage() {
                     }
                   } catch { /* ignore parse errors */ }
                   return log.note || "\u2014";
+                })() : log.action === "lab.settings_updated" && log.before_state && log.after_state ? (() => {
+                  try {
+                    const before = JSON.parse(log.before_state).settings || {};
+                    const after = JSON.parse(log.after_state).settings || {};
+                    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+                    const changes: string[] = [];
+                    for (const key of allKeys) {
+                      if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+                        const label = key.replace(/_/g, " ");
+                        changes.push(`${label}: ${String(before[key] ?? "unset")} → ${String(after[key] ?? "unset")}`);
+                      }
+                    }
+                    return changes.length > 0 ? changes.join(", ") : log.note || "\u2014";
+                  } catch { return log.note || "\u2014"; }
                 })() : (log.note || "\u2014")}
               </td>
             </tr>

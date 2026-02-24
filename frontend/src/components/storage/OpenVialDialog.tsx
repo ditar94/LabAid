@@ -51,7 +51,7 @@ export default function OpenVialDialog({
         <div className="action-btns">
           {isOpened && onDeplete ? (
             <button
-              className="btn-red"
+              className="btn-danger"
               onClick={onDeplete}
               disabled={loading}
             >
@@ -59,7 +59,7 @@ export default function OpenVialDialog({
             </button>
           ) : (
             <button
-              className={needsQcWarning || olderLotWarning ? "btn-red" : "btn-green"}
+              className={needsQcWarning || olderLotWarning ? "btn-danger" : "btn-success"}
               onClick={() => onConfirm(!!needsQcWarning)}
               disabled={loading}
             >

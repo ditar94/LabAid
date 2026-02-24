@@ -110,6 +110,8 @@ export interface StorageViewProps {
   moveHeaderExtra?: (ctx: {
     selectAll: () => void;
     addVialIds: (ids: string[]) => void;
+    removeVialIds: (ids: string[]) => void;
+    sourceVialIds: ReadonlySet<string>;
   }) => ReactNode;
   highlightNextCellId?: string | null;
   readOnly?: boolean;

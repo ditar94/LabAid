@@ -439,7 +439,7 @@ export default function ReportsPage() {
           {card.formats.map((fmt) => (
             <button
               key={fmt}
-              className="btn-sm btn-green"
+              className="btn-sm btn-success"
               onClick={() => handleDownload(fmt)}
               disabled={downloading === fmt}
             >
@@ -471,7 +471,7 @@ export default function ReportsPage() {
                     <option value="combined_pdf">Combined PDF</option>
                   </select>
                   <button
-                    className="btn-sm btn-green"
+                    className="btn-sm btn-success"
                     onClick={handleExportWithDocs}
                     disabled={downloading === "export"}
                   >

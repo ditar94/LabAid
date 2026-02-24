@@ -150,7 +150,7 @@ export default function AntibodyForm({
             {info && <InfoButton tooltip={info} />}
           </span>
           {optional && (
-            <small style={{ fontWeight: "normal", color: "var(--text-muted)" }}> (optional)</small>
+            <small className="label-optional"> (optional)</small>
           )}
         </label>
         {input}

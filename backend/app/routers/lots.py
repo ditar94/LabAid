@@ -354,6 +354,10 @@ def archive_lot(
     lot.is_archived = not lot.is_archived
     if lot.is_archived:
         lot.archive_note = body.note if body else None
+        # Vacate storage cells so archived-lot vials don't block new placements
+        db.query(Vial).filter(Vial.lot_id == lot.id, Vial.location_cell_id.isnot(None)).update(
+            {Vial.location_cell_id: None}, synchronize_session="fetch"
+        )
     else:
         lot.archive_note = None
 

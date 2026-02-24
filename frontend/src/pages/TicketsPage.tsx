@@ -259,7 +259,7 @@ export default function TicketsPage() {
       <div className="page-header">
         <h1>Support</h1>
         {activeTab === "tickets" && !isSuperAdmin && (
-          <button onClick={() => setShowForm(!showForm)}>
+          <button className="btn-chip btn-chip-primary" onClick={() => setShowForm(!showForm)}>
             {showForm ? "Cancel" : "+ New Ticket"}
           </button>
         )}
@@ -507,7 +507,7 @@ export default function TicketsPage() {
                             )}
                             {ticket.status !== "resolved" && (
                               <button
-                                className="btn-sm btn-green"
+                                className="btn-sm btn-success"
                                 onClick={() => handleStatusChange(ticket.id, "resolved")}
                               >
                                 Resolve

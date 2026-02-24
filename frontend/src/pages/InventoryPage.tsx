@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -188,7 +188,7 @@ function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUpload
                     : "Mark as QC"}
                 </button>
                 <button
-                  className="btn-sm btn-red"
+                  className="btn-sm btn-danger"
                   type="button"
                   onClick={() => deleteDocument(doc)}
                   disabled={docDeletingId === doc.id || docSavingId === doc.id}
@@ -220,7 +220,7 @@ function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUpload
             </button>
             {onUploadAndApprove && (
               <button
-                className="btn-green"
+                className="btn-success"
                 onClick={handleUploadAndApprove}
                 disabled={uploading || (!file && !documents.some((doc) => doc.is_qc_document))}
               >
@@ -255,7 +255,7 @@ type InventoryRow = {
   lowStock: boolean;
 };
 
-const CARD_COLLAPSE_MS = 100;
+const CARD_COLLAPSE_MS = 0;
 
 export default function InventoryPage() {
   const { user, labSettings } = useAuth();
@@ -276,10 +276,6 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
-  const cardMotionRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const previousCardRectsRef = useRef<Map<string, { left: number; top: number; width: number; height: number }>>(new Map());
-  const [gridCols, setGridCols] = useState(3);
   const [showInactiveLots, setShowInactiveLots] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     lotId: string;
@@ -385,26 +381,6 @@ export default function InventoryPage() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [archivePrompt, archiveWarning, qcBlockedLot, editLot, editAbId, confirmAction, archiveAbPrompt, modalLot]);
 
-  // Compute grid column count from container width (replaces auto-fit to prevent card swap on expand)
-  const computeCols = useCallback(() => {
-    const el = gridRef.current;
-    if (!el) return;
-    const w = el.clientWidth;
-    const minCard = 260;
-    const gap = 16; // var(--space-lg)
-    const cols = Math.max(1, Math.floor((w + gap) / (minCard + gap)));
-    setGridCols(cols);
-  }, []);
-
-  useLayoutEffect(() => {
-    computeCols();
-    const el = gridRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(computeCols);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [computeCols]);
-
   // If deep-linked with a labId, switch to that lab
   useEffect(() => {
     if (requestedLabId && labs.some((lab) => lab.id === requestedLabId)) {
@@ -414,8 +390,6 @@ export default function InventoryPage() {
 
   const loadData = async () => {
     if (!selectedLab) return;
-    // Clear stale FLIP rects so navigation back doesn't cause bad transforms
-    previousCardRectsRef.current = new Map();
     const params: Record<string, string> = { lab_id: selectedLab };
     const abParams: Record<string, string> = { ...params };
     if (showInactive) abParams.include_inactive = "true";
@@ -1083,12 +1057,12 @@ export default function InventoryPage() {
       <>
         <div className="detail-header" style={{ justifyContent: "space-between" }}>
           {canEdit ? (
-            <button className="cocktail-recipe-btn edit" onClick={() => openEditForm(row.antibody)}>
+            <button className="btn-chip btn-chip-secondary" onClick={() => openEditForm(row.antibody)}>
               Edit Antibody
             </button>
           ) : <span />}
           {canReceive && (
-            <button className="cocktails-new-btn" onClick={() => setShowLotForm(true)}>
+            <button className="btn-chip btn-chip-primary" onClick={() => setShowLotForm(true)}>
               + New Lot
             </button>
           )}
@@ -1197,77 +1171,7 @@ export default function InventoryPage() {
     );
   };
 
-  // Keep expansion motion one-directional: expanded card takes the row and
-  // all siblings from that row flow to the next row.
-  const cardRows = useMemo(() => {
-    // Keep reordered layout during both expansion AND collapse
-    const activeId = expandedId || closingId;
-    if (!activeId || gridCols <= 1) return inventoryRows;
-    const expandedIdx = inventoryRows.findIndex((r) => r.antibody.id === activeId);
-    if (expandedIdx < 0) return inventoryRows;
-
-    const rowStart = expandedIdx - (expandedIdx % gridCols);
-    const rowEnd = Math.min(rowStart + gridCols, inventoryRows.length);
-    const rowItems = inventoryRows.slice(rowStart, rowEnd);
-    const expandedRow = rowItems.find((r) => r.antibody.id === expandedId);
-    if (!expandedRow) return inventoryRows;
-
-    const rowSiblings = rowItems.filter((r) => r.antibody.id !== activeId);
-    return [
-      ...inventoryRows.slice(0, rowStart),
-      expandedRow,
-      ...rowSiblings,
-      ...inventoryRows.slice(rowEnd),
-    ];
-  }, [inventoryRows, expandedId, closingId, gridCols]);
-
-  // Smoothly animate card movement when row reordering changes.
-  useLayoutEffect(() => {
-    const nextRects = new Map<string, { left: number; top: number; width: number; height: number }>();
-    for (const [id, el] of cardMotionRefs.current.entries()) {
-      const rect = el.getBoundingClientRect();
-      nextRects.set(id, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-    }
-
-    const prevRects = previousCardRectsRef.current;
-    const activeId = expandedId || closingId;
-    for (const [id, next] of nextRects.entries()) {
-      const prev = prevRects.get(id);
-      if (!prev) continue;
-
-      // Skip scale for the expanding/collapsing card — let CSS Grid handle its width
-      const isActive = id === activeId;
-      const dx = prev.left - next.left;
-      const dy = prev.top - next.top;
-      const sx = isActive ? 1 : next.width > 0 ? prev.width / next.width : 1;
-      const sy = isActive ? 1 : next.height > 0 ? prev.height / next.height : 1;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue;
-
-      const el = cardMotionRefs.current.get(id);
-      if (!el) continue;
-      el.style.transition = "none";
-      el.style.transformOrigin = "top left";
-      el.style.zIndex = "3";
-      el.style.transform = isActive
-        ? `translate(${dx}px, ${dy}px)`
-        : `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-      void el.offsetWidth;
-      el.style.transition = "transform 160ms var(--ease-out)";
-      el.style.transform = isActive
-        ? "translate(0, 0)"
-        : "translate(0, 0) scale(1, 1)";
-      const handleEnd = () => {
-        el.style.transition = "";
-        el.style.transform = "";
-        el.style.transformOrigin = "";
-        el.style.zIndex = "";
-        el.removeEventListener("transitionend", handleEnd);
-      };
-      el.addEventListener("transitionend", handleEnd);
-    }
-
-    previousCardRectsRef.current = nextRects;
-  }, [cardRows, expandedId, closingId, gridCols]);
+  const cardRows = inventoryRows;
 
   // Helper to render a single antibody card with dynamic grid positioning
   const renderCard = (row: typeof inventoryRows[0]) => {
@@ -1278,22 +1182,10 @@ export default function InventoryPage() {
     ) : undefined;
     const abColor = fluoro?.color || row.antibody.color || undefined;
 
-    // Keep full-width grid span during both expansion AND collapse
-    const gridColumnStyle: React.CSSProperties =
-      (isExpanded || isCollapsing) && gridCols > 1 ? { gridColumn: "1 / -1" } : {};
-
     return (
       <div
         key={row.antibody.id}
         className="inventory-card-motion"
-        style={gridColumnStyle}
-        ref={(node) => {
-          if (node) {
-            cardMotionRefs.current.set(row.antibody.id, node);
-          } else {
-            cardMotionRefs.current.delete(row.antibody.id);
-          }
-        }}
       >
         <AntibodyCard
           antibody={row.antibody}
@@ -1350,7 +1242,7 @@ export default function InventoryPage() {
             <option value="ivd">IVD</option>
           </select>
           {canEdit && (
-            <button onClick={() => setShowAbForm(!showAbForm)}>
+            <button className="btn-chip btn-chip-primary" onClick={() => setShowAbForm(!showAbForm)}>
               {showAbForm ? "Cancel" : "+ New Antibody"}
             </button>
           )}
@@ -1390,11 +1282,7 @@ export default function InventoryPage() {
 
       {/* ── Card view ── */}
       {view === "card" && (
-        <div
-          className="inventory-grid stagger-reveal"
-          ref={gridRef}
-          style={{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}
-        >
+        <div className="inventory-grid stagger-reveal">
           {cardRows.map((row) => renderCard(row))}
           {inventoryRows.length === 0 && (
             <p className="empty">No antibodies yet.</p>
@@ -1523,7 +1411,7 @@ export default function InventoryPage() {
                     {canEdit && (
                       <td>
                         <button
-                          className="archive-toggle-btn reactivate"
+                          className="btn-chip btn-chip-primary"
                           onClick={() => handleArchiveAntibody(row.antibody.id)}
                         >
                           Reactivate
@@ -1559,7 +1447,7 @@ export default function InventoryPage() {
             </div>
             <div className="action-btns" style={{ marginTop: "1rem" }}>
               <button
-                className="btn-red"
+                className="btn-danger"
                 onClick={() =>
                   handleArchiveAntibody(archiveAbPrompt.id, archiveAbNote.trim() || undefined)
                 }
@@ -1589,7 +1477,7 @@ export default function InventoryPage() {
             <div className="action-btns" style={{ marginTop: "1rem" }}>
               {confirmAction.openedCount > 0 && (
                 <button
-                  className="btn-red"
+                  className="btn-danger"
                   onClick={() => handleConfirmDeplete("opened")}
                   disabled={confirmLoading}
                 >
@@ -1597,7 +1485,7 @@ export default function InventoryPage() {
                 </button>
               )}
               <button
-                className="btn-red"
+                className="btn-danger"
                 onClick={() => handleConfirmDeplete("lot")}
                 disabled={confirmLoading}
               >
@@ -1780,7 +1668,7 @@ export default function InventoryPage() {
             </p>
             <div className="action-btns" style={{ marginTop: "1rem" }}>
               <button
-                className="btn-red"
+                className="btn-danger"
                 onClick={() => {
                   const { lotId, lotNumber } = archiveWarning;
                   setArchiveWarning(null);
@@ -1818,7 +1706,7 @@ export default function InventoryPage() {
             </div>
             <div className="action-btns" style={{ marginTop: "1rem" }}>
               <button
-                className="btn-red"
+                className="btn-danger"
                 onClick={() =>
                   handleArchive(archivePrompt.lotId, archiveNote.trim() || undefined)
                 }

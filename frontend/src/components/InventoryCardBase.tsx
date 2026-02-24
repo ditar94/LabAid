@@ -3,6 +3,7 @@
 // hover/shadow transitions, and expanded content slot. Used by AntibodyCard,
 // CocktailRecipeCard, CocktailLotCard, and future card types.
 
+import { useRef, useLayoutEffect } from "react";
 import type { ReactNode } from "react";
 
 interface InventoryCardBaseProps {
@@ -55,9 +56,24 @@ export default function InventoryCardBase({
   hideExpandLabels = false,
 }: InventoryCardBaseProps) {
   const dataAttr = dataId ? { [`data-${dataIdName}`]: dataId } : {};
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if ((!expanded && !collapsing) || !cardRef.current) return;
+    const card = cardRef.current;
+    const wrapper = card.parentElement;
+    const grid = card.closest(".inventory-grid") as HTMLElement | null;
+    if (!grid || !wrapper) return;
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const gridRect = grid.getBoundingClientRect();
+    const offsetLeft = wrapperRect.left - gridRect.left;
+    card.style.setProperty("--expand-left", `-${offsetLeft + 1}px`);
+    card.style.setProperty("--expand-width", `${gridRect.width + 2}px`);
+  }, [expanded, collapsing]);
 
   return (
     <div
+      ref={cardRef}
       className={`inventory-card${expanded ? " expanded" : ""}${collapsing ? " collapsing" : ""}${selected ? " selected" : ""} ${className}`.trim()}
       {...dataAttr}
       style={style}

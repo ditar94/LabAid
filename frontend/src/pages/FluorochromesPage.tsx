@@ -75,7 +75,7 @@ export default function FluorochromesPage() {
               ))}
             </select>
           )}
-        <button onClick={() => setShowForm(!showForm)}>
+        <button className="btn-chip btn-chip-primary" onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "+ New Fluorochrome"}
         </button>
         </div>

@@ -171,7 +171,7 @@ export default function UsersPage() {
             </select>
           )}
           {canManage && (
-            <button onClick={() => setShowForm(!showForm)}>
+            <button className="btn-chip btn-chip-primary" onClick={() => setShowForm(!showForm)}>
               {showForm ? "Cancel" : "+ New User"}
             </button>
           )}
@@ -315,7 +315,7 @@ export default function UsersPage() {
                   {canEdit && (
                     <>
                       <button
-                        className="btn-sm"
+                        className="btn-sm btn-secondary"
                         onClick={() => handleResetPassword(u.id)}
                       >
                         Reset Password

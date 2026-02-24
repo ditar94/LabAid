@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type FormEvent } from "react";
+import { Fragment, useState, useRef, useEffect, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -720,10 +720,8 @@ export default function ScanSearchPage() {
     }
   };
 
-  // ── Search: select result ───────────────────────────────────────────
-  const handleSearchSelect = async (r: AntibodySearchResult) => {
-    setSelectedSearchResult(r);
-    setSelectedLotId(null);
+  // ── Search: load grids for a result ─────────────────────────────────
+  const loadSearchGrids = async (r: AntibodySearchResult) => {
     if (r.storage_locations.length === 0) { setSearchGrids(new Map()); return; }
     const newGrids = new Map<string, StorageGridType>();
     await Promise.all(
@@ -735,6 +733,88 @@ export default function ScanSearchPage() {
       })
     );
     setSearchGrids(newGrids);
+  };
+
+  // ── Search: toggle expand/collapse ─────────────────────────────────
+  const handleSearchSelect = async (r: AntibodySearchResult) => {
+    if (selectedSearchResult?.antibody.id === r.antibody.id) {
+      setSelectedSearchResult(null);
+      setSelectedLotId(null);
+      setSearchGrids(new Map());
+      return;
+    }
+    setSelectedSearchResult(r);
+    setSelectedLotId(null);
+    await loadSearchGrids(r);
+  };
+
+  const renderSearchExpanded = (r: AntibodySearchResult) => {
+    const allLots = r.lots;
+    const isLotInactiveDetail = (l: typeof allLots[0]) => l.is_archived || (l.vial_counts.sealed + l.vial_counts.opened === 0);
+    const visibleLots = showInactive ? allLots : allLots.filter((l) => !isLotInactiveDetail(l));
+    const eligible = visibleLots
+      .filter((l) => !l.is_archived && l.vial_counts.sealed > 0)
+      .sort((a, b) => {
+        if (!a.expiration_date && !b.expiration_date) return 0;
+        if (!a.expiration_date) return 1;
+        if (!b.expiration_date) return -1;
+        return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
+      });
+    const ageBadgeMap = new Map<string, "current" | "new">();
+    if (eligible.length >= 2) {
+      for (const lot of eligible) {
+        ageBadgeMap.set(lot.id, lot === eligible[0] ? "current" : "new");
+      }
+    }
+
+    const convertedLots = visibleLots.map((l) => lotSummaryToLot(l, r.antibody.id));
+    const ListComp = isMobile ? LotCardList : LotTable;
+
+    return (
+      <>
+        {visibleLots.length > 0 ? (
+          <ListComp
+            lots={convertedLots}
+            sealedOnly={sealedOnly}
+            canQC={false}
+            lotAgeBadgeMap={ageBadgeMap}
+            storageEnabled={storageEnabled}
+            onLotClick={(lot) => setSelectedLotId(selectedLotId === lot.id ? null : lot.id)}
+            selectedLotId={selectedLotId}
+            extraActions={(lot) =>
+              lot.vendor_barcode ? (
+                <button
+                  className="btn-sm btn-secondary"
+                  onClick={(e) => { e.stopPropagation(); setInput(lot.vendor_barcode!); handleLookup(lot.vendor_barcode!); }}
+                >
+                  Search Lot
+                </button>
+              ) : null
+            }
+          />
+        ) : (
+          <p className="empty">No lots for this antibody.</p>
+        )}
+
+        {storageEnabled && selectedLotId && (() => {
+          const ddLot = visibleLots.find((l) => l.id === selectedLotId);
+          if (!ddLot) return null;
+          return (
+            <StorageView
+              grids={Array.from(searchGrids.values())}
+              fluorochromes={fluorochromes}
+              lotFilter={{ lotId: ddLot.id, lotNumber: ddLot.lot_number }}
+              onRefresh={() => {
+                const sr = selectedSearchResultRef.current;
+                if (sr) loadSearchGrids(sr);
+              }}
+              onClose={() => setSelectedLotId(null)}
+            />
+          );
+        })()}
+
+      </>
+    );
   };
 
 
@@ -1132,7 +1212,7 @@ export default function ScanSearchPage() {
             {canReceive && cl.status === "active" && (
               <div className="action-btns">
                 <button
-                  className="btn-red"
+                  className="btn-danger"
                   onClick={async () => {
                     try {
                       await api.post(`/cocktails/lots/${cl.id}/deplete`);
@@ -1188,7 +1268,7 @@ export default function ScanSearchPage() {
                 {result.qc_warning}
                 {canEdit && (
                   <button
-                    className="approve-chip"
+                    className="btn-chip btn-chip-success"
                     style={{ marginLeft: 8 }}
                     onClick={async () => {
                       try {
@@ -1285,17 +1365,17 @@ export default function ScanSearchPage() {
               <p className="page-desc">Select opened vial(s) to mark as depleted.</p>
               <div className="action-btns" style={{ marginBottom: "0.75rem", flexWrap: "wrap" }}>
                 {depleteSelectedVialIds.size > 0 && !showBulkDepleteConfirm && (
-                  <button className="btn-red" onClick={() => setShowBulkDepleteConfirm(true)} disabled={loading}>
+                  <button className="btn-danger" onClick={() => setShowBulkDepleteConfirm(true)} disabled={loading}>
                     Deplete Selected ({depleteSelectedVialIds.size})
                   </button>
                 )}
                 {result.opened_vials.length > 1 && !showDepleteAllConfirm && (
-                  <button className="btn-red" onClick={() => setShowDepleteAllConfirm(true)} disabled={loading}>
+                  <button className="btn-danger" onClick={() => setShowDepleteAllConfirm(true)} disabled={loading}>
                     Deplete All ({result.opened_vials.length})
                   </button>
                 )}
                 {canEdit && !showDepleteLotConfirm && (
-                  <button className="btn-red" onClick={() => setShowDepleteLotConfirm(true)} disabled={loading}>
+                  <button className="btn-danger" onClick={() => setShowDepleteLotConfirm(true)} disabled={loading}>
                     Deplete Entire Lot ({result.vials.length + result.opened_vials.length})
                   </button>
                 )}
@@ -1304,7 +1384,7 @@ export default function ScanSearchPage() {
                 <div className="confirm-action">
                   <p>Deplete <strong>{depleteSelectedVialIds.size}</strong> selected vial{depleteSelectedVialIds.size !== 1 ? "s" : ""} for lot <strong>{result.lot.lot_number}</strong>?</p>
                   <div className="action-btns">
-                    <button className="btn-red" onClick={confirmBulkDeplete} disabled={loading}>{loading ? "Depleting..." : "Yes, Deplete Selected"}</button>
+                    <button className="btn-danger" onClick={confirmBulkDeplete} disabled={loading}>{loading ? "Depleting..." : "Yes, Deplete Selected"}</button>
                     <button className="btn-secondary" onClick={() => setShowBulkDepleteConfirm(false)}>Cancel</button>
                   </div>
                 </div>
@@ -1313,7 +1393,7 @@ export default function ScanSearchPage() {
                 <div className="confirm-action">
                   <p>Deplete all <strong>{result.opened_vials.length}</strong> opened vials for lot <strong>{result.lot.lot_number}</strong>?</p>
                   <div className="action-btns">
-                    <button className="btn-red" onClick={confirmDepleteAll} disabled={loading}>{loading ? "Depleting..." : "Yes, Deplete All"}</button>
+                    <button className="btn-danger" onClick={confirmDepleteAll} disabled={loading}>{loading ? "Depleting..." : "Yes, Deplete All"}</button>
                     <button className="btn-secondary" onClick={() => setShowDepleteAllConfirm(false)}>Cancel</button>
                   </div>
                 </div>
@@ -1322,7 +1402,7 @@ export default function ScanSearchPage() {
                 <div className="confirm-action">
                   <p>Deplete ALL vials (sealed + opened) for lot <strong>{result.lot.lot_number}</strong>? This cannot be undone.</p>
                   <div className="action-btns">
-                    <button className="btn-red" onClick={confirmDepleteLot} disabled={loading}>{loading ? "Depleting..." : "Yes, Deplete Entire Lot"}</button>
+                    <button className="btn-danger" onClick={confirmDepleteLot} disabled={loading}>{loading ? "Depleting..." : "Yes, Deplete Entire Lot"}</button>
                     <button className="btn-secondary" onClick={() => setShowDepleteLotConfirm(false)}>Cancel</button>
                   </div>
                 </div>
@@ -1388,7 +1468,7 @@ export default function ScanSearchPage() {
                   {selectedCell && (
                     <div className="confirm-action">
                       <p>Store vial <strong>{selectedVial.id.slice(0, 8)}</strong> in cell <strong>{selectedCell.label}</strong>?</p>
-                      <button className="btn-green" onClick={confirmStoreOpen} disabled={loading}>{loading ? "Storing..." : "Confirm Store"}</button>
+                      <button className="btn-success" onClick={confirmStoreOpen} disabled={loading}>{loading ? "Storing..." : "Confirm Store"}</button>
                     </div>
                   )}
                 </>
@@ -1463,17 +1543,23 @@ export default function ScanSearchPage() {
               {/* Card view */}
               {searchView === "card" && (
                 <div className="inventory-grid stagger-reveal">
-                  {filteredResults.map((r) => (
-                    <AntibodyCard
-                      key={r.antibody.id}
-                      antibody={r.antibody}
-                      counts={getResultCounts(r)}
-                      fluoroColor={getColor(r)}
-                      sealedOnly={sealedOnly}
-                      selected={selectedSearchResult?.antibody.id === r.antibody.id}
-                      onClick={() => handleSearchSelect(r)}
-                    />
-                  ))}
+                  {filteredResults.map((r) => {
+                    const isExpanded = selectedSearchResult?.antibody.id === r.antibody.id;
+                    return (
+                      <div key={r.antibody.id} className="inventory-card-motion">
+                        <AntibodyCard
+                          antibody={r.antibody}
+                          counts={getResultCounts(r)}
+                          fluoroColor={getColor(r)}
+                          sealedOnly={sealedOnly}
+                          expanded={isExpanded}
+                          onClick={() => handleSearchSelect(r)}
+                        >
+                          {isExpanded && renderSearchExpanded(r)}
+                        </AntibodyCard>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -1498,20 +1584,33 @@ export default function ScanSearchPage() {
                   <tbody>
                     {filteredResults.map((r) => {
                       const counts = getResultCounts(r);
+                      const expanded = selectedSearchResult?.antibody.id === r.antibody.id;
+                      const colCount = 9 + (showInactive ? 1 : 0) + (storageEnabled ? 1 : 0);
                       return (
-                        <tr key={r.antibody.id} className={`clickable-row ${selectedSearchResult?.antibody.id === r.antibody.id ? "active" : ""}`} onClick={() => handleSearchSelect(r)}>
-                          <td>{r.antibody.name || r.antibody.target || "\u2014"}</td>
-                          <td>{r.antibody.fluorochrome || "\u2014"}</td>
-                          <td><span className={`badge badge-designation-${r.antibody.designation}`}>{r.antibody.designation.toUpperCase()}</span></td>
-                          <td>{r.antibody.clone || "\u2014"}</td>
-                          <td>{r.antibody.vendor || "\u2014"}</td>
-                          <td>{r.antibody.catalog_number ? <>{r.antibody.catalog_number} <CopyButton value={r.antibody.catalog_number} /></> : "\u2014"}</td>
-                          <td>{counts.sealed}</td>
-                          <td>{counts.opened}</td>
-                          {showInactive && <td>{counts.depleted}</td>}
-                          <td>{counts.lots}</td>
-                          {storageEnabled && <td>{r.storage_locations.length > 0 ? r.storage_locations.map((l) => l.unit_name).join(", ") : "\u2014"}</td>}
-                        </tr>
+                        <Fragment key={r.antibody.id}>
+                          <tr className={`clickable-row${expanded ? " active" : ""}`} onClick={() => handleSearchSelect(r)}>
+                            <td>{r.antibody.name || r.antibody.target || "\u2014"}</td>
+                            <td>{r.antibody.fluorochrome || "\u2014"}</td>
+                            <td><span className={`badge badge-designation-${r.antibody.designation}`}>{r.antibody.designation.toUpperCase()}</span></td>
+                            <td>{r.antibody.clone || "\u2014"}</td>
+                            <td>{r.antibody.vendor || "\u2014"}</td>
+                            <td>{r.antibody.catalog_number ? <>{r.antibody.catalog_number} <CopyButton value={r.antibody.catalog_number} /></> : "\u2014"}</td>
+                            <td>{counts.sealed}</td>
+                            <td>{counts.opened}</td>
+                            {showInactive && <td>{counts.depleted}</td>}
+                            <td>{counts.lots}</td>
+                            {storageEnabled && <td>{r.storage_locations.length > 0 ? r.storage_locations.map((l) => l.unit_name).join(", ") : "\u2014"}</td>}
+                          </tr>
+                          {expanded && (
+                            <tr className="expanded-detail-row">
+                              <td colSpan={colCount} style={{ padding: 0 }}>
+                                <div className="locator-panel">
+                                  {renderSearchExpanded(r)}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -1521,127 +1620,6 @@ export default function ScanSearchPage() {
             );
           })()}
 
-          {selectedSearchResult && (() => {
-            const allLots = selectedSearchResult.lots;
-            const isLotInactiveDetail = (l: typeof allLots[0]) => l.is_archived || (l.vial_counts.sealed + l.vial_counts.opened === 0);
-            const visibleLots = showInactive ? allLots : allLots.filter((l) => !isLotInactiveDetail(l));
-            // Age badges: oldest non-archived lot with sealed vials = "current", others = "new"
-            const eligible = visibleLots
-              .filter((l) => !l.is_archived && l.vial_counts.sealed > 0)
-              .sort((a, b) => {
-                if (!a.expiration_date && !b.expiration_date) return 0;
-                if (!a.expiration_date) return 1;
-                if (!b.expiration_date) return -1;
-                return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
-              });
-            const ageBadgeMap = new Map<string, "current" | "new">();
-            if (eligible.length >= 2) {
-              for (const lot of eligible) {
-                ageBadgeMap.set(lot.id, lot === eligible[0] ? "current" : "new");
-              }
-            }
-
-            // Compute highlighted vial IDs for grids
-            const searchHighlightIds = new Set<string>();
-            if (selectedLotId) {
-              // Highlight only the selected lot's vials
-              for (const [, grid] of searchGrids) {
-                for (const cell of grid.cells) {
-                  if (cell.vial_id && cell.vial?.lot_id === selectedLotId) {
-                    searchHighlightIds.add(cell.vial_id);
-                  }
-                }
-              }
-            } else {
-              // Highlight all vials for this antibody (default)
-              for (const loc of selectedSearchResult.storage_locations) {
-                for (const vid of loc.vial_ids) searchHighlightIds.add(vid);
-              }
-            }
-
-            return (
-              <div className="locator-panel">
-                <h2>
-                  {selectedSearchResult.antibody.name || [selectedSearchResult.antibody.target, selectedSearchResult.antibody.fluorochrome].filter(Boolean).join(" - ") || "Unnamed"}
-                  <span className={`badge badge-designation-${selectedSearchResult.antibody.designation}`} style={{ fontSize: "0.5em", marginLeft: 8, verticalAlign: "middle" }}>
-                    {selectedSearchResult.antibody.designation.toUpperCase()}
-                  </span>
-                </h2>
-                {selectedSearchResult.antibody.name && selectedSearchResult.antibody.target && selectedSearchResult.antibody.fluorochrome && (
-                  <p style={{ margin: "0 0 0.5rem", color: "var(--text-muted)", fontSize: "0.85em" }}>
-                    {selectedSearchResult.antibody.target} - {selectedSearchResult.antibody.fluorochrome}
-                  </p>
-                )}
-                {visibleLots.length > 0 && (() => {
-                  const convertedLots = visibleLots.map((l) => lotSummaryToLot(l, selectedSearchResult.antibody.id));
-                  const ListComp = isMobile ? LotCardList : LotTable;
-                  return (
-                    <ListComp
-                      lots={convertedLots}
-                      sealedOnly={sealedOnly}
-                      canQC={false}
-                      lotAgeBadgeMap={ageBadgeMap}
-                      storageEnabled={storageEnabled}
-                      onLotClick={(lot) => setSelectedLotId(selectedLotId === lot.id ? null : lot.id)}
-                      selectedLotId={selectedLotId}
-                      extraActions={(lot) =>
-                        lot.vendor_barcode ? (
-                          <button
-                            className="btn-sm btn-secondary"
-                            onClick={(e) => { e.stopPropagation(); setInput(lot.vendor_barcode!); handleLookup(lot.vendor_barcode!); }}
-                          >
-                            Search Lot
-                          </button>
-                        ) : null
-                      }
-                    />
-                  );
-                })()}
-                {/* Lot drilldown: per-lot storage grids (shown when a lot is clicked) */}
-                {storageEnabled && selectedLotId && (() => {
-                  const ddLot = visibleLots.find((l) => l.id === selectedLotId);
-                  if (!ddLot) return null;
-                  return (
-                    <StorageView
-                      grids={Array.from(searchGrids.values())}
-                      fluorochromes={fluorochromes}
-                      lotFilter={{ lotId: ddLot.id, lotNumber: ddLot.lot_number }}
-                      onRefresh={() => {
-                        const sr = selectedSearchResultRef.current;
-                        if (sr) return handleSearchSelect(sr);
-                      }}
-                      onClose={() => setSelectedLotId(null)}
-                    />
-                  );
-                })()}
-
-                {/* Antibody-level storage grids (shown when no lot is drilled down) */}
-                {storageEnabled && !selectedLotId && (
-                  selectedSearchResult.storage_locations.length === 0 ? (
-                    <p className="empty">No vials currently in storage for this antibody.</p>
-                  ) : (() => {
-                    const gridsArray = selectedSearchResult.storage_locations
-                      .map((loc) => searchGrids.get(loc.unit_id))
-                      .filter((g): g is StorageGridType => !!g);
-                    return gridsArray.length > 0 ? (
-                      <StorageView
-                        grids={gridsArray}
-                        fluorochromes={fluorochromes}
-                        highlightVialIds={searchHighlightIds}
-                        onRefresh={() => {
-                          const sr = selectedSearchResultRef.current;
-                          if (sr) return handleSearchSelect(sr);
-                        }}
-                        legendExtra={
-                          <span className="legend-item"><span className="legend-box highlighted-legend" /> Current antibody</span>
-                        }
-                      />
-                    ) : null;
-                  })()
-                )}
-              </div>
-            );
-          })()}
         </>
       )}
 

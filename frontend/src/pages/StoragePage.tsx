@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type FormEvent } from "react";
+import { useEffect, useState, useRef, useCallback, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -277,7 +277,7 @@ export default function StoragePage() {
             </select>
           )}
           {canCreate && (
-            <button onClick={() => setShowForm(!showForm)}>
+            <button className="btn-chip btn-chip-primary" onClick={() => setShowForm(!showForm)}>
               {showForm ? "Cancel" : "+ New Storage Unit"}
             </button>
           )}
@@ -396,13 +396,13 @@ export default function StoragePage() {
             headerActions={({ enterMoveMode }) => (
               <>
                 {canStock && !stockingMode && !selectedGrid.unit.is_temporary && (
-                  <button className="sv-header-btn sv-header-btn--primary" onClick={enterStockingMode}>Stock</button>
+                  <button className="btn-chip btn-chip-primary" onClick={enterStockingMode}>Stock</button>
                 )}
                 {canStock && !stockingMode && (
-                  <button className="sv-header-btn sv-header-btn--primary" onClick={enterMoveMode}>Move</button>
+                  <button className="btn-chip btn-chip-primary" onClick={enterMoveMode}>Move</button>
                 )}
                 {stockingMode && (
-                  <button className="sv-header-btn" onClick={exitStockingMode}>Exit Stocking</button>
+                  <button className="btn-chip btn-chip-outlined" onClick={exitStockingMode}>Exit Stocking</button>
                 )}
               </>
             )}
@@ -477,17 +477,13 @@ export default function StoragePage() {
                 ) : null}
               </>
             }
-            moveHeaderExtra={({ addVialIds }) => (
-              <select value="" onChange={(e) => {
-                if (!e.target.value) return;
-                const lot = getLotsInGrid().find(l => l.lot_id === e.target.value);
-                if (lot) addVialIds(lot.vial_ids);
-              }}>
-                <option value="">Select lot...</option>
-                {getLotsInGrid().map(lot => (
-                  <option key={lot.lot_id} value={lot.lot_id}>{lot.label} ({lot.vial_ids.length})</option>
-                ))}
-              </select>
+            moveHeaderExtra={({ addVialIds, removeVialIds, sourceVialIds }) => (
+              <LotPicker
+                lots={getLotsInGrid()}
+                sourceVialIds={sourceVialIds}
+                onSelect={(lot) => addVialIds(lot.vial_ids)}
+                onDeselect={(lot) => removeVialIds(lot.vial_ids)}
+              />
             )}
             legendExtra={
               stockingMode ? (
@@ -497,6 +493,74 @@ export default function StoragePage() {
               ) : undefined
             }
           />
+      )}
+    </div>
+  );
+}
+
+// ── LotPicker — multi-select dropdown for move mode lot selection ──────────
+
+type LotInfo = { lot_id: string; lot_number: string; label: string; vial_ids: string[] };
+
+function LotPicker({
+  lots,
+  sourceVialIds,
+  onSelect,
+  onDeselect,
+}: {
+  lots: LotInfo[];
+  sourceVialIds: ReadonlySet<string>;
+  onSelect: (lot: LotInfo) => void;
+  onDeselect: (lot: LotInfo) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (open) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open, handleClickOutside]);
+
+  const lotsWithStatus = lots.map((lot) => {
+    const selectedCount = lot.vial_ids.filter((id) => sourceVialIds.has(id)).length;
+    return { ...lot, selectedCount, isSelected: selectedCount > 0 };
+  });
+  const selectedLotCount = lotsWithStatus.filter((l) => l.isSelected).length;
+
+  return (
+    <div className="lot-picker" ref={ref}>
+      <button
+        className={`btn-chip btn-chip-outlined${selectedLotCount > 0 ? " lot-picker-active" : ""}`}
+        onClick={() => setOpen(!open)}
+      >
+        {selectedLotCount > 0 ? `${selectedLotCount} Lot${selectedLotCount > 1 ? "s" : ""}` : "Lots"}
+        <span className="lot-picker-caret">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div className="lot-picker-dropdown">
+          {lotsWithStatus.length === 0 ? (
+            <div className="lot-picker-empty">No lots in grid</div>
+          ) : (
+            lotsWithStatus.map((lot) => (
+              <button
+                key={lot.lot_id}
+                className={`lot-picker-item${lot.isSelected ? " checked" : ""}`}
+                onClick={() => {
+                  if (lot.isSelected) onDeselect(lot);
+                  else onSelect(lot);
+                }}
+              >
+                <span className="lot-picker-check">{lot.isSelected ? "✓" : ""}</span>
+                <span className="lot-picker-label">{lot.label}</span>
+                <span className="lot-picker-count">{lot.selectedCount}/{lot.vial_ids.length}</span>
+              </button>
+            ))
+          )}
+        </div>
       )}
     </div>
   );

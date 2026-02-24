@@ -117,7 +117,7 @@ export default function LabsPage() {
     <div>
       <div className="page-header">
         <h1>Labs</h1>
-        <button onClick={() => setShowForm(!showForm)}>
+        <button className="btn-chip btn-chip-primary" onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "+ New Lab"}
         </button>
       </div>
@@ -288,7 +288,7 @@ export default function LabsPage() {
             </p>
             <div className="action-btns" style={{ marginTop: "var(--space-lg)" }}>
               <button
-                className="btn-red"
+                className="btn-danger"
                 onClick={() => handleToggleSuspend(suspendPrompt.id)}
                 disabled={suspendLoading}
               >

@@ -94,14 +94,27 @@ export default function AntibodyCard({
   // Resolve the display color: fluorochrome color → IVD color → default gray
   const displayColor = fluoroColor || antibody.color || DEFAULT_FLUORO_COLOR;
 
-  // Build the display label: product name → "target-fluorochrome" → "Unnamed"
-  const primaryLabel =
-    antibody.name ||
-    [antibody.target, antibody.fluorochrome].filter(Boolean).join("-") ||
-    "Unnamed";
+  // Two-tier title: large primary word + smaller detail line
+  let titleMain: string;
+  let titleDetail: string | null;
 
-  // Subtitle: show "target - fluorochrome" when name is set and both fields exist
-  const showSubtitle = antibody.name && antibody.target && antibody.fluorochrome;
+  if (antibody.name) {
+    const spaceIdx = antibody.name.indexOf(" ");
+    if (spaceIdx > 0) {
+      titleMain = antibody.name.substring(0, spaceIdx);
+      titleDetail = antibody.name.substring(spaceIdx + 1);
+    } else {
+      titleMain = antibody.name;
+      titleDetail = antibody.target && antibody.fluorochrome
+        ? `${antibody.target}-${antibody.fluorochrome}` : null;
+    }
+  } else if (antibody.target) {
+    titleMain = antibody.target;
+    titleDetail = antibody.fluorochrome || null;
+  } else {
+    titleMain = "Unnamed";
+    titleDetail = null;
+  }
 
   return (
     <InventoryCardBase
@@ -140,13 +153,11 @@ export default function AntibodyCard({
             )}
           </div>
 
-          {/* Antibody name + optional subtitle */}
-          <span>
-            {primaryLabel}
-            {showSubtitle && (
-              <span className="inventory-subtitle">
-                {antibody.target}-{antibody.fluorochrome}
-              </span>
+          {/* Antibody name: large primary + smaller detail */}
+          <span className="inventory-title-text">
+            <span className="inventory-title-main">{titleMain}</span>
+            {titleDetail && (
+              <span className="inventory-title-detail">{titleDetail}</span>
             )}
           </span>
 

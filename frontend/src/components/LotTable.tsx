@@ -3,7 +3,7 @@
 // (with "Scan Lot" extra action), and DashboardPage (Pending QC / Expiring
 // sections via prefixColumn + extraColumns).
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { Lot } from "../api/types";
 import ActionMenu from "./ActionMenu";
 import CopyButton from "./CopyButton";
@@ -80,6 +80,22 @@ export default function LotTable({
   // Depleted column hidden by sealedOnly OR the explicit hideDepleted flag
   const showDepleted = !sealedOnly && !hideDepleted;
 
+  const isInactive = (l: Lot) =>
+    l.is_archived || ((l.vial_counts?.sealed ?? 0) + (l.vial_counts?.opened ?? 0) === 0);
+  const activeLots = lots.filter((l) => !isInactive(l));
+  const inactiveLots = lots.filter(isInactive);
+  const sortedLots = [...activeLots, ...inactiveLots];
+  const colCount =
+    4 +
+    (prefixColumn ? 1 : 0) +
+    (hideQc ? 0 : 1) +
+    (hideReceived ? 0 : 1) +
+    (sealedOnly ? 0 : 1) +
+    (showDepleted ? 1 : 0) +
+    (storageEnabled ? 1 : 0) +
+    (extraColumns?.length || 0) +
+    (hideActions ? 0 : 1);
+
   return (
     <table>
       <thead>
@@ -99,8 +115,14 @@ export default function LotTable({
         </tr>
       </thead>
       <tbody>
-        {lots.map((lot) => (
-          <tr key={lot.id} className={`${onLotClick ? "clickable-row" : ""}${selectedLotId === lot.id ? " active" : ""}${lot.is_archived ? " lot-row-archived" : ""}${!lot.is_archived && (lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0 && (lot.vial_counts?.depleted ?? 0) > 0 ? " lot-row-depleted" : ""}`} onClick={() => onLotClick?.(lot)}>
+        {sortedLots.map((lot, i) => (
+          <Fragment key={lot.id}>
+            {inactiveLots.length > 0 && i === activeLots.length && (
+              <tr className="lot-separator-row">
+                <td colSpan={colCount}>Inactive</td>
+              </tr>
+            )}
+          <tr className={`${onLotClick ? "clickable-row" : ""}${selectedLotId === lot.id ? " active" : ""}${isInactive(lot) ? " lot-row-inactive" : ""}`} onClick={() => onLotClick?.(lot)}>
             {/* Optional prefix column (e.g., antibody name for Dashboard) */}
             {prefixColumn && <td>{prefixColumn.render(lot)}</td>}
 
@@ -115,7 +137,7 @@ export default function LotTable({
                     <>
                       <span
                         className="lot-barcode-text expanded"
-                        onClick={() => setExpandedBarcode(null)}
+                        onClick={(e) => { e.stopPropagation(); setExpandedBarcode(null); }}
                       >
                         {lot.vendor_barcode}
                       </span>
@@ -124,7 +146,7 @@ export default function LotTable({
                   ) : (
                     <span
                       className="lot-barcode-toggle"
-                      onClick={() => setExpandedBarcode(lot.id)}
+                      onClick={(e) => { e.stopPropagation(); setExpandedBarcode(lot.id); }}
                     >
                       Show Barcode
                     </span>
@@ -183,7 +205,7 @@ export default function LotTable({
               <td className="lot-actions-cell" onClick={(e) => e.stopPropagation()}>
                 <div className="lot-actions-inline">
                   {canQC && lot.qc_status !== "approved" && onApproveQC && (
-                    <button className="approve-chip" onClick={() => onApproveQC(lot.id)}>
+                    <button className="btn-sm btn-chip btn-chip-success" onClick={() => onApproveQC(lot.id)}>
                       Approve
                     </button>
                   )}
@@ -193,6 +215,7 @@ export default function LotTable({
               </td>
             )}
           </tr>
+          </Fragment>
         ))}
       </tbody>
     </table>
