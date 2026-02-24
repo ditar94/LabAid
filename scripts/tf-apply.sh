@@ -81,7 +81,7 @@ cd "$TF_DIR"
 terraform plan \
   -var-file="$TFVARS_FILE" \
   -out="$PLAN_FILE" \
-  "${EXTRA_ARGS[@]}" 2>&1
+  ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} 2>&1
 
 # Convert plan to JSON for inspection
 terraform show -json "$PLAN_FILE" > "$PLAN_JSON"
