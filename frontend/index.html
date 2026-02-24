@@ -455,31 +455,39 @@
     .slide {
       position: absolute;
       inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1rem;
       opacity: 0;
-      transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+      visibility: hidden;
+      transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.7s;
     }
-    .slide.active { opacity: 1; }
-    .slide-icon svg {
-      width: 48px;
-      height: 48px;
-      color: var(--slate-400);
-      opacity: 0.5;
+    .slide.active { opacity: 1; visibility: visible; }
+    .slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top left;
     }
-    .slide-label {
-      font-size: 1.1rem;
+    .slide-caption {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 2rem 2rem 1.25rem;
+      background: linear-gradient(to top, rgba(15, 23, 42, 0.85), transparent);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .slide-caption svg {
+      width: 22px;
+      height: 22px;
+      color: var(--indigo-400);
+      flex-shrink: 0;
+    }
+    .slide-caption span {
+      font-size: 0.95rem;
       font-weight: 600;
-      color: var(--slate-400);
+      color: var(--white);
       letter-spacing: -0.01em;
-    }
-    .slide-sublabel {
-      font-size: 0.85rem;
-      color: var(--slate-500);
-      opacity: 0.6;
     }
     .slideshow-dots {
       display: flex;
@@ -807,42 +815,63 @@
       </div>
       <div class="slideshow-viewport" id="slideshow">
         <div class="slide active" data-slide="0">
-          <div class="slide-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="18" height="14" x="3" y="5" rx="2"/><path d="M3 10h18"/>
+          <img src="/screenshots/inventory-overview.png" alt="Inventory dashboard showing antibody cards with status badges, stock levels, and reorder alerts" />
+          <div class="slide-caption">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+              <path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
             </svg>
+            <span>Inventory Overview</span>
           </div>
-          <span class="slide-label">Dashboard Overview</span>
-          <span class="slide-sublabel">Replace with screenshot</span>
         </div>
         <div class="slide" data-slide="1">
-          <div class="slide-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <img src="/screenshots/inventory.png" alt="Expanded antibody card showing per-lot tracking with QC status, expiration dates, and storage locations" />
+          <div class="slide-caption">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+              <path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1Z"/>
+              <path d="m9 14 2 2 4-4"/>
+            </svg>
+            <span>Lot Tracking &amp; QC</span>
+          </div>
+        </div>
+        <div class="slide" data-slide="2">
+          <img src="/screenshots/scan-search.png" alt="Barcode scan result showing lot details and storage location on a visual grid" />
+          <div class="slide-caption">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/>
               <path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
               <line x1="7" x2="17" y1="12" y2="12"/>
             </svg>
+            <span>Barcode Scanning</span>
           </div>
-          <span class="slide-label">Barcode Scanning</span>
-          <span class="slide-sublabel">Replace with screenshot</span>
-        </div>
-        <div class="slide" data-slide="2">
-          <div class="slide-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>
-            </svg>
-          </div>
-          <span class="slide-label">Storage Grid</span>
-          <span class="slide-sublabel">Replace with screenshot</span>
         </div>
         <div class="slide" data-slide="3">
-          <div class="slide-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <img src="/screenshots/storage.png" alt="Storage transfer mode with source and destination grids, selected vials highlighted" />
+          <div class="slide-caption">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/>
+            </svg>
+            <span>Storage Management</span>
+          </div>
+        </div>
+        <div class="slide" data-slide="4">
+          <img src="/screenshots/reports.png" alt="Compliance reports with lot activity preview showing per-lot milestones and QC dates" />
+          <div class="slide-caption">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>
+            </svg>
+            <span>Compliance Reports</span>
+          </div>
+        </div>
+        <div class="slide" data-slide="5">
+          <img src="/screenshots/audit.png" alt="Audit log showing timestamped entries with user actions and detailed notes" />
+          <div class="slide-caption">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/>
             </svg>
+            <span>Audit Trail</span>
           </div>
-          <span class="slide-label">Audit Trail</span>
-          <span class="slide-sublabel">Replace with screenshot</span>
         </div>
       </div>
       <div class="slideshow-dots" id="slideshow-dots">
@@ -850,6 +879,8 @@
         <button class="dot" data-dot="1" aria-label="Slide 2"></button>
         <button class="dot" data-dot="2" aria-label="Slide 3"></button>
         <button class="dot" data-dot="3" aria-label="Slide 4"></button>
+        <button class="dot" data-dot="4" aria-label="Slide 5"></button>
+        <button class="dot" data-dot="5" aria-label="Slide 6"></button>
       </div>
     </div>
   </section>
