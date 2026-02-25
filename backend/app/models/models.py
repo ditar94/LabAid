@@ -74,6 +74,13 @@ class BillingStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class AuthProviderType(str, enum.Enum):
+    PASSWORD = "password"
+    OIDC_MICROSOFT = "oidc_microsoft"
+    OIDC_GOOGLE = "oidc_google"
+    SAML = "saml"
+
+
 class CocktailLotStatus(str, enum.Enum):
     ACTIVE = "active"
     DEPLETED = "depleted"
@@ -111,6 +118,7 @@ class Lab(Base):
     storage_units = relationship("StorageUnit", back_populates="lab")
     fluorochromes = relationship("Fluorochrome", back_populates="lab")
     cocktail_recipes = relationship("CocktailRecipe", back_populates="lab")
+    auth_providers = relationship("LabAuthProvider", back_populates="lab")
 
 
 class Fluorochrome(Base):
@@ -141,6 +149,43 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lab = relationship("Lab", back_populates="users")
+    external_identities = relationship("ExternalIdentity", back_populates="user")
+
+
+class LabAuthProvider(Base):
+    __tablename__ = "lab_auth_providers"
+    __table_args__ = (
+        UniqueConstraint("lab_id", "provider_type", name="uq_lab_auth_provider_type"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False, index=True)
+    provider_type = Column(
+        Enum(AuthProviderType, values_callable=lambda e: [x.value for x in e]),
+        nullable=False,
+    )
+    config = Column(JSON, nullable=False, server_default="{}")
+    email_domain = Column(String(255), nullable=True)
+    is_enabled = Column(Boolean, default=True, nullable=False, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    lab = relationship("Lab", back_populates="auth_providers")
+
+
+class ExternalIdentity(Base):
+    __tablename__ = "external_identities"
+    __table_args__ = (
+        UniqueConstraint("provider_type", "provider_subject", name="uq_external_identity_provider_subject"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    provider_type = Column(String(50), nullable=False)
+    provider_subject = Column(String(255), nullable=False)
+    provider_email = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="external_identities")
 
 
 class Antibody(Base):

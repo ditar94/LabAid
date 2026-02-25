@@ -107,11 +107,21 @@ def update_lab_settings(
         raise HTTPException(status_code=404, detail="Lab not found")
 
     before = snapshot_lab(lab)
+    was_sso_enabled = (lab.settings or {}).get("sso_enabled", False)
     settings = dict(lab.settings or {})
     updates = body.model_dump(exclude_none=True)
     settings.update(updates)
     lab.settings = settings
     flag_modified(lab, "settings")
+
+    # When SSO is turned off, re-enable password login for the lab
+    if was_sso_enabled and not settings.get("sso_enabled", False):
+        pw_provider = db.query(models.LabAuthProvider).filter(
+            models.LabAuthProvider.lab_id == lab_id,
+            models.LabAuthProvider.provider_type == models.AuthProviderType.PASSWORD,
+        ).first()
+        if pw_provider and not pw_provider.is_enabled:
+            pw_provider.is_enabled = True
 
     log_audit(
         db,

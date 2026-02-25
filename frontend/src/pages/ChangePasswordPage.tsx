@@ -1,11 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Navigate, Link } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { ShieldCheck, KeyRound } from "lucide-react";
 
 export default function ChangePasswordPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, labSettings, refreshUser } = useAuth();
+
+  if (labSettings.password_enabled === false) {
+    return <Navigate to="/dashboard" replace />;
+  }
   const navigate = useNavigate();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

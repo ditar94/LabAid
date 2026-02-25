@@ -13,10 +13,10 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import create_access_token, decode_access_token
 from app.middleware.auth import COOKIE_NAME
-from app.models.models import Lab, UserRole
+from app.models.models import Lab, User, UserRole
 from app.routers.auth import _set_auth_cookies
 
-from app.routers import admin, antibodies, audit, auth, bootstrap, cocktail_documents, cocktails, demo, lots, lot_requests, reports, scan, search, storage, vials, labs, documents, fluorochromes, tickets
+from app.routers import admin, antibodies, audit, auth, auth_providers, bootstrap, cocktail_documents, cocktails, demo, lots, lot_requests, reports, scan, search, sso, storage, vials, labs, documents, fluorochromes, tickets
 
 # ── Structured JSON logging ──────────────────────────────────────────────
 
@@ -66,6 +66,7 @@ _SUSPENSION_EXEMPT = {
     "/api/auth/end-impersonate",
     "/api/demo/try",
     "/api/demo/login",
+    "/api/auth/sso/callback",
     "/api/health",
 }
 
@@ -113,6 +114,16 @@ class SlidingWindowMiddleware(BaseHTTPMiddleware):
 
         # Reissue if past 50% of lifetime (skip demo sessions — they have fixed expiry)
         if remaining < total_lifetime * 0.5 and not payload.get("is_demo"):
+            user_id = payload.get("sub")
+            if user_id:
+                db = SessionLocal()
+                try:
+                    user = db.query(User).filter(User.id == UUID(user_id)).first()
+                    if user and not user.is_active:
+                        return response
+                finally:
+                    db.close()
+
             new_token = create_access_token({
                 "sub": payload["sub"],
                 "lab_id": payload.get("lab_id"),
@@ -251,6 +262,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(auth_providers.router)
+app.include_router(auth_providers.discover_router)
 app.include_router(bootstrap.router)
 app.include_router(labs.router)
 app.include_router(antibodies.router)
@@ -267,6 +280,7 @@ app.include_router(lot_requests.router)
 app.include_router(reports.router)
 app.include_router(cocktails.router)
 app.include_router(cocktail_documents.router)
+app.include_router(sso.router)
 app.include_router(admin.router)
 app.include_router(demo.router)
 

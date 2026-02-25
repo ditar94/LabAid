@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
+from app.routers.auth_providers import password_enabled as _password_enabled
 from app.models.models import DemoLead, Fluorochrome, Lab, StorageUnit, User, UserRole
 from app.schemas.schemas import (
     FluorochromeOut,
@@ -49,6 +50,9 @@ def bootstrap(
                 "trial_ends_at": lab.trial_ends_at.isoformat() if lab.trial_ends_at else None,
                 "is_demo": lab.is_demo,
             }
+
+    if current_user.lab_id:
+        lab_settings["password_enabled"] = _password_enabled(db, current_user.lab_id)
 
     # 2. Fluorochromes
     storage_disabled = lab_settings.get("storage_enabled") is False

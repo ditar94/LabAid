@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
-const PUBLIC_PATHS = new Set(["/login", "/setup", "/set-password", "/forgot-password", "/terms"]);
+const PUBLIC_PATHS = new Set(["/login", "/setup", "/set-password", "/forgot-password", "/terms", "/auth/callback"]);
 
 let sessionCheckPromise: Promise<boolean> | null = null;
 

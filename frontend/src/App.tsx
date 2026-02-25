@@ -53,13 +53,14 @@ const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const CocktailsPage = lazy(() => import("./pages/CocktailsPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 const DemoPage = lazy(() => import("./pages/DemoPage"));
+const SSOCallbackPage = lazy(() => import("./pages/SSOCallbackPage"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, labSettings } = useAuth();
   const location = useLocation();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.must_change_password && location.pathname !== "/change-password") {
+  if (user.must_change_password && location.pathname !== "/change-password" && labSettings.password_enabled !== false) {
     return <Navigate to="/change-password" />;
   }
   // Lab admin first-login wizard (only after password change is done)
@@ -82,6 +83,7 @@ function AppRoutes() {
         <Route path="/set-password" element={<SetPasswordPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/auth/callback" element={<SSOCallbackPage />} />
         <Route
           path="/change-password"
           element={

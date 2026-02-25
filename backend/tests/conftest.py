@@ -80,6 +80,10 @@ def client(db):
     # Reset rate limiter state so tests don't interfere with each other
     from app.routers.auth import limiter
     limiter.reset()
+    from app.routers.auth_providers import limiter as providers_limiter
+    providers_limiter.reset()
+    from app.routers.sso import limiter as sso_limiter
+    sso_limiter.reset()
 
     with TestClient(app) as c:
         yield c

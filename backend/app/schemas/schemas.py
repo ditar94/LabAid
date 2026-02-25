@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, model_validator
 
-from app.models.models import CocktailLotStatus, Designation, LotRequestStatus, QCStatus, TicketStatus, UserRole, VialStatus
+from app.models.models import AuthProviderType, CocktailLotStatus, Designation, LotRequestStatus, QCStatus, TicketStatus, UserRole, VialStatus
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────
@@ -80,6 +80,45 @@ class RoleUpdateRequest(BaseModel):
     role: UserRole
 
 
+# ── Auth Providers ─────────────────────────────────────────────────────────
+
+
+class AuthProviderCreate(BaseModel):
+    lab_id: UUID
+    provider_type: AuthProviderType
+    config: dict = {}
+    email_domain: str | None = None
+    is_enabled: bool = True
+
+
+class AuthProviderUpdate(BaseModel):
+    config: dict | None = None
+    email_domain: str | None = None
+    is_enabled: bool | None = None
+
+
+class AuthProviderOut(BaseModel):
+    id: UUID
+    lab_id: UUID
+    provider_type: AuthProviderType
+    config: dict
+    email_domain: str | None
+    is_enabled: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DiscoverRequest(BaseModel):
+    email: EmailStr
+
+
+class DiscoverResponse(BaseModel):
+    providers: list[str]
+    lab_name: str | None = None
+
+
 # ── Lab ────────────────────────────────────────────────────────────────────
 
 
@@ -122,6 +161,7 @@ class LabSettingsUpdate(BaseModel):
     support_access_enabled: bool | None = None
     storage_enabled: bool | None = None
     cocktails_enabled: bool | None = None
+    sso_enabled: bool | None = None
     setup_complete: bool | None = None
     billing_url: str | None = None
 

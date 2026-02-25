@@ -1,15 +1,20 @@
+import { lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import ToggleSwitch from "../components/ToggleSwitch";
+import { Shield } from "lucide-react";
+
+const AuthProviderModal = lazy(() => import("../components/AuthProviderModal"));
 
 const DEFAULT_EXPIRY_WARN_DAYS = 30;
 
 export default function SettingsPage() {
-  const { user, labSettings, refreshUser } = useAuth();
+  const { user, labSettings, labName, refreshUser } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const [showSsoModal, setShowSsoModal] = useState(false);
 
   const isAdmin = user?.role === "lab_admin" || user?.role === "super_admin";
 
@@ -119,6 +124,43 @@ export default function SettingsPage() {
           }}
         />
       </div>
+
+      {labSettings.sso_enabled === true ? (
+        <>
+          <div className="setting-row">
+            <div className="setting-label">
+              <div className="setting-title">
+                <Shield size={16} style={{ verticalAlign: -2, marginRight: 4 }} />
+                Single Sign-On (SSO)
+              </div>
+              <div className="setting-desc">Configure Microsoft Entra ID or Google Workspace for your lab</div>
+            </div>
+            <button className="btn-chip btn-chip-primary" onClick={() => setShowSsoModal(true)}>
+              Configure
+            </button>
+          </div>
+
+          {showSsoModal && user.lab_id && (
+            <Suspense fallback={null}>
+              <AuthProviderModal
+                labId={user.lab_id}
+                labName={labName || "My Lab"}
+                onClose={() => setShowSsoModal(false)}
+              />
+            </Suspense>
+          )}
+        </>
+      ) : (
+        <div className="setting-row">
+          <div className="setting-label">
+            <div className="setting-title">
+              <Shield size={16} style={{ verticalAlign: -2, marginRight: 4 }} />
+              Single Sign-On (SSO)
+            </div>
+            <div className="setting-desc">SSO is available on enterprise plans. Contact your LabAid administrator to enable.</div>
+          </div>
+        </div>
+      )}
 
       {user.role === "lab_admin" && (
         <button

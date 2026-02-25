@@ -9,7 +9,7 @@ import EmptyState from "../components/EmptyState";
 import { useToast } from "../context/ToastContext";
 
 export default function UsersPage() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, labSettings } = useAuth();
   const { labs, selectedLab, setSelectedLab } = useSharedData();
   const queryClient = useQueryClient();
   const labParams = currentUser?.role === "super_admin" && selectedLab ? { lab_id: selectedLab } : {};
@@ -314,12 +314,14 @@ export default function UsersPage() {
                 <td className="action-btns">
                   {canEdit && (
                     <>
-                      <button
-                        className="btn-sm btn-secondary"
-                        onClick={() => handleResetPassword(u.id)}
-                      >
-                        Reset Password
-                      </button>
+                      {labSettings.password_enabled !== false && (
+                        <button
+                          className="btn-sm btn-secondary"
+                          onClick={() => handleResetPassword(u.id)}
+                        >
+                          Reset Password
+                        </button>
+                      )}
                       <button
                         className="btn-sm btn-danger"
                         onClick={() => handleToggleActive(u)}

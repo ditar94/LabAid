@@ -1,14 +1,17 @@
-import { useState, type FormEvent } from "react";
+import { lazy, Suspense, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Lab, BillingStatus } from "../api/types";
-import { Building2, LogIn } from "lucide-react";
+import { Building2, LogIn, Shield } from "lucide-react";
 import EmptyState from "../components/EmptyState";
+import ToggleSwitch from "../components/ToggleSwitch";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { Modal } from "../components/Modal";
+
+const AuthProviderModal = lazy(() => import("../components/AuthProviderModal"));
 
 export default function LabsPage() {
   const { refreshLabs } = useSharedData();
@@ -27,6 +30,7 @@ export default function LabsPage() {
   const [trialDate, setTrialDate] = useState("");
   const [editingBillingUrlId, setEditingBillingUrlId] = useState<string | null>(null);
   const [billingUrl, setBillingUrl] = useState("");
+  const [ssoLab, setSsoLab] = useState<{ id: string; name: string } | null>(null);
   const { addToast } = useToast();
   const { startImpersonation } = useAuth();
   const navigate = useNavigate();
@@ -113,6 +117,17 @@ export default function LabsPage() {
     }
   };
 
+  const handleSsoToggle = async (labId: string, current: boolean) => {
+    try {
+      await api.patch(`/labs/${labId}/settings`, { sso_enabled: !current });
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
+      refreshLabs();
+      addToast(!current ? "SSO enabled" : "SSO disabled", "success");
+    } catch {
+      addToast("Failed to update SSO setting", "danger");
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -152,6 +167,7 @@ export default function LabsPage() {
               <th>Billing</th>
               <th>Trial Ends</th>
               <th>Billing URL</th>
+              <th>SSO</th>
               <th>Support Access</th>
               <th>Created At</th>
               <th></th>
@@ -249,6 +265,22 @@ export default function LabsPage() {
                     </span>
                   )}
                 </td>
+                <td style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <ToggleSwitch
+                    checked={l.settings?.sso_enabled === true}
+                    onChange={() => handleSsoToggle(l.id, l.settings?.sso_enabled === true)}
+                  />
+                  {l.settings?.sso_enabled === true && (
+                    <button
+                      className="btn-sm btn-secondary"
+                      onClick={() => setSsoLab({ id: l.id, name: l.name })}
+                      title="Configure SSO providers"
+                    >
+                      <Shield size={14} style={{ marginRight: 4, verticalAlign: -2 }} />
+                      Configure
+                    </button>
+                  )}
+                </td>
                 <td>
                   <span
                     className={`badge ${l.settings?.support_access_enabled ? "badge-success" : "badge-muted"}`}
@@ -276,6 +308,16 @@ export default function LabsPage() {
           </tbody>
         </table>
         </div>
+      )}
+
+      {ssoLab && (
+        <Suspense fallback={null}>
+          <AuthProviderModal
+            labId={ssoLab.id}
+            labName={ssoLab.name}
+            onClose={() => setSsoLab(null)}
+          />
+        </Suspense>
       )}
 
       {suspendPrompt && (

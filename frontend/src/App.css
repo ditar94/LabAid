@@ -678,6 +678,78 @@ body {
   letter-spacing: 0.03em;
 }
 
+/* ── Email-first login flow ─────────────────────────────────────────── */
+
+.login-back-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--neutral-300);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  margin-bottom: var(--space-md);
+  width: 100%;
+  text-align: left;
+  transition: border-color 0.15s ease;
+}
+
+.login-back-step:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.login-lab-name {
+  color: var(--neutral-400);
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-md);
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin: var(--space-lg) 0;
+  color: var(--neutral-500);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.login-sso-btn {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  font-size: var(--text-md);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f1f5f9;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: var(--space-sm);
+}
+
+.login-sso-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.login-sso-btn:active {
+  transform: translateY(0);
+}
+
 /* ── Terms of Use ────────────────────────────────────────────────────── */
 
 .login-card--terms {

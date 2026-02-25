@@ -19,6 +19,7 @@ from app.core.security import (
 )
 from app.middleware.auth import COOKIE_NAME, get_current_user, require_role
 from app.models.models import Lab, User, UserRole
+from app.routers.auth_providers import password_enabled
 from app.services.audit import log_audit, snapshot_user
 from app.services.email import send_forgot_password_email, send_invite_email, send_reset_email
 from app.schemas.schemas import (
@@ -100,6 +101,11 @@ def login(request: Request, response: Response, body: LoginRequest, db: Session 
         )
 
     if user.lab_id:
+        if not password_enabled(db, user.lab_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Password login is disabled for this lab. Please use SSO.",
+            )
         lab = db.query(Lab).filter(Lab.id == user.lab_id).first()
         if lab and lab.is_demo and lab.demo_expires_at and lab.demo_expires_at < datetime.now(timezone.utc):
             lab.demo_status = "expired"
@@ -230,18 +236,30 @@ def create_user(
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    invite_token = generate_invite_token()
+    sso_only = target_lab_id and not password_enabled(db, target_lab_id)
 
-    user = User(
-        lab_id=target_lab_id,
-        email=body.email.lower(),
-        hashed_password=hash_password(secrets.token_urlsafe(32)),
-        full_name=body.full_name,
-        role=body.role,
-        must_change_password=True,
-        invite_token=invite_token,
-        invite_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
-    )
+    if sso_only:
+        user = User(
+            lab_id=target_lab_id,
+            email=body.email.lower(),
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            full_name=body.full_name,
+            role=body.role,
+            must_change_password=False,
+        )
+    else:
+        invite_token = generate_invite_token()
+        user = User(
+            lab_id=target_lab_id,
+            email=body.email.lower(),
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            full_name=body.full_name,
+            role=body.role,
+            must_change_password=True,
+            invite_token=invite_token,
+            invite_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        )
+
     db.add(user)
     db.flush()
 
@@ -258,7 +276,10 @@ def create_user(
     db.commit()
     db.refresh(user)
 
-    success, link = send_invite_email(user.email, user.full_name, invite_token)
+    success = False
+    link = None
+    if not sso_only:
+        success, link = send_invite_email(user.email, user.full_name, invite_token)
 
     return UserCreateResponse(
         id=user.id,
@@ -304,6 +325,9 @@ def reset_password(
     target = q.first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if not password_enabled(db, target.lab_id):
+        raise HTTPException(status_code=403, detail="Password is disabled for this lab (SSO-only)")
 
     # Scope check: can't reset password of users above your role
     if _ROLE_RANK.get(target.role, 0) > _ROLE_RANK[current_user.role]:
@@ -358,6 +382,9 @@ def accept_invite(
     ).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired invite link")
+
+    if user.lab_id and not password_enabled(db, user.lab_id):
+        raise HTTPException(status_code=403, detail="Password is disabled for this lab. Please log in using SSO.")
 
     if user.invite_token_expires_at:
         expires = user.invite_token_expires_at

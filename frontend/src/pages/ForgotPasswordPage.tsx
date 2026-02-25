@@ -14,6 +14,11 @@ export default function ForgotPasswordPage() {
     setError("");
     setLoading(true);
     try {
+      const discoverRes = await api.post("/auth/discover", { email });
+      if (!discoverRes.data.providers.includes("password")) {
+        setError("Your lab uses single sign-on (SSO). Use the login page to sign in with your identity provider.");
+        return;
+      }
       await api.post("/auth/forgot-password", { email });
       setSubmitted(true);
     } catch {

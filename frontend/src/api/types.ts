@@ -28,15 +28,29 @@ export interface LabSettings {
   support_access_enabled?: boolean;
   storage_enabled?: boolean;
   cocktails_enabled?: boolean;
+  sso_enabled?: boolean;
   setup_complete?: boolean;
   billing_status?: BillingStatus;
   is_active?: boolean;
   trial_ends_at?: string | null;
   billing_url?: string;
   is_demo?: boolean;
+  password_enabled?: boolean;
 }
 
 export type BillingStatus = "trial" | "active" | "past_due" | "cancelled";
+
+export type AuthProviderType = "password" | "oidc_microsoft" | "oidc_google" | "saml";
+
+export interface AuthProvider {
+  id: string;
+  lab_id: string;
+  provider_type: AuthProviderType;
+  config: Record<string, unknown>;
+  email_domain: string | null;
+  is_enabled: boolean;
+  created_at: string;
+}
 
 export interface Lab {
   id: string;

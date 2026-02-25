@@ -4,25 +4,66 @@ import { Navigate, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, FlaskConical } from "lucide-react";
 import { version } from "../../package.json";
 import { preloadAppChunks } from "../App";
+import api from "../api/client";
 
 const TermsModal = lazy(() => import("../components/TermsModal"));
+
+const SSO_LABELS: Record<string, string> = {
+  oidc_microsoft: "Sign in with Microsoft",
+  oidc_google: "Sign in with Google",
+};
 
 export default function LoginPage() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
 
-  // All hooks must be called before any early returns (React rules of hooks)
+  const [step, setStep] = useState<"email" | "auth">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [providers, setProviders] = useState<string[]>([]);
+  const [labName, setLabName] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [shaking, setShaking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
 
-  // Already authenticated (e.g. page refresh while logged in) — go to dashboard
   if (user) return <Navigate to="/dashboard" replace />;
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleDiscover = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await api.post("/auth/discover", { email });
+      const disc: string[] = res.data.providers;
+      const hasPass = disc.includes("password");
+      const sso = disc.filter((p) => p !== "password" && SSO_LABELS[p]);
+
+      // SSO-only with a single provider — auto-redirect
+      if (!hasPass && sso.length === 1) {
+        sessionStorage.setItem("sso_email", email);
+        const domain = email.split("@")[1];
+        window.location.href = `/api/auth/sso/${sso[0]}/authorize?email_domain=${encodeURIComponent(domain)}&login_hint=${encodeURIComponent(email)}`;
+        return;
+      }
+
+      setProviders(disc);
+      setLabName(res.data.lab_name || null);
+      setStep("auth");
+    } catch (err: any) {
+      if (err?.response?.status === 429) {
+        setError("Too many attempts. Please wait a minute and try again.");
+      } else {
+        // Fallback to password-only for unknown domains
+        setProviders(["password"]);
+        setStep("auth");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
@@ -49,6 +90,22 @@ export default function LoginPage() {
     }
   };
 
+  const handleSSO = (providerType: string) => {
+    sessionStorage.setItem("sso_email", email);
+    const domain = email.split("@")[1];
+    window.location.href = `/api/auth/sso/${providerType}/authorize?email_domain=${encodeURIComponent(domain)}&login_hint=${encodeURIComponent(email)}`;
+  };
+
+  const goBack = () => {
+    setStep("email");
+    setPassword("");
+    setError("");
+    setProviders([]);
+  };
+
+  const hasPassword = providers.includes("password");
+  const ssoProviders = providers.filter((p) => p !== "password" && SSO_LABELS[p]);
+
   return (
     <div className="login-container">
       <div className="login-orb login-orb-1" aria-hidden="true" />
@@ -66,36 +123,83 @@ export default function LoginPage() {
             <p className="subtitle">Laboratory Inventory Management</p>
           </div>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="login-email">Email</label>
-            <input
-              id="login-email"
-              type="email"
-              placeholder="you@lab.edu"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoFocus
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="login-password">Password</label>
-            <input
-              id="login-password"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <Link to="/forgot-password" className="forgot-password-link">Forgot password?</Link>
-          </div>
-          {error && <p className="error login-error">{error}</p>}
-          <button type="submit" className="login-submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
+
+        {step === "email" && (
+          <form onSubmit={handleDiscover}>
+            <div className="form-group">
+              <label htmlFor="login-email">Email</label>
+              <input
+                id="login-email"
+                type="email"
+                placeholder="you@lab.edu"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            {error && <p className="error login-error">{error}</p>}
+            <button type="submit" className="login-submit" disabled={loading}>
+              {loading ? "Checking..." : "Continue"}
+            </button>
+          </form>
+        )}
+
+        {step === "auth" && (
+          <>
+            <button type="button" className="login-back-step" onClick={goBack}>
+              <ArrowLeft size={14} /> {email}
+            </button>
+
+            {labName && <p className="login-lab-name">{labName}</p>}
+
+            {hasPassword && (
+              <form onSubmit={handleLogin}>
+                <div className="form-group">
+                  <label htmlFor="login-password">Password</label>
+                  <input
+                    id="login-password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                  <Link to="/forgot-password" className="forgot-password-link">Forgot password?</Link>
+                </div>
+                {error && <p className="error login-error">{error}</p>}
+                <button type="submit" className="login-submit" disabled={loading}>
+                  {loading ? "Signing in..." : "Sign In"}
+                </button>
+              </form>
+            )}
+
+            {hasPassword && ssoProviders.length > 0 && (
+              <div className="login-divider"><span>or</span></div>
+            )}
+
+            {ssoProviders.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className="login-sso-btn"
+                onClick={() => handleSSO(p)}
+              >
+                {SSO_LABELS[p]}
+              </button>
+            ))}
+
+            {!hasPassword && !ssoProviders.length && (
+              <p className="error login-error">No login methods available for this account.</p>
+            )}
+
+            {!hasPassword && error && (
+              <p className="error login-error">{error}</p>
+            )}
+          </>
+        )}
+
         <p className="login-footer">
           Laboratory inventory management &middot; <button type="button" className="link-button" onClick={() => setShowTerms(true)}>Terms of Use</button>
         </p>

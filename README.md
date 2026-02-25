@@ -105,7 +105,7 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - **File storage**: GCS via `ObjectStorageService` (S3-compatible interface, local filesystem fallback for dev). Bucket versioning enabled, 30-day retention policy.
 - **Secrets**: GCP Secret Manager (JWT key, DB creds, API keys, storage keys)
 - **Monitoring**: Cloud Logging + Cloud Monitoring + Error Reporting
-- **Auth**: JWT in HttpOnly cookies, rate-limited login, bcrypt password hashing
+- **Auth**: Pluggable per-lab authentication (password, Microsoft Entra ID, Google Workspace). JWT in HttpOnly cookies, bcrypt password hashing, rate-limited endpoints. SSO via OIDC with id_token signature validation.
 
 ### Data Retention
 
@@ -170,14 +170,14 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - [x] Manual test: full flow on beta with console backend
 - [x] Manual test: full flow on staging with Resend
 
-### Pending: AUTH Overhaul — Pluggable Enterprise Authentication
+### AUTH Overhaul — Pluggable Enterprise Authentication
 
 > Full plan in [docs/AUTH_OVERHAUL.md](docs/AUTH_OVERHAUL.md). Adds per-lab SSO (Microsoft Entra ID, Google Workspace, future SAML) while keeping all authorization internal.
 
-- [ ] Phase 1 — Auth Provider Infrastructure (DB tables, provider management API, admin UI)
-- [ ] Phase 2 — OIDC Integration (Microsoft + Google SSO login flow)
-- [ ] Phase 3 — Login Flow Overhaul (email-first discovery, SSO buttons, password-only gating)
-- [ ] Phase 4 — Hardening & Security Audit
+- [x] Phase 1 — Auth Provider Infrastructure (DB tables, provider management API, admin UI, self-service config)
+- [x] Phase 2 — OIDC Integration (Microsoft + Google SSO login flow, id_token validation, identity matching)
+- [x] Phase 3 — Login Flow Overhaul (email-first discovery, SSO buttons, SSO-only lab support)
+- [x] Phase 4 — Hardening & Security Audit (token refresh guard, lockout prevention, full test suite)
 - [ ] Phase 5 — SAML Support (future, only when a customer requires it)
 
 ### Pending: Compliance Exports
@@ -250,11 +250,16 @@ docker compose exec db psql -U labaid -d labaid -c "SELECT email FROM users;"
 - Lot archiving, bulk operations, audit log export
 
 ### Auth & Multi-Tenancy
+- Pluggable per-lab authentication: each lab independently configures password, Microsoft Entra ID, or Google Workspace SSO
+- Email-first login discovery: user enters email, backend returns available auth methods for their domain
+- Labs can run password + SSO simultaneously (transition period), then go SSO-only by disabling password
+- SSO authenticates identity; LabAid assigns roles — roles never leave the app
 - Role-based access (super_admin, lab_admin, supervisor, tech, read_only)
 - Super admin impersonation with audit attribution
-- Support ticket system, global search
-- Lab setup wizard, support access toggle
-- Email-based invite/password reset flow (invite tokens, Resend integration)
+- Lab admins self-configure SSO from Settings (client ID, tenant ID, client secret stored in GCP Secret Manager)
+- Lockout prevention: password cannot be disabled until at least one lab admin has completed an SSO login
+- Email-based invite/password reset flow (invite tokens, Resend integration); skipped for SSO-only labs
+- Support ticket system, global search, lab setup wizard, support access toggle
 
 ### UI/UX
 - Full visual redesign (design tokens, typography, color palette, animations)
