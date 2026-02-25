@@ -99,6 +99,45 @@ class TestDiscover:
         assert res.status_code == 200
         assert "oidc_microsoft" in res.json()["providers"]
 
+    def test_two_labs_same_domain_no_duplicate_buttons(self, client, db, lab):
+        """When two labs configure SSO for the same domain, discover should
+        scope to the user's lab and not return duplicate provider types."""
+        from app.core.security import hash_password
+
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        db.commit()
+
+        lab_b = Lab(id=uuid.uuid4(), name="Lab B", is_active=True, settings={"sso_enabled": True})
+        db.add(lab_b)
+        db.commit()
+
+        # Both labs have oidc_microsoft for the same domain
+        for l in [lab, lab_b]:
+            db.add(LabAuthProvider(
+                id=uuid.uuid4(), lab_id=l.id,
+                provider_type=AuthProviderType.OIDC_MICROSOFT,
+                config={"client_id": "cid", "tenant_id": "tid"},
+                email_domain="shared.org", is_enabled=True,
+            ))
+        db.commit()
+
+        # User belongs to Lab B
+        user = User(
+            id=uuid.uuid4(), lab_id=lab_b.id,
+            email="doctor@shared.org",
+            hashed_password=hash_password("pw"),
+            full_name="Dr. Shared", role=UserRole.TECH,
+            is_active=True, must_change_password=False,
+        )
+        db.add(user)
+        db.commit()
+
+        res = client.post("/api/auth/discover", json={"email": "doctor@shared.org"})
+        data = res.json()
+        # Should get exactly one oidc_microsoft, scoped to Lab B
+        assert data["providers"].count("oidc_microsoft") == 1
+        assert data["lab_name"] == "Lab B"
+
 
 class TestPasswordDefaultWithNoProviders:
     """Verify existing labs work with zero configured providers (migration safety)."""

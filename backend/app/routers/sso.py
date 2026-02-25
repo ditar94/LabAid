@@ -69,11 +69,23 @@ def sso_authorize(
     if ptype not in _OIDC_TYPES:
         raise HTTPException(status_code=400, detail=f"Provider type {provider_type} is not an OIDC provider")
 
-    provider = db.query(LabAuthProvider).filter(
-        LabAuthProvider.provider_type == ptype,
-        func.lower(LabAuthProvider.email_domain) == email_domain.lower(),
-        LabAuthProvider.is_enabled.is_(True),
-    ).first()
+    # If login_hint (email) is provided, scope to the user's lab
+    provider = None
+    if login_hint:
+        user = db.query(User).filter(func.lower(User.email) == login_hint.lower()).first()
+        if user and user.lab_id:
+            provider = db.query(LabAuthProvider).filter(
+                LabAuthProvider.provider_type == ptype,
+                LabAuthProvider.lab_id == user.lab_id,
+                LabAuthProvider.is_enabled.is_(True),
+            ).first()
+
+    if not provider:
+        provider = db.query(LabAuthProvider).filter(
+            LabAuthProvider.provider_type == ptype,
+            func.lower(LabAuthProvider.email_domain) == email_domain.lower(),
+            LabAuthProvider.is_enabled.is_(True),
+        ).first()
 
     if not provider:
         raise HTTPException(status_code=404, detail="No enabled provider found for this domain")

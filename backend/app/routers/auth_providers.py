@@ -260,23 +260,40 @@ def discover_providers(
     if not domain:
         return DiscoverResponse(providers=["password"])
 
-    providers_q = db.query(LabAuthProvider).filter(
-        func.lower(LabAuthProvider.email_domain) == domain,
-        LabAuthProvider.is_enabled.is_(True),
-    ).all()
+    # Look up the user to scope providers to their lab
+    user = db.query(User).filter(func.lower(User.email) == email).first()
+    if user and user.lab_id:
+        lab_id = user.lab_id
+    else:
+        # No user found — fall back to domain-based lookup for the lab
+        provider_row = db.query(LabAuthProvider).filter(
+            func.lower(LabAuthProvider.email_domain) == domain,
+            LabAuthProvider.is_enabled.is_(True),
+        ).first()
+        lab_id = provider_row.lab_id if provider_row else None
 
-    if not providers_q:
+    if not lab_id:
         return DiscoverResponse(providers=["password"])
 
-    lab_id = providers_q[0].lab_id
     lab = db.query(Lab).filter(Lab.id == lab_id).first()
     lab_name = lab.name if lab else None
     sso_enabled = (lab.settings or {}).get("sso_enabled", False) if lab else False
 
-    provider_types = [
-        p.provider_type.value for p in providers_q
-        if p.provider_type == AuthProviderType.PASSWORD or sso_enabled
-    ]
+    providers_q = db.query(LabAuthProvider).filter(
+        LabAuthProvider.lab_id == lab_id,
+        LabAuthProvider.is_enabled.is_(True),
+    ).all()
+
+    seen = set()
+    provider_types = []
+    for p in providers_q:
+        pval = p.provider_type.value
+        if pval in seen:
+            continue
+        seen.add(pval)
+        if p.provider_type == AuthProviderType.PASSWORD or sso_enabled:
+            provider_types.append(pval)
+
     if "password" not in provider_types and password_enabled(db, lab_id):
         provider_types.insert(0, "password")
 
