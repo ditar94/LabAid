@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api", tags=["bootstrap"])
 class BootstrapResponse(BaseModel):
     user: UserOut
     lab_settings: dict
+    lab_name: str | None = None
     fluorochromes: list[FluorochromeOut]
     storage_units: list[StorageUnitOut]
     labs: list[LabSchema] | None = None
@@ -37,6 +38,7 @@ def bootstrap(
     """
     # 1. Lab settings
     lab_settings: dict = {}
+    lab: Lab | None = None
     if current_user.lab_id:
         lab = db.query(Lab).filter(Lab.id == current_user.lab_id).first()
         if lab:
@@ -79,6 +81,7 @@ def bootstrap(
     return BootstrapResponse(
         user=UserOut.model_validate(current_user),
         lab_settings=lab_settings,
+        lab_name=lab.name if lab else None,
         fluorochromes=fluorochromes,
         storage_units=storage_units,
         labs=labs,

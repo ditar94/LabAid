@@ -18,6 +18,7 @@ from app.models.models import DemoLead, Lab, User, UserRole
 from app.routers.auth import _set_auth_cookies, limiter
 from app.schemas.schemas import (
     DemoExtendRequest,
+    DemoGetLinkResponse,
     DemoLabOut,
     DemoLeadOut,
     DemoResendResponse,
@@ -135,13 +136,27 @@ def try_demo(
                 auto_login=auto,
             )
 
-    # Check for previously used email (soft block)
+    # Check for previously used email
     previous_lead = (
         db.query(DemoLead)
         .filter(DemoLead.email == email)
         .first()
     )
     if previous_lead:
+        if previous_lead.status == "waitlisted":
+            return TryDemoResponse(
+                status="waitlisted",
+                message="You're already on the waitlist. We'll notify you when a slot opens up.",
+                auto_login=False,
+            )
+        if previous_lead.status in ("completed", "rerequested"):
+            previous_lead.status = "rerequested"
+            db.commit()
+            return TryDemoResponse(
+                status="waitlisted",
+                message="You've already completed a demo. We'll be in touch!",
+                auto_login=False,
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="DEMO_ALREADY_USED",
@@ -248,17 +263,19 @@ def demo_login(
     user.invite_token = None
     user.invite_token_expires_at = None
 
-    # Mark the lead as claimed (they actually entered the lab)
+    # Mark the lead as active and track login
     lead = (
         db.query(DemoLead)
         .filter(
             DemoLead.demo_lab_id == lab.id,
-            DemoLead.status == "notified",
+            DemoLead.status.in_(["notified", "active"]),
         )
         .first()
     )
     if lead:
-        lead.status = "claimed"
+        lead.status = "active"
+        lead.login_count = (lead.login_count or 0) + 1
+        lead.last_login_at = now
 
     # Generate JWT with is_demo claim for middleware checks
     jwt_token = create_access_token({
@@ -310,6 +327,16 @@ def reset_demo_lab(
         .first()
     )
 
+    # Mark the associated lead as completed
+    if lab.demo_assigned_email:
+        lead = (
+            db.query(DemoLead)
+            .filter(DemoLead.demo_lab_id == lab.id, DemoLead.status.in_(["notified", "active"]))
+            .first()
+        )
+        if lead:
+            lead.status = "completed"
+
     wipe_demo_lab(db, lab)
     if demo_user:
         seed_demo_lab(db, lab, demo_user)
@@ -318,6 +345,7 @@ def reset_demo_lab(
     lab.demo_assigned_email = None
     lab.demo_expires_at = None
     lab.demo_assigned_at = None
+    lab.demo_cycle_count = (lab.demo_cycle_count or 0) + 1
 
     _try_assign_waitlisted(db, lab)
 
@@ -360,6 +388,15 @@ def revoke_demo_lab(
         raise HTTPException(status_code=403, detail="Cannot revoke a non-demo lab")
 
     lab.demo_status = "expired"
+
+    # Mark associated lead as completed
+    lead = (
+        db.query(DemoLead)
+        .filter(DemoLead.demo_lab_id == lab.id, DemoLead.status.in_(["notified", "active"]))
+        .first()
+    )
+    if lead:
+        lead.status = "completed"
 
     demo_user = (
         db.query(User)
@@ -491,6 +528,13 @@ def expire_stale_demos(
         )
         if demo_user:
             demo_user.is_active = False
+        lead = (
+            db.query(DemoLead)
+            .filter(DemoLead.demo_lab_id == lab.id, DemoLead.status.in_(["notified", "active"]))
+            .first()
+        )
+        if lead:
+            lead.status = "completed"
         expired += 1
 
     db.commit()
@@ -500,13 +544,14 @@ def expire_stale_demos(
 @router.post("/leads/{lead_id}/resend", response_model=DemoResendResponse)
 def resend_magic_link(
     lead_id: str,
-    send_email: bool = True,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
 ):
     lead = db.query(DemoLead).filter(DemoLead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
+    if lead.status not in ("notified", "active"):
+        raise HTTPException(status_code=400, detail="Lead is not in an active demo")
     if not lead.demo_lab_id:
         raise HTTPException(status_code=400, detail="Lead has no assigned demo lab")
 
@@ -526,18 +571,102 @@ def resend_magic_link(
     token = generate_invite_token()
     demo_user.invite_token = token
     demo_user.invite_token_expires_at = now + timedelta(minutes=DEMO_MAGIC_LINK_EXPIRY_MINUTES)
+    db.commit()
+
+    login_link = f"{settings.APP_URL}/api/demo/login?token={token}"
+    email_sent = False
+    try:
+        email_sent = send_demo_ready_email(lead.email, login_link)
+    except Exception:
+        logger.error("Failed to send demo ready email to %s", lead.email)
+
+    return DemoResendResponse(login_link=login_link, email_sent=email_sent)
+
+
+@router.post("/labs/{lab_id}/get-link", response_model=DemoGetLinkResponse)
+def get_lab_link(
+    lab_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    lab = db.query(Lab).filter(Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if not lab.is_demo:
+        raise HTTPException(status_code=400, detail="Not a demo lab")
+    if lab.demo_status != "in_use":
+        raise HTTPException(status_code=400, detail="Demo lab is not active")
+
+    demo_user = (
+        db.query(User)
+        .filter(User.lab_id == lab.id, User.email.like("demo-%@demo.labaid.io"))
+        .first()
+    )
+    if not demo_user:
+        raise HTTPException(status_code=500, detail="Demo lab has no demo user")
+
+    now = datetime.now(timezone.utc)
+    token = generate_invite_token()
+    demo_user.invite_token = token
+    demo_user.invite_token_expires_at = now + timedelta(minutes=DEMO_MAGIC_LINK_EXPIRY_MINUTES)
+    db.commit()
+
+    login_link = f"{settings.APP_URL}/api/demo/login?token={token}"
+    return DemoGetLinkResponse(login_link=login_link)
+
+
+@router.post("/leads/{lead_id}/assign", response_model=DemoLeadOut)
+def assign_lead(
+    lead_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    lead = db.query(DemoLead).filter(DemoLead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if lead.status in ("notified", "active"):
+        raise HTTPException(status_code=400, detail="Lead already has an active demo")
+
+    lab = (
+        db.query(Lab)
+        .filter(Lab.is_demo.is_(True), Lab.demo_status == "available")
+        .with_for_update(skip_locked=True)
+        .first()
+    )
+    if not lab:
+        raise HTTPException(status_code=400, detail="No available demo labs")
+
+    demo_user = (
+        db.query(User)
+        .filter(User.lab_id == lab.id, User.email.like("demo-%@demo.labaid.io"))
+        .first()
+    )
+    if not demo_user:
+        raise HTTPException(status_code=500, detail="Demo lab has no demo user")
+
+    now = datetime.now(timezone.utc)
+    token = generate_invite_token()
+    demo_user.invite_token = token
+    demo_user.invite_token_expires_at = now + timedelta(minutes=DEMO_MAGIC_LINK_EXPIRY_MINUTES)
+    demo_user.is_active = False
+
+    lab.demo_status = "in_use"
+    lab.demo_assigned_email = lead.email
+    lab.demo_expires_at = now + timedelta(hours=DEMO_DURATION_HOURS)
+    lab.demo_assigned_at = now
 
     lead.status = "notified"
+    lead.demo_lab_id = lab.id
     lead.notified_at = now
 
     db.commit()
 
     login_link = f"{settings.APP_URL}/api/demo/login?token={token}"
-    email_sent = False
-    if send_email:
+    if settings.DEMO_SEND_EMAIL:
         try:
-            email_sent = send_demo_ready_email(lead.email, login_link)
+            send_demo_ready_email(lead.email, login_link)
         except Exception:
             logger.error("Failed to send demo ready email to %s", lead.email)
 
-    return DemoResendResponse(login_link=login_link, email_sent=email_sent)
+    db.refresh(lead)
+    return lead

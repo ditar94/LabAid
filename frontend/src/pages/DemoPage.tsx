@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { DemoLab, DemoLead } from "../api/types";
-import { Play, RotateCcw, Clock, XCircle, Plus, Send, Copy, Link } from "lucide-react";
+import { Play, Plus, Send, Copy, Link, UserPlus } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { Modal } from "../components/Modal";
+import ActionMenu from "../components/ActionMenu";
+import type { ActionMenuItem } from "../components/ActionMenu";
 
 type ConfirmAction = {
   type: "reset" | "revoke";
@@ -21,8 +23,10 @@ export default function DemoPage() {
   const [extendLabId, setExtendLabId] = useState<string | null>(null);
   const [extendHours, setExtendHours] = useState(24);
   const [showLeads, setShowLeads] = useState(false);
-  const [resendResult, setResendResult] = useState<{ leadId: string; link: string } | null>(null);
   const [resendLoading, setResendLoading] = useState<string | null>(null);
+  const [assignLoading, setAssignLoading] = useState<string | null>(null);
+  const [labLinkResult, setLabLinkResult] = useState<{ labId: string; link: string } | null>(null);
+  const [labLinkLoading, setLabLinkLoading] = useState<string | null>(null);
 
   const { data: demoLabs = [], isLoading } = useQuery<DemoLab[]>({
     queryKey: ["demo-labs"],
@@ -34,6 +38,8 @@ export default function DemoPage() {
     queryFn: () => api.get("/demo/leads").then((r) => r.data),
     enabled: showLeads,
   });
+
+  const hasAvailableLabs = demoLabs.some((l) => l.demo_status === "available");
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["demo-labs"] });
@@ -95,15 +101,27 @@ export default function DemoPage() {
     }
   };
 
-  const handleResend = async (leadId: string, sendEmail: boolean) => {
+  const handleGetLabLink = async (labId: string) => {
+    setLabLinkLoading(labId);
+    try {
+      const res = await api.post(`/demo/labs/${labId}/get-link`);
+      setLabLinkResult({ labId, link: res.data.login_link });
+      addToast("Magic link generated", "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to generate link", "danger");
+    } finally {
+      setLabLinkLoading(null);
+    }
+  };
+
+  const handleResend = async (leadId: string) => {
     setResendLoading(leadId);
     try {
-      const res = await api.post(`/demo/leads/${leadId}/resend?send_email=${sendEmail}`);
-      setResendResult({ leadId, link: res.data.login_link });
-      if (sendEmail) {
-        addToast(res.data.email_sent ? "Magic link email sent" : "Email send failed — link generated", res.data.email_sent ? "success" : "warning");
+      const res = await api.post(`/demo/leads/${leadId}/resend`);
+      if (res.data.email_sent) {
+        addToast("Magic link email sent", "success");
       } else {
-        addToast("Magic link generated", "success");
+        addToast("Email send failed", "warning");
       }
       await invalidate();
     } catch (err: any) {
@@ -113,13 +131,23 @@ export default function DemoPage() {
     }
   };
 
+  const handleAssign = async (leadId: string) => {
+    setAssignLoading(leadId);
+    try {
+      await api.post(`/demo/leads/${leadId}/assign`);
+      await invalidate();
+      addToast("Lead assigned to demo lab", "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to assign", "danger");
+    } finally {
+      setAssignLoading(null);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     addToast("Link copied to clipboard", "success");
   };
-
-  const isLabActive = (labId: string | null) =>
-    labId ? demoLabs.some((l) => l.id === labId && l.demo_status === "in_use") : false;
 
   const handleExpireStale = async () => {
     try {
@@ -132,6 +160,32 @@ export default function DemoPage() {
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Failed", "danger");
     }
+  };
+
+  const labActionItems = (lab: DemoLab): ActionMenuItem[] => {
+    const items: ActionMenuItem[] = [];
+    if (lab.demo_status === "in_use") {
+      items.push({
+        label: "Extend",
+        icon: "⏱",
+        onClick: () => { setExtendLabId(lab.id); setExtendHours(24); },
+      });
+      items.push({
+        label: "Revoke",
+        icon: "✕",
+        variant: "danger",
+        onClick: () => setConfirmAction({ type: "revoke", lab }),
+      });
+    }
+    if (lab.demo_status === "expired" || lab.demo_status === "in_use") {
+      items.push({
+        label: "Reset",
+        icon: "↺",
+        variant: "danger",
+        onClick: () => setConfirmAction({ type: "reset", lab }),
+      });
+    }
+    return items;
   };
 
   const statusBadge = (status: string | null) => {
@@ -147,16 +201,20 @@ export default function DemoPage() {
     }
   };
 
-  const leadStatusBadge = (status: string) => {
-    switch (status) {
-      case "claimed":
-        return <span className="badge badge-green">Claimed</span>;
+  const leadStatusBadge = (lead: DemoLead) => {
+    switch (lead.status) {
       case "waitlisted":
         return <span className="badge badge-yellow">Waitlisted</span>;
       case "notified":
-        return <span className="badge badge-blue">Notified</span>;
+        return <span className="badge badge-blue">{lead.login_count > 0 ? "Re-notified" : "Notified"}</span>;
+      case "active":
+        return <span className="badge badge-green">Active</span>;
+      case "completed":
+        return <span className="badge badge-muted">Completed</span>;
+      case "rerequested":
+        return <span className="badge badge-purple">Rerequested</span>;
       default:
-        return <span className="badge badge-muted">{status}</span>;
+        return <span className="badge badge-muted">{lead.status}</span>;
     }
   };
 
@@ -194,7 +252,7 @@ export default function DemoPage() {
           />
           demo lab(s)
         </label>
-        <button onClick={handleProvision} disabled={provisioning}>
+        <button className="btn-chip btn-chip-primary" onClick={handleProvision} disabled={provisioning}>
           <Plus size={14} style={{ marginRight: 4, verticalAlign: -2 }} />
           {provisioning ? "Provisioning..." : "Provision"}
         </button>
@@ -231,43 +289,33 @@ export default function DemoPage() {
                       <>
                         <button
                           className="btn-sm"
-                          onClick={() => {
-                            setExtendLabId(lab.id);
-                            setExtendHours(24);
-                          }}
-                          disabled={actionLoading === lab.id}
-                          title="Extend demo time"
+                          onClick={() => handleGetLabLink(lab.id)}
+                          disabled={labLinkLoading === lab.id}
+                          title="Generate magic link to access this lab"
                         >
-                          <Clock size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
-                          Extend
+                          <Link size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
+                          {labLinkLoading === lab.id ? "..." : "Get Link"}
                         </button>
-                        <button
-                          className="btn-sm btn-danger"
-                          onClick={() => setConfirmAction({ type: "revoke", lab })}
-                          disabled={actionLoading === lab.id}
-                          title="Revoke access immediately"
-                        >
-                          <XCircle size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
-                          Revoke
-                        </button>
+                        {labLinkResult?.labId === lab.id && (
+                          <button
+                            className="btn-sm"
+                            onClick={() => copyToClipboard(labLinkResult.link)}
+                            title="Copy magic link"
+                          >
+                            <Copy size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
+                            Copy
+                          </button>
+                        )}
                       </>
-                    )}
-                    {(lab.demo_status === "expired" || lab.demo_status === "in_use") && (
-                      <button
-                        className="btn-sm btn-secondary"
-                        onClick={() => setConfirmAction({ type: "reset", lab })}
-                        disabled={actionLoading === lab.id}
-                        title="Wipe data and make available"
-                      >
-                        <RotateCcw size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
-                        Reset
-                      </button>
                     )}
                     {lab.demo_status === "available" && (
                       <span className="text-muted" style={{ fontSize: "var(--text-xs)" }}>
                         <Play size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
                         Ready
                       </span>
+                    )}
+                    {labActionItems(lab).length > 0 && (
+                      <ActionMenu items={labActionItems(lab)} />
                     )}
                   </td>
                 </tr>
@@ -298,6 +346,8 @@ export default function DemoPage() {
                     <th>Email</th>
                     <th>Status</th>
                     <th>Source</th>
+                    <th>Logins</th>
+                    <th>Last Login</th>
                     <th>Requested</th>
                     <th></th>
                   </tr>
@@ -306,40 +356,32 @@ export default function DemoPage() {
                   {leads.map((lead) => (
                     <tr key={lead.id}>
                       <td>{lead.email}</td>
-                      <td>{leadStatusBadge(lead.status)}</td>
+                      <td>{leadStatusBadge(lead)}</td>
                       <td>{lead.source || "—"}</td>
+                      <td>{lead.login_count || 0}</td>
+                      <td>{fmtDate(lead.last_login_at)}</td>
                       <td>{fmtDate(lead.created_at)}</td>
                       <td className="action-btns">
-                        {isLabActive(lead.demo_lab_id) && (
-                          <>
-                            <button
-                              className="btn-sm"
-                              onClick={() => handleResend(lead.id, true)}
-                              disabled={resendLoading === lead.id}
-                              title="Send magic link via email"
-                            >
-                              <Send size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
-                              {resendLoading === lead.id ? "Sending..." : "Email Link"}
-                            </button>
-                            <button
-                              className="btn-sm btn-secondary"
-                              onClick={() => handleResend(lead.id, false)}
-                              disabled={resendLoading === lead.id}
-                              title="Generate link to copy"
-                            >
-                              <Link size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
-                              Get Link
-                            </button>
-                          </>
-                        )}
-                        {resendResult?.leadId === lead.id && (
+                        {(lead.status === "notified" || lead.status === "active") && (
                           <button
                             className="btn-sm"
-                            onClick={() => copyToClipboard(resendResult.link)}
-                            title="Copy magic link"
+                            onClick={() => handleResend(lead.id)}
+                            disabled={resendLoading === lead.id}
+                            title="Send magic link via email"
                           >
-                            <Copy size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
-                            Copy
+                            <Send size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
+                            {resendLoading === lead.id ? "Sending..." : "Email Link"}
+                          </button>
+                        )}
+                        {(lead.status === "waitlisted" || lead.status === "completed" || lead.status === "rerequested") && (
+                          <button
+                            className="btn-sm"
+                            onClick={() => handleAssign(lead.id)}
+                            disabled={assignLoading === lead.id || !hasAvailableLabs}
+                            title={hasAvailableLabs ? "Assign to an available demo lab" : "No available demo labs"}
+                          >
+                            <UserPlus size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
+                            {assignLoading === lead.id ? "Assigning..." : "Assign"}
                           </button>
                         )}
                       </td>
@@ -347,7 +389,7 @@ export default function DemoPage() {
                   ))}
                   {leads.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-muted" style={{ textAlign: "center", padding: "var(--space-xl)" }}>
+                      <td colSpan={7} className="text-muted" style={{ textAlign: "center", padding: "var(--space-xl)" }}>
                         No leads yet.
                       </td>
                     </tr>

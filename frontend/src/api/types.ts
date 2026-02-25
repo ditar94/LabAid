@@ -84,6 +84,8 @@ export interface DemoLead {
   demo_lab_id: string | null;
   source: string | null;
   created_at: string;
+  login_count: number;
+  last_login_at: string | null;
 }
 
 export interface Fluorochrome {

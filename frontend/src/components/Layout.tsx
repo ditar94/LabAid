@@ -41,7 +41,7 @@ import { version } from "../../package.json";
 const TermsModal = lazy(() => import("./TermsModal"));
 
 export default function Layout() {
-  const { user, logout, impersonatingLab, endImpersonation, labSettings } = useAuth();
+  const { user, logout, impersonatingLab, endImpersonation, labSettings, labName } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -50,6 +50,18 @@ export default function Layout() {
   const [canScrollDown, setCanScrollDown] = useState(false);
   const navLinksRef = useRef<HTMLDivElement>(null);
   const { theme, cycleTheme } = useTheme();
+
+  // Lock page scroll when mobile sidebar is open
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.documentElement.style.overflow = "";
+        document.body.style.overflow = "";
+      };
+    }
+  }, [sidebarOpen]);
 
   // Check if nav links overflow and can scroll in either direction
   useEffect(() => {
@@ -206,6 +218,9 @@ export default function Layout() {
             <div>
               <span className="user-name">{user?.full_name}</span>
               <span className="user-role">{user?.role.replaceAll("_", " ")}</span>
+              {!isSuperAdmin && labName && (
+                <span className="user-lab-name">{labName}</span>
+              )}
             </div>
           </div>
         </div>

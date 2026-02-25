@@ -937,6 +937,8 @@ class DemoLeadOut(BaseModel):
     demo_lab_id: UUID | None
     source: str | None
     created_at: datetime
+    login_count: int = 0
+    last_login_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -949,6 +951,10 @@ class DemoExtendRequest(BaseModel):
 class DemoResendResponse(BaseModel):
     login_link: str
     email_sent: bool
+
+
+class DemoGetLinkResponse(BaseModel):
+    login_link: str
 
 
 # Rebuild forward references now that all classes are defined

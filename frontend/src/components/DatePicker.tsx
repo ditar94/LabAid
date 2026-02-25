@@ -29,7 +29,6 @@ export default function DatePicker({ value, onChange, placeholderText }: Props) 
       onChange={handleChange}
       dateFormat="MM/dd/yyyy"
       placeholderText={placeholderText || "MM/DD/YYYY"}
-      isClearable
       showMonthDropdown
       showYearDropdown
       dropdownMode="select"

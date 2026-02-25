@@ -532,6 +532,8 @@ class DemoLead(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     claimed_ip = Column(String(45), nullable=True)
     notified_at = Column(DateTime(timezone=True), nullable=True)
+    login_count = Column(Integer, nullable=False, default=0, server_default="0")
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
 
     demo_lab = relationship("Lab")
 

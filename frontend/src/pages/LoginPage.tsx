@@ -57,7 +57,7 @@ export default function LoginPage() {
 
       <a href="/" className="login-back-link"><ArrowLeft size={16} /> Back to home</a>
       <div className={`login-card${shaking ? " shake" : ""}`}>
-        <a href="/" className="login-brand">
+        <div className="login-brand">
           <div className="login-icon">
             <FlaskConical size={26} />
           </div>
@@ -65,7 +65,7 @@ export default function LoginPage() {
             <h1>LabAid</h1>
             <p className="subtitle">Laboratory Inventory Management</p>
           </div>
-        </a>
+        </div>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="login-email">Email</label>

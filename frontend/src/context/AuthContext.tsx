@@ -17,6 +17,7 @@ interface ImpersonatingLab {
 interface AuthContextType {
   user: User | null;
   labSettings: LabSettings;
+  labName: string | null;
   impersonatingLab: ImpersonatingLab | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -31,6 +32,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [labSettings, setLabSettings] = useState<LabSettings>({});
+  const [labName, setLabName] = useState<string | null>(null);
   const [impersonatingLab, setImpersonatingLab] = useState<ImpersonatingLab | null>(() => {
     try {
       const stored = localStorage.getItem("impersonatingLab");
@@ -44,9 +46,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = async () => {
     const res = await api.get("/bootstrap");
-    const { user: u, lab_settings, fluorochromes, storage_units, labs } = res.data;
+    const { user: u, lab_settings, lab_name, fluorochromes, storage_units, labs } = res.data;
     setUser(u);
     setLabSettings(lab_settings || {});
+    setLabName(lab_name || null);
 
     // Seed TanStack Query cache so SharedDataContext and pages show data instantly
     const labId = u.lab_id || "";
@@ -114,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, labSettings, impersonatingLab,
+      user, labSettings, labName, impersonatingLab,
       login, logout, refreshUser, startImpersonation, endImpersonation, loading,
     }}>
       {children}

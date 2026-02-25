@@ -57,10 +57,10 @@ cd frontend && npx tsc --noEmit -p tsconfig.app.json
 
 ### Daily Workflow
 
-1. Work on `beta` branch, push to trigger the deploy pipeline
-2. Beta auto-deploys — test your changes on beta.labaid.io
-3. Approve **"Staging"** in GitHub Actions — deploys to staging.labaid.io
-4. Test staging, then approve **"Production"** in GitHub Actions — deploys to labaid.io
+1. Test changes locally with `docker compose up`
+2. Push to `beta` branch to trigger the deploy pipeline
+3. Staging auto-deploys — test your changes on staging.labaid.io
+4. Approve **"Production"** in GitHub Actions — deploys to labaid.io
 5. After production deploys, `main` is automatically synced to match `beta`
 
 ### Versioning
@@ -74,8 +74,8 @@ Everything is triggered by `git push origin beta`. One unified pipeline with app
 | Stage | What happens | Trigger |
 |-------|-------------|---------|
 | Tests | Backend pytest + frontend typecheck | Auto |
-| Beta | Deploy to beta.labaid.io | Auto (after tests pass) |
-| Staging | Deploy to staging.labaid.io | Manual approval in GitHub Actions |
+| Start nonprod DB | Wake up Cloud SQL nonprod instance | Auto (parallel with tests) |
+| Staging | Deploy to staging.labaid.io | Auto (after tests pass + DB ready) |
 | Production | DB backup, then deploy to labaid.io | Manual approval in GitHub Actions |
 | Sync main | Fast-forward `main` to match `beta` | Auto (after production) |
 
@@ -88,18 +88,16 @@ PRs still run `ci.yml` (tests + typecheck) as a safety check.
 ```bash
 ./deploy.sh all              # Production
 ./deploy.sh staging          # Staging
-./deploy.sh beta             # Beta
 ```
 
 ## Environments
 
 | Environment | URL | Backend Service | Cloud SQL Instance | Database | Email | Max Instances |
 |---|---|---|---|---|---|---|
-| Beta | beta.labaid.io | labaid-backend-beta | `labaid-db-nonprod` | `labaid_beta` | console | 1 |
-| Staging | staging.labaid.io | labaid-backend-staging | `labaid-db-nonprod` | `labaid_beta` (shared with beta) | resend | 1 |
+| Staging | staging.labaid.io | labaid-backend-staging | `labaid-db-nonprod` | `labaid_beta` | resend | 1 |
 | Production | labaid.io | labaid-backend | `labaid-db-prod` | `labaid` | resend | 3 |
 
-Beta and staging share the same database (`labaid_beta`) on `labaid-db-nonprod`. Production has its own isolated instance (`labaid-db-prod`). See [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for full security architecture.
+Staging uses `labaid_beta` on `labaid-db-nonprod`. Production has its own isolated instance (`labaid-db-prod`). See [docs/DATABASE_SECURITY.md](docs/DATABASE_SECURITY.md) for full security architecture.
 
 ### Local vs Cloud Databases
 
@@ -114,7 +112,7 @@ Local Docker databases are **not** mirrors of cloud data — they're separate, e
 **Schema stays in sync via Alembic migrations:**
 - Create migrations locally: `cd backend && alembic revision --autogenerate -m "description"`
 - Test locally: migrations run automatically when backend starts
-- Push to beta: Cloud Run runs `alembic upgrade head`, applying your migrations to the cloud DB
+- Push to beta: staging deploys automatically, Cloud Run runs `alembic upgrade head`, applying your migrations to the cloud DB
 - The *schema* syncs across environments, but *data* remains separate
 
 ### Destructive Migration Protection
