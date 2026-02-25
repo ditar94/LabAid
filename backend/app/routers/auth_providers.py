@@ -96,7 +96,13 @@ def _validate_provider_config(provider_type: AuthProviderType, config: dict) -> 
 def _store_raw_secret_if_present(config: dict, lab_id: UUID, provider_type: AuthProviderType) -> dict:
     raw = config.pop("client_secret", None)
     if raw and raw != "••••••••":
-        ref = store_secret(str(lab_id), provider_type.value, raw)
+        try:
+            ref = store_secret(str(lab_id), provider_type.value, raw)
+        except Exception as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to store client secret: {e}",
+            )
         config["client_secret_ref"] = ref
     return config
 

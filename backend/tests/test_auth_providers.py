@@ -1,6 +1,7 @@
 """Tests for auth provider management and discovery endpoints."""
 
 import uuid
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -551,3 +552,137 @@ class TestSecurityVerification:
 
         res2 = client.get("/api/bootstrap", headers=auth_headers)
         assert res2.json()["lab_settings"]["password_enabled"] is False
+
+
+class TestSecretStorage:
+    """Verify GCP Secret Manager integration paths are exercised."""
+
+    @patch("app.routers.auth_providers.store_secret")
+    def test_create_provider_with_client_secret_calls_store(self, mock_store, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        db.commit()
+        mock_store.return_value = "projects/p/secrets/labaid-sso-test/versions/1"
+        headers = {"Authorization": f"Bearer {super_token}"}
+        res = client.post("/api/auth/providers/", json={
+            "lab_id": str(lab.id),
+            "provider_type": "oidc_microsoft",
+            "config": {
+                "client_id": "my-client",
+                "tenant_id": "my-tenant",
+                "client_secret": "super-secret-value",
+            },
+            "email_domain": "hospital.org",
+        }, headers=headers)
+        assert res.status_code == 201
+        mock_store.assert_called_once_with(str(lab.id), "oidc_microsoft", "super-secret-value")
+        config = res.json()["config"]
+        assert config.get("client_secret_ref") == "••••••••"
+        assert "super-secret-value" not in str(config)
+
+    @patch("app.routers.auth_providers.store_secret")
+    def test_create_provider_without_secret_skips_store(self, mock_store, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        db.commit()
+        headers = {"Authorization": f"Bearer {super_token}"}
+        res = client.post("/api/auth/providers/", json={
+            "lab_id": str(lab.id),
+            "provider_type": "oidc_microsoft",
+            "config": {"client_id": "my-client", "tenant_id": "my-tenant"},
+            "email_domain": "hospital.org",
+        }, headers=headers)
+        assert res.status_code == 201
+        mock_store.assert_not_called()
+
+    @patch("app.routers.auth_providers.store_secret")
+    def test_update_provider_with_new_secret_calls_store(self, mock_store, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        provider = LabAuthProvider(
+            id=uuid.uuid4(), lab_id=lab.id,
+            provider_type=AuthProviderType.OIDC_MICROSOFT,
+            config={"client_id": "abc", "tenant_id": "xyz"},
+            email_domain="hospital.org", is_enabled=True,
+        )
+        db.add(provider)
+        db.commit()
+        mock_store.return_value = "projects/p/secrets/labaid-sso-test/versions/2"
+        headers = {"Authorization": f"Bearer {super_token}"}
+        res = client.patch(f"/api/auth/providers/{provider.id}", json={
+            "config": {"client_secret": "new-secret"},
+        }, headers=headers)
+        assert res.status_code == 200
+        mock_store.assert_called_once_with(str(lab.id), "oidc_microsoft", "new-secret")
+
+    @patch("app.routers.auth_providers.store_secret")
+    def test_update_provider_with_masked_secret_skips_store(self, mock_store, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        provider = LabAuthProvider(
+            id=uuid.uuid4(), lab_id=lab.id,
+            provider_type=AuthProviderType.OIDC_MICROSOFT,
+            config={"client_id": "abc", "tenant_id": "xyz", "client_secret_ref": "projects/p/secrets/s/versions/1"},
+            email_domain="hospital.org", is_enabled=True,
+        )
+        db.add(provider)
+        db.commit()
+        headers = {"Authorization": f"Bearer {super_token}"}
+        res = client.patch(f"/api/auth/providers/{provider.id}", json={
+            "config": {"client_secret": "••••••••"},
+        }, headers=headers)
+        assert res.status_code == 200
+        mock_store.assert_not_called()
+
+    @patch("app.routers.auth_providers.store_secret", side_effect=ValueError("GCP_PROJECT not configured"))
+    def test_create_provider_store_secret_failure_returns_error(self, mock_store, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        db.commit()
+        headers = {"Authorization": f"Bearer {super_token}"}
+        res = client.post("/api/auth/providers/", json={
+            "lab_id": str(lab.id),
+            "provider_type": "oidc_microsoft",
+            "config": {
+                "client_id": "my-client",
+                "tenant_id": "my-tenant",
+                "client_secret": "some-secret",
+            },
+            "email_domain": "hospital.org",
+        }, headers=headers)
+        assert res.status_code == 502
+        assert "Failed to store client secret" in res.json()["detail"]
+
+
+class TestResolveSecretIntegration:
+    """Verify resolve_secret is called during SSO authorize flow."""
+
+    @patch("app.services.oidc_service.resolve_secret")
+    def test_resolve_secret_called_on_token_exchange(self, mock_resolve, client, db, lab):
+        from app.services.oidc_service import resolve_secret
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        provider = LabAuthProvider(
+            id=uuid.uuid4(), lab_id=lab.id,
+            provider_type=AuthProviderType.OIDC_MICROSOFT,
+            config={
+                "client_id": "test-client",
+                "tenant_id": "test-tenant",
+                "client_secret_ref": "projects/p/secrets/s/versions/1",
+            },
+            email_domain="hospital.org", is_enabled=True,
+        )
+        db.add(provider)
+        db.commit()
+
+        mock_resolve.return_value = "resolved-secret"
+
+        from app.core.security import create_access_token
+        state = create_access_token(
+            {"purpose": "oidc_state", "provider_id": str(provider.id), "nonce": "test-nonce"},
+            expires_minutes=5,
+        )
+
+        with patch("app.routers.sso.exchange_code") as mock_exchange:
+            mock_exchange.side_effect = ValueError("expected test failure")
+            res = client.get(
+                "/api/auth/sso/callback",
+                params={"code": "test-code", "state": state},
+                follow_redirects=False,
+            )
+            assert res.status_code == 302
+            assert "error=token_exchange_failed" in res.headers["location"]
