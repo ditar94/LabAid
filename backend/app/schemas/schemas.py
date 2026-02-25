@@ -946,5 +946,10 @@ class DemoExtendRequest(BaseModel):
     hours: int = 24
 
 
+class DemoResendResponse(BaseModel):
+    login_link: str
+    email_sent: bool
+
+
 # Rebuild forward references now that all classes are defined
 ScanLookupResult.model_rebuild()

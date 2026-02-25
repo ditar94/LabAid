@@ -20,6 +20,7 @@ from app.schemas.schemas import (
     DemoExtendRequest,
     DemoLabOut,
     DemoLeadOut,
+    DemoResendResponse,
     TryDemoRequest,
     TryDemoResponse,
 )
@@ -191,18 +192,26 @@ def try_demo(
 
     lead = DemoLead(
         email=email,
-        status="claimed",
+        status="notified",
         demo_lab_id=lab.id,
         source=body.source,
         claimed_ip=request.client.host if request.client else None,
+        notified_at=now,
     )
     db.add(lead)
     db.commit()
 
+    login_link = f"{settings.APP_URL}/api/demo/login?token={token}"
     auto = not settings.DEMO_SEND_EMAIL
+    if settings.DEMO_SEND_EMAIL:
+        try:
+            send_demo_ready_email(email, login_link)
+        except Exception:
+            logger.error("Failed to send demo ready email to %s", email)
+
     return TryDemoResponse(
         status="assigned",
-        login_link=f"{settings.APP_URL}/api/demo/login?token={token}",
+        login_link=login_link,
         expires_at=lab.demo_expires_at,
         message="Your demo is ready! Click the link to log in.",
         auto_login=auto,
@@ -238,6 +247,18 @@ def demo_login(
     user.is_active = True
     user.invite_token = None
     user.invite_token_expires_at = None
+
+    # Mark the lead as claimed (they actually entered the lab)
+    lead = (
+        db.query(DemoLead)
+        .filter(
+            DemoLead.demo_lab_id == lab.id,
+            DemoLead.status == "notified",
+        )
+        .first()
+    )
+    if lead:
+        lead.status = "claimed"
 
     # Generate JWT with is_demo claim for middleware checks
     jwt_token = create_access_token({
@@ -474,3 +495,49 @@ def expire_stale_demos(
 
     db.commit()
     return {"released": released, "expired": expired}
+
+
+@router.post("/leads/{lead_id}/resend", response_model=DemoResendResponse)
+def resend_magic_link(
+    lead_id: str,
+    send_email: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    lead = db.query(DemoLead).filter(DemoLead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if not lead.demo_lab_id:
+        raise HTTPException(status_code=400, detail="Lead has no assigned demo lab")
+
+    lab = db.query(Lab).filter(Lab.id == lead.demo_lab_id).first()
+    if not lab or lab.demo_status != "in_use":
+        raise HTTPException(status_code=400, detail="Demo lab is not active")
+
+    demo_user = (
+        db.query(User)
+        .filter(User.lab_id == lab.id, User.email.like("demo-%@demo.labaid.io"))
+        .first()
+    )
+    if not demo_user:
+        raise HTTPException(status_code=500, detail="Demo lab has no demo user")
+
+    now = datetime.now(timezone.utc)
+    token = generate_invite_token()
+    demo_user.invite_token = token
+    demo_user.invite_token_expires_at = now + timedelta(minutes=DEMO_MAGIC_LINK_EXPIRY_MINUTES)
+
+    lead.status = "notified"
+    lead.notified_at = now
+
+    db.commit()
+
+    login_link = f"{settings.APP_URL}/api/demo/login?token={token}"
+    email_sent = False
+    if send_email:
+        try:
+            email_sent = send_demo_ready_email(lead.email, login_link)
+        except Exception:
+            logger.error("Failed to send demo ready email to %s", lead.email)
+
+    return DemoResendResponse(login_link=login_link, email_sent=email_sent)

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { DemoLab, DemoLead } from "../api/types";
-import { Play, RotateCcw, Clock, XCircle, Plus } from "lucide-react";
+import { Play, RotateCcw, Clock, XCircle, Plus, Send, Copy, Link } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { Modal } from "../components/Modal";
 
@@ -21,6 +21,8 @@ export default function DemoPage() {
   const [extendLabId, setExtendLabId] = useState<string | null>(null);
   const [extendHours, setExtendHours] = useState(24);
   const [showLeads, setShowLeads] = useState(false);
+  const [resendResult, setResendResult] = useState<{ leadId: string; link: string } | null>(null);
+  const [resendLoading, setResendLoading] = useState<string | null>(null);
 
   const { data: demoLabs = [], isLoading } = useQuery<DemoLab[]>({
     queryKey: ["demo-labs"],
@@ -33,8 +35,10 @@ export default function DemoPage() {
     enabled: showLeads,
   });
 
-  const invalidate = () =>
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["demo-labs"] });
+    queryClient.invalidateQueries({ queryKey: ["demo-leads"] });
+  };
 
   const handleProvision = async () => {
     setProvisioning(true);
@@ -90,6 +94,32 @@ export default function DemoPage() {
       setConfirmAction(null);
     }
   };
+
+  const handleResend = async (leadId: string, sendEmail: boolean) => {
+    setResendLoading(leadId);
+    try {
+      const res = await api.post(`/demo/leads/${leadId}/resend?send_email=${sendEmail}`);
+      setResendResult({ leadId, link: res.data.login_link });
+      if (sendEmail) {
+        addToast(res.data.email_sent ? "Magic link email sent" : "Email send failed — link generated", res.data.email_sent ? "success" : "warning");
+      } else {
+        addToast("Magic link generated", "success");
+      }
+      await invalidate();
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to resend", "danger");
+    } finally {
+      setResendLoading(null);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    addToast("Link copied to clipboard", "success");
+  };
+
+  const isLabActive = (labId: string | null) =>
+    labId ? demoLabs.some((l) => l.id === labId && l.demo_status === "in_use") : false;
 
   const handleExpireStale = async () => {
     try {
@@ -269,6 +299,7 @@ export default function DemoPage() {
                     <th>Status</th>
                     <th>Source</th>
                     <th>Requested</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -278,11 +309,45 @@ export default function DemoPage() {
                       <td>{leadStatusBadge(lead.status)}</td>
                       <td>{lead.source || "—"}</td>
                       <td>{fmtDate(lead.created_at)}</td>
+                      <td className="action-btns">
+                        {isLabActive(lead.demo_lab_id) && (
+                          <>
+                            <button
+                              className="btn-sm"
+                              onClick={() => handleResend(lead.id, true)}
+                              disabled={resendLoading === lead.id}
+                              title="Send magic link via email"
+                            >
+                              <Send size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
+                              {resendLoading === lead.id ? "Sending..." : "Email Link"}
+                            </button>
+                            <button
+                              className="btn-sm btn-secondary"
+                              onClick={() => handleResend(lead.id, false)}
+                              disabled={resendLoading === lead.id}
+                              title="Generate link to copy"
+                            >
+                              <Link size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
+                              Get Link
+                            </button>
+                          </>
+                        )}
+                        {resendResult?.leadId === lead.id && (
+                          <button
+                            className="btn-sm"
+                            onClick={() => copyToClipboard(resendResult.link)}
+                            title="Copy magic link"
+                          >
+                            <Copy size={13} style={{ marginRight: 3, verticalAlign: -2 }} />
+                            Copy
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {leads.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="text-muted" style={{ textAlign: "center", padding: "var(--space-xl)" }}>
+                      <td colSpan={5} className="text-muted" style={{ textAlign: "center", padding: "var(--space-xl)" }}>
                         No leads yet.
                       </td>
                     </tr>
