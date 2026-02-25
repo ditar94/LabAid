@@ -24,6 +24,7 @@ class TestDiscover:
         assert res.json()["providers"] == ["password"]
 
     def test_configured_provider_returns_in_list(self, client, db, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
         provider = LabAuthProvider(
             id=uuid.uuid4(),
             lab_id=lab.id,
@@ -59,6 +60,7 @@ class TestDiscover:
         assert res.json()["providers"] == ["password"]
 
     def test_multiple_providers_for_same_domain(self, client, db, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
         for ptype, config in [
             (AuthProviderType.OIDC_MICROSOFT, {"client_id": "ms", "tenant_id": "t"}),
             (AuthProviderType.OIDC_GOOGLE, {"client_id": "goog"}),
@@ -81,6 +83,7 @@ class TestDiscover:
         assert "oidc_google" in providers
 
     def test_case_insensitive_domain(self, client, db, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
         db.add(LabAuthProvider(
             id=uuid.uuid4(),
             lab_id=lab.id,
@@ -135,7 +138,9 @@ class TestProviderCRUD:
         assert res.status_code == 200
         assert res.json() == []
 
-    def test_create_provider(self, client, super_token, lab):
+    def test_create_provider(self, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        db.commit()
         headers = {"Authorization": f"Bearer {super_token}"}
         res = client.post("/api/auth/providers/", json={
             "lab_id": str(lab.id),
@@ -152,6 +157,7 @@ class TestProviderCRUD:
         assert data["config"]["client_id"] == "my-client"
 
     def test_create_duplicate_provider_rejected(self, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
         headers = {"Authorization": f"Bearer {super_token}"}
         db.add(LabAuthProvider(
             id=uuid.uuid4(),
@@ -171,7 +177,9 @@ class TestProviderCRUD:
         assert res.status_code == 400
         assert "already configured" in res.json()["detail"]
 
-    def test_create_provider_missing_config_rejected(self, client, super_token, lab):
+    def test_create_provider_missing_config_rejected(self, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        db.commit()
         headers = {"Authorization": f"Bearer {super_token}"}
         res = client.post("/api/auth/providers/", json={
             "lab_id": str(lab.id),
@@ -182,6 +190,7 @@ class TestProviderCRUD:
         assert "tenant_id" in res.json()["detail"]
 
     def test_update_provider(self, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
         headers = {"Authorization": f"Bearer {super_token}"}
         provider = LabAuthProvider(
             id=uuid.uuid4(),
@@ -204,6 +213,7 @@ class TestProviderCRUD:
         assert data["is_enabled"] is False
 
     def test_update_provider_config_merges(self, client, db, super_token, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
         headers = {"Authorization": f"Bearer {super_token}"}
         provider = LabAuthProvider(
             id=uuid.uuid4(),
@@ -267,7 +277,9 @@ class TestProviderCRUD:
         res = client.get(f"/api/auth/providers/{other_lab.id}", headers=auth_headers)
         assert res.status_code == 403
 
-    def test_lab_admin_can_create_provider_own_lab(self, client, auth_headers, lab):
+    def test_lab_admin_can_create_provider_own_lab(self, client, db, auth_headers, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        db.commit()
         res = client.post("/api/auth/providers/", json={
             "lab_id": str(lab.id),
             "provider_type": "oidc_microsoft",
@@ -301,6 +313,7 @@ class TestPasswordEnabled:
     """SSO-only lab enforcement via password_enabled helper."""
 
     def _make_sso_only(self, db, lab):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
         db.add(LabAuthProvider(
             id=uuid.uuid4(), lab_id=lab.id,
             provider_type=AuthProviderType.OIDC_MICROSOFT,
@@ -473,6 +486,8 @@ class TestSecurityVerification:
     """Phase 4 security verification: secrets, audit, tenant isolation."""
 
     def test_secrets_never_in_response(self, client, db, lab, super_token):
+        lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+        db.commit()
         headers = {"Authorization": f"Bearer {super_token}"}
         res = client.post("/api/auth/providers/", json={
             "lab_id": str(lab.id),

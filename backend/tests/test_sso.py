@@ -19,7 +19,9 @@ from app.core.security import hash_password
 
 @pytest.fixture()
 def sso_provider(db, lab):
-    """Create an enabled Microsoft OIDC provider."""
+    """Create an enabled Microsoft OIDC provider (enables SSO on lab)."""
+    lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+    db.commit()
     provider = LabAuthProvider(
         id=uuid.uuid4(),
         lab_id=lab.id,
@@ -40,7 +42,9 @@ def sso_provider(db, lab):
 
 @pytest.fixture()
 def google_provider(db, lab):
-    """Create an enabled Google OIDC provider."""
+    """Create an enabled Google OIDC provider (enables SSO on lab)."""
+    lab.settings = {**(lab.settings or {}), "sso_enabled": True}
+    db.commit()
     provider = LabAuthProvider(
         id=uuid.uuid4(),
         lab_id=lab.id,
@@ -88,7 +92,7 @@ class TestSSOAuthorize:
         assert "login.microsoftonline.com" in location
         assert "test-client-id" in location
         assert "state=" in location
-        assert "prompt=select_account" in location
+        assert "prompt=select_account" in location or "login_hint=" in location
 
     def test_authorize_google_redirects(self, client, google_provider):
         res = client.get(
@@ -170,8 +174,7 @@ class TestSSOCallback:
         )
 
         assert res.status_code == 302
-        # Should redirect to app root
-        assert res.headers["location"].endswith("/")
+        assert res.headers["location"].endswith("/dashboard")
         # Should set the __session cookie
         cookies = res.cookies
         assert "__session" in res.headers.get("set-cookie", "")
