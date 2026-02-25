@@ -149,7 +149,7 @@ async def sso_callback(
     email = (claims.get("email") or claims.get("preferred_username") or claims.get("upn") or "").lower()
     name = claims.get("name", "")
 
-    logger.info("SSO claims: sub=%s, email=%s, keys=%s", sub, email, list(claims.keys()))
+    logger.warning("SSO claims: sub=%s, email=%s, keys=%s", sub, email, list(claims.keys()))
 
     if not sub or not email:
         error_url = f"{settings.APP_URL.rstrip('/')}/auth/callback?error=missing_claims"
@@ -183,6 +183,7 @@ async def sso_callback(
             db.add(ext_identity)
 
     if not user:
+        logger.warning("SSO user_not_found: email=%s, provider_lab_id=%s", email, provider.lab_id)
         error_url = f"{settings.APP_URL.rstrip('/')}/auth/callback?error=user_not_found"
         return RedirectResponse(url=error_url, status_code=302)
 
