@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from app.core.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.models import Fluorochrome, Lab, StorageUnit, User, UserRole
+from app.models.models import DemoLead, Fluorochrome, Lab, StorageUnit, User, UserRole
 from app.schemas.schemas import (
     FluorochromeOut,
     Lab as LabSchema,
@@ -72,7 +72,26 @@ def bootstrap(
             .all()
         )
 
-    # 4. Labs list (super admin only, not impersonating)
+    # 4. Track demo user session (login_count / last_login_at)
+    if lab and lab.is_demo:
+        now = datetime.now(timezone.utc)
+        lead = (
+            db.query(DemoLead)
+            .filter(
+                DemoLead.demo_lab_id == lab.id,
+                DemoLead.status.in_(["notified", "active"]),
+            )
+            .first()
+        )
+        if lead:
+            stale = not lead.last_login_at or lead.last_login_at < now - timedelta(minutes=30)
+            if stale:
+                lead.login_count = (lead.login_count or 0) + 1
+                lead.last_login_at = now
+                lead.status = "active"
+                db.commit()
+
+    # 5. Labs list (super admin only, not impersonating)
     labs = None
     is_impersonating = getattr(current_user, "_is_impersonating", False)
     if current_user.role == UserRole.SUPER_ADMIN and not is_impersonating:
