@@ -1436,6 +1436,31 @@ body {
   opacity: 1;
 }
 
+.nav-links .nav-link-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-xl);
+  color: var(--sidebar-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: all var(--duration-fast) var(--ease-out);
+  border-left: 3px solid transparent;
+  margin: 1px 0;
+  background: none;
+  border-right: none;
+  border-top: none;
+  border-bottom: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.nav-links .nav-link-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--neutral-200);
+}
+
 .nav-badge {
   display: inline-flex;
   align-items: center;

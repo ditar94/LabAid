@@ -34,6 +34,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   Play,
+  CreditCard,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 import { version } from "../../package.json";
@@ -340,6 +341,18 @@ export default function Layout() {
                   <Palette className="nav-icon" />
                   Fluorochromes
                 </NavLink>
+              )}
+              {hasLabContext && isAdmin && !labSettings.is_demo && labSettings.billing_status !== "active" && (
+                <button className="nav-link-btn" onClick={() => handleBillingAction("checkout")}>
+                  <CreditCard className="nav-icon" />
+                  Subscribe
+                </button>
+              )}
+              {hasLabContext && isAdmin && !labSettings.is_demo && labSettings.billing_status === "active" && (
+                <button className="nav-link-btn" onClick={() => handleBillingAction("portal")}>
+                  <CreditCard className="nav-icon" />
+                  Manage Billing
+                </button>
               )}
               {hasLabContext && isAdmin && (
                 <NavLink to="/settings" onClick={handleNavClick}>
