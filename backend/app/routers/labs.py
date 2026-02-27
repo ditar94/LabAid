@@ -204,6 +204,9 @@ def update_billing_status(
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
+    if lab.stripe_subscription_id:
+        raise HTTPException(status_code=409, detail="This lab's billing is managed by Stripe. Change status in the Stripe Dashboard.")
+
     before = snapshot_lab(lab)
     old_status = lab.billing_status
     lab.billing_status = body.billing_status
@@ -244,6 +247,9 @@ def update_trial_ends_at(
     lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
+
+    if lab.stripe_subscription_id:
+        raise HTTPException(status_code=409, detail="This lab's billing is managed by Stripe.")
 
     before = snapshot_lab(lab)
     lab.trial_ends_at = body.trial_ends_at

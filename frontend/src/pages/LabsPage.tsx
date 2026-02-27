@@ -185,20 +185,28 @@ export default function LabsPage() {
                   </div>
                 </td>
                 <td>
-                  <select
-                    className="billing-select"
-                    value={l.billing_status || "trial"}
-                    onChange={(e) => handleBillingChange(l.id, e.target.value as BillingStatus)}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <option value="trial">Trial</option>
-                    <option value="active">Active</option>
-                    <option value="past_due">Past Due</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                  {l.stripe_subscription_id ? (
+                    <span className="badge badge-info" title="Managed by Stripe — change status in Stripe Dashboard">
+                      {l.billing_status === "active" ? "Active" : l.billing_status === "past_due" ? "Past Due" : l.billing_status === "cancelled" ? "Cancelled" : l.billing_status === "trial" ? "Trial" : l.billing_status}
+                    </span>
+                  ) : (
+                    <select
+                      className="billing-select"
+                      value={l.billing_status || "trial"}
+                      onChange={(e) => handleBillingChange(l.id, e.target.value as BillingStatus)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="trial">Trial</option>
+                      <option value="active">Active</option>
+                      <option value="past_due">Past Due</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  )}
                 </td>
                 <td>
-                  {l.billing_status === "trial" ? (
+                  {l.stripe_subscription_id ? (
+                    <span className="text-muted">-</span>
+                  ) : l.billing_status === "trial" ? (
                     editingTrialId === l.id ? (
                       <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
                         <input
