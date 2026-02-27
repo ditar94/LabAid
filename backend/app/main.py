@@ -68,6 +68,8 @@ _SUSPENSION_EXEMPT = {
     "/api/demo/login",
     "/api/auth/sso/callback",
     "/api/stripe/webhook",
+    "/api/labs/billing/checkout",
+    "/api/labs/billing/portal",
     "/api/health",
 }
 
