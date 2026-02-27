@@ -58,7 +58,11 @@ export interface Lab {
   name: string;
   is_active: boolean;
   billing_status: BillingStatus;
+  billing_updated_at?: string | null;
   trial_ends_at: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  billing_email?: string | null;
   settings: LabSettings;
   created_at: string;
   is_demo?: boolean;
@@ -68,7 +72,6 @@ export interface Lab {
   demo_assigned_at?: string | null;
   demo_reset_at?: string | null;
   demo_cycle_count?: number;
-  stripe_customer_id?: string;
 }
 
 // ── Demo Environment ─────────────────────────────────────────────────────

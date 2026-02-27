@@ -28,8 +28,6 @@ export default function LabsPage() {
   const [enteringLabId, setEnteringLabId] = useState<string | null>(null);
   const [editingTrialId, setEditingTrialId] = useState<string | null>(null);
   const [trialDate, setTrialDate] = useState("");
-  const [editingBillingUrlId, setEditingBillingUrlId] = useState<string | null>(null);
-  const [billingUrl, setBillingUrl] = useState("");
   const [ssoLab, setSsoLab] = useState<{ id: string; name: string } | null>(null);
   const { addToast } = useToast();
   const { startImpersonation } = useAuth();
@@ -106,17 +104,6 @@ export default function LabsPage() {
     }
   };
 
-  const handleBillingUrlSave = async (labId: string) => {
-    try {
-      await api.patch(`/labs/${labId}/settings`, { billing_url: billingUrl || null });
-      setEditingBillingUrlId(null);
-      await queryClient.invalidateQueries({ queryKey: ["labs"] });
-      addToast("Billing URL updated", "success");
-    } catch {
-      addToast("Failed to update billing URL", "danger");
-    }
-  };
-
   const handleSsoToggle = async (labId: string, current: boolean) => {
     try {
       await api.patch(`/labs/${labId}/settings`, { sso_enabled: !current });
@@ -166,7 +153,7 @@ export default function LabsPage() {
               <th>Status</th>
               <th>Billing</th>
               <th>Trial Ends</th>
-              <th>Billing URL</th>
+              <th>Subscription</th>
               <th>SSO</th>
               <th>Support Access</th>
               <th>Created At</th>
@@ -240,29 +227,13 @@ export default function LabsPage() {
                   )}
                 </td>
                 <td>
-                  {editingBillingUrlId === l.id ? (
-                    <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                      <input
-                        type="url"
-                        placeholder="https://..."
-                        value={billingUrl}
-                        onChange={(e) => setBillingUrl(e.target.value)}
-                        style={{ width: 180 }}
-                      />
-                      <button className="btn-sm" onClick={() => handleBillingUrlSave(l.id)}>Save</button>
-                      <button className="btn-sm btn-secondary" onClick={() => setEditingBillingUrlId(null)}>Cancel</button>
+                  {l.stripe_subscription_id ? (
+                    <span title={`Customer: ${l.stripe_customer_id || "-"}\nSubscription: ${l.stripe_subscription_id}\nBilling email: ${l.billing_email || "-"}\nLast updated: ${l.billing_updated_at ? new Date(l.billing_updated_at).toLocaleString() : "-"}`}>
+                      <span className="badge badge-success">Stripe</span>
+                      {l.billing_email && <span className="text-muted" style={{ marginLeft: 6, fontSize: "0.85em" }}>{l.billing_email}</span>}
                     </span>
                   ) : (
-                    <span
-                      style={{ cursor: "pointer", textDecoration: "underline dotted" }}
-                      title="Click to edit"
-                      onClick={() => {
-                        setEditingBillingUrlId(l.id);
-                        setBillingUrl((l.settings as Record<string, unknown>)?.billing_url as string || "");
-                      }}
-                    >
-                      {(l.settings as Record<string, unknown>)?.billing_url ? "Set" : "Not set"}
-                    </span>
+                    <span className="text-muted">-</span>
                   )}
                 </td>
                 <td style={{ display: "flex", alignItems: "center", gap: 8 }}>

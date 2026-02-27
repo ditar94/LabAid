@@ -131,7 +131,11 @@ class Lab(BaseModel):
     name: str
     is_active: bool
     billing_status: str = "trial"
+    billing_updated_at: datetime | None = None
     trial_ends_at: datetime | None = None
+    stripe_customer_id: str | None = None
+    stripe_subscription_id: str | None = None
+    billing_email: str | None = None
     settings: dict = {}
     created_at: datetime
     is_demo: bool = False
