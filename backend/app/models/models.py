@@ -102,6 +102,9 @@ class Lab(Base):
     billing_status = Column(String(20), nullable=False, server_default="trial", default="trial")
     billing_updated_at = Column(DateTime(timezone=True), nullable=True)
     trial_ends_at = Column(DateTime(timezone=True), nullable=True)
+    stripe_customer_id = Column(String(255), nullable=True, unique=True)
+    stripe_subscription_id = Column(String(255), nullable=True)
+    billing_email = Column(String(255), nullable=True)
     settings = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -581,6 +584,18 @@ class DemoLead(Base):
     last_login_at = Column(DateTime(timezone=True), nullable=True)
 
     demo_lab = relationship("Lab")
+
+
+# ── Stripe Billing ────────────────────────────────────────────────────────
+
+
+class StripeEvent(Base):
+    __tablename__ = "stripe_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    stripe_event_id = Column(String(255), nullable=False, unique=True, index=True)
+    event_type = Column(String(100), nullable=False)
+    processed_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 # ── Shared Vendor Catalog ─────────────────────────────────────────────────

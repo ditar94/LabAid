@@ -95,6 +95,25 @@ export default function Layout() {
     navigate("/dashboard");
   };
 
+  const handleBillingAction = async (type: "checkout" | "portal") => {
+    try {
+      if (type === "checkout") {
+        const { data } = await api.post<{ url: string }>("/labs/billing/checkout", {
+          success_url: `${window.location.origin}/dashboard?billing=success`,
+          cancel_url: `${window.location.origin}/dashboard`,
+        });
+        window.location.href = data.url;
+      } else {
+        const { data } = await api.post<{ url: string }>("/labs/billing/portal", {
+          return_url: `${window.location.origin}/dashboard`,
+        });
+        window.location.href = data.url;
+      }
+    } catch {
+      // Stripe not configured or network error — fail silently
+    }
+  };
+
   const isSuperAdmin = user?.role === "super_admin";
   const isImpersonating = isSuperAdmin && !!impersonatingLab;
   // When super_admin is impersonating, treat them like a lab_admin for nav purposes
@@ -112,7 +131,6 @@ export default function Layout() {
     }
     const billing = labSettings.billing_status;
     const active = labSettings.is_active;
-    const billingUrl = labSettings.billing_url;
     if (active === false) {
       return { variant: "suspended", icon: XCircle, message: "Your lab is suspended. You have read-only access." };
     }
@@ -121,7 +139,7 @@ export default function Layout() {
         variant: "cancelled",
         icon: XCircle,
         message: "Your account has been cancelled.",
-        action: billingUrl ? { text: "Reactivate", url: billingUrl } : undefined,
+        action: isAdmin ? { text: "Reactivate", type: "checkout" as const } : undefined,
       };
     }
     if (billing === "past_due") {
@@ -129,7 +147,7 @@ export default function Layout() {
         variant: "past-due",
         icon: AlertTriangle,
         message: "Your payment is past due. Update your payment method to avoid interruption.",
-        action: billingUrl ? { text: "Update payment", url: billingUrl } : undefined,
+        action: isAdmin ? { text: "Update payment", type: "portal" as const } : undefined,
       };
     }
     if (billing === "trial") {
@@ -147,10 +165,15 @@ export default function Layout() {
           trialMsg = `Your free trial ends in ${diffDays} days.`;
         }
       }
-      return { variant: "trial", icon: Info, message: trialMsg };
+      return {
+        variant: "trial",
+        icon: Info,
+        message: trialMsg,
+        action: isAdmin ? { text: "Subscribe", type: "checkout" as const } : undefined,
+      };
     }
     return null;
-  }, [hasLabContext, labSettings.is_demo, labSettings.billing_status, labSettings.is_active, labSettings.trial_ends_at, labSettings.billing_url]);
+  }, [hasLabContext, labSettings.is_demo, labSettings.billing_status, labSettings.is_active, labSettings.trial_ends_at, isAdmin]);
 
   const { selectedLab } = useSharedData();
   const queryClient = useQueryClient();
@@ -400,14 +423,12 @@ export default function Layout() {
             <accountBanner.icon size={16} />
             <span>{accountBanner.message}</span>
             {accountBanner.action && (
-              <a
-                href={accountBanner.action.url}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
                 className="account-banner-link"
+                onClick={() => handleBillingAction(accountBanner.action!.type)}
               >
                 {accountBanner.action.text}
-              </a>
+              </button>
             )}
           </div>
         )}

@@ -69,13 +69,22 @@ def client(db):
 
     app.dependency_overrides[get_db] = _override_get_db
 
-    # Patch SessionLocal so middleware (e.g. LabSuspensionMiddleware) also
-    # uses the test SQLite session instead of the real PostgreSQL engine.
+    # Patch SessionLocal so middleware and routers that create their own sessions
+    # use the test SQLite session instead of the real PostgreSQL engine.
     import app.core.database as db_module
     import app.main as main_module
+    import app.routers.stripe_webhook as stripe_module
     original_session_local = db_module.SessionLocal
-    db_module.SessionLocal = lambda: db
-    main_module.SessionLocal = lambda: db
+    # Wrap session so middleware/webhook close() calls don't detach test objects
+    class _NoClose:
+        def __init__(self, s): object.__setattr__(self, '_s', s)
+        def close(self): pass
+        def __getattr__(self, n): return getattr(object.__getattribute__(self, '_s'), n)
+
+    _proxy = _NoClose(db)
+    db_module.SessionLocal = lambda: _proxy
+    main_module.SessionLocal = lambda: _proxy
+    stripe_module.SessionLocal = lambda: _proxy
 
     # Reset rate limiter state so tests don't interfere with each other
     from app.routers.auth import limiter
@@ -90,6 +99,7 @@ def client(db):
 
     db_module.SessionLocal = original_session_local
     main_module.SessionLocal = original_session_local
+    stripe_module.SessionLocal = original_session_local
     app.dependency_overrides.clear()
 
 

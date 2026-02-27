@@ -16,7 +16,7 @@ from app.middleware.auth import COOKIE_NAME
 from app.models.models import Lab, User, UserRole
 from app.routers.auth import _set_auth_cookies
 
-from app.routers import admin, antibodies, audit, auth, auth_providers, bootstrap, cocktail_documents, cocktails, demo, lots, lot_requests, reports, scan, search, sso, storage, vials, labs, documents, fluorochromes, tickets
+from app.routers import admin, antibodies, audit, auth, auth_providers, bootstrap, cocktail_documents, cocktails, demo, lots, lot_requests, reports, scan, search, sso, storage, stripe_webhook, vials, labs, documents, fluorochromes, tickets
 
 # ── Structured JSON logging ──────────────────────────────────────────────
 
@@ -67,6 +67,7 @@ _SUSPENSION_EXEMPT = {
     "/api/demo/try",
     "/api/demo/login",
     "/api/auth/sso/callback",
+    "/api/stripe/webhook",
     "/api/health",
 }
 
@@ -165,7 +166,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 # Simple TTL cache for lab suspension status
-_suspension_cache: dict[str, tuple[bool, float]] = {}
+# Tuple: (is_active, billing_status, trial_ends_at, cache_time)
+_suspension_cache: dict[str, tuple[bool, str | None, datetime | None, float]] = {}
 _SUSPENSION_TTL = 60  # seconds
 
 
@@ -197,22 +199,33 @@ class LabSuspensionMiddleware(BaseHTTPMiddleware):
         # Check TTL cache first
         now = time.time()
         cached = _suspension_cache.get(lab_id_str)
-        if cached and (now - cached[1]) < _SUSPENSION_TTL:
-            is_active = cached[0]
+        if cached and (now - cached[3]) < _SUSPENSION_TTL:
+            is_active, billing_status, trial_ends_at = cached[0], cached[1], cached[2]
         else:
             db = SessionLocal()
             try:
                 lab = db.query(Lab).filter(Lab.id == UUID(lab_id_str)).first()
                 is_active = lab.is_active if lab else True
+                billing_status = lab.billing_status if lab else None
+                trial_ends_at = lab.trial_ends_at if lab else None
             finally:
                 db.close()
-            _suspension_cache[lab_id_str] = (is_active, now)
+            _suspension_cache[lab_id_str] = (is_active, billing_status, trial_ends_at, now)
 
         if not is_active:
             return JSONResponse(
                 status_code=403,
                 content={"detail": "Lab is suspended. Read-only access only."},
             )
+
+        if billing_status == "trial" and trial_ends_at:
+            # SQLite returns naive datetimes; treat as UTC for comparison
+            trial_aware = trial_ends_at if trial_ends_at.tzinfo else trial_ends_at.replace(tzinfo=timezone.utc)
+            if trial_aware < datetime.now(timezone.utc):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Your free trial has expired. Subscribe to continue."},
+                )
 
         return await call_next(request)
 
@@ -282,6 +295,7 @@ app.include_router(cocktails.router)
 app.include_router(cocktail_documents.router)
 app.include_router(sso.router)
 app.include_router(admin.router)
+app.include_router(stripe_webhook.router)
 app.include_router(demo.router)
 
 

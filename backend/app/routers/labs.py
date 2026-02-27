@@ -11,6 +11,7 @@ from app.models import models
 from app.models.models import BillingStatus
 from app.schemas import schemas
 from app.middleware.auth import get_current_user, require_role
+from app.core.config import settings as app_settings
 from app.services.audit import log_audit, snapshot_lab
 from app.services.object_storage import object_storage
 from app.services.storage import create_temporary_storage
@@ -264,3 +265,70 @@ def update_trial_ends_at(
     db.commit()
     db.refresh(lab)
     return lab
+
+
+# ── Stripe Billing ────────────────────────────────────────────────────────
+
+
+@router.post("/billing/checkout", response_model=schemas.CheckoutResponse)
+def billing_checkout(
+    body: schemas.CheckoutRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
+    )),
+):
+    if not app_settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Billing is not configured")
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    from app.services.stripe_service import create_checkout_session
+    url = create_checkout_session(db, lab, body.success_url, body.cancel_url)
+    db.commit()
+    return {"url": url}
+
+
+@router.post("/billing/portal", response_model=schemas.PortalResponse)
+def billing_portal(
+    body: schemas.PortalRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
+    )),
+):
+    if not app_settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Billing is not configured")
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if not lab.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="No billing account found. Please subscribe first.")
+
+    from app.services.stripe_service import create_portal_session
+    url = create_portal_session(lab, body.return_url)
+    return {"url": url}
+
+
+@router.get("/billing/status", response_model=schemas.BillingStatusResponse)
+def billing_status(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    return {
+        "billing_status": lab.billing_status,
+        "trial_ends_at": lab.trial_ends_at,
+        "has_subscription": bool(lab.stripe_subscription_id),
+        "billing_email": lab.billing_email,
+        "plan_name": "LabAid Annual" if lab.stripe_subscription_id else "Free Trial",
+    }

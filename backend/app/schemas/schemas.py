@@ -939,6 +939,34 @@ class CocktailRecipeWithLots(CocktailRecipeOut):
     active_lot_count: int = 0
 
 
+# ── Stripe Billing ────────────────────────────────────────────────────────
+
+
+class CheckoutRequest(BaseModel):
+    success_url: str
+    cancel_url: str
+
+
+class CheckoutResponse(BaseModel):
+    url: str
+
+
+class PortalRequest(BaseModel):
+    return_url: str
+
+
+class PortalResponse(BaseModel):
+    url: str
+
+
+class BillingStatusResponse(BaseModel):
+    billing_status: str
+    trial_ends_at: datetime | None
+    has_subscription: bool
+    billing_email: str | None
+    plan_name: str
+
+
 # ── Demo Environment ──────────────────────────────────────────────────────
 
 

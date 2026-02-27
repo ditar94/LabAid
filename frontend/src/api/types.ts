@@ -34,6 +34,7 @@ export interface LabSettings {
   is_active?: boolean;
   trial_ends_at?: string | null;
   billing_url?: string;
+  billing_email?: string;
   is_demo?: boolean;
   password_enabled?: boolean;
 }
@@ -67,6 +68,7 @@ export interface Lab {
   demo_assigned_at?: string | null;
   demo_reset_at?: string | null;
   demo_cycle_count?: number;
+  stripe_customer_id?: string;
 }
 
 // ── Demo Environment ─────────────────────────────────────────────────────

@@ -14,6 +14,9 @@ locals {
     "CORS_ORIGINS",
     "COOKIE_DOMAIN",
     "RESEND_API_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_PRICE_ID",
   ]
 }
 

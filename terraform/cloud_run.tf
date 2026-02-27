@@ -144,6 +144,35 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
 
+      # Stripe billing
+      env {
+        name = "STRIPE_SECRET_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = "STRIPE_SECRET_KEY"
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name = "STRIPE_WEBHOOK_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = "STRIPE_WEBHOOK_SECRET"
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name = "STRIPE_PRICE_ID"
+        value_source {
+          secret_key_ref {
+            secret  = "STRIPE_PRICE_ID"
+            version = "latest"
+          }
+        }
+      }
+
       volume_mounts {
         name       = "cloudsql"
         mount_path = "/cloudsql"
