@@ -29,6 +29,7 @@ export default function LabsPage() {
   const [editingTrialId, setEditingTrialId] = useState<string | null>(null);
   const [trialDate, setTrialDate] = useState("");
   const [ssoLab, setSsoLab] = useState<{ id: string; name: string } | null>(null);
+  const [linkingStripeId, setLinkingStripeId] = useState<string | null>(null);
   const { addToast } = useToast();
   const { startImpersonation } = useAuth();
   const navigate = useNavigate();
@@ -101,6 +102,19 @@ export default function LabsPage() {
       addToast("Trial end date updated", "success");
     } catch {
       addToast("Failed to update trial date", "danger");
+    }
+  };
+
+  const handleLinkStripe = async (labId: string) => {
+    setLinkingStripeId(labId);
+    try {
+      await api.post(`/labs/${labId}/stripe-customer`);
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
+      addToast("Stripe customer created", "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to create Stripe customer", "danger");
+    } finally {
+      setLinkingStripeId(null);
     }
   };
 
@@ -235,13 +249,20 @@ export default function LabsPage() {
                   )}
                 </td>
                 <td>
-                  {l.stripe_subscription_id ? (
-                    <span title={`Customer: ${l.stripe_customer_id || "-"}\nSubscription: ${l.stripe_subscription_id}\nBilling email: ${l.billing_email || "-"}\nLast updated: ${l.billing_updated_at ? new Date(l.billing_updated_at).toLocaleString() : "-"}`}>
-                      <span className="badge badge-success">Stripe</span>
-                      {l.billing_email && <span className="text-muted" style={{ marginLeft: 6, fontSize: "0.85em" }}>{l.billing_email}</span>}
+                  {l.stripe_customer_id ? (
+                    <span title={`Customer: ${l.stripe_customer_id}\nSubscription: ${l.stripe_subscription_id || "None"}\nBilling email: ${l.billing_email || "-"}\nLast updated: ${l.billing_updated_at ? new Date(l.billing_updated_at).toLocaleString() : "-"}`}>
+                      <span className={`badge ${l.stripe_subscription_id ? "badge-success" : "badge-muted"}`}>
+                        {l.stripe_customer_id.slice(0, 15)}...
+                      </span>
                     </span>
                   ) : (
-                    <span className="text-muted">-</span>
+                    <button
+                      className="btn-sm"
+                      onClick={() => handleLinkStripe(l.id)}
+                      disabled={linkingStripeId === l.id}
+                    >
+                      {linkingStripeId === l.id ? "Linking..." : "Link to Stripe"}
+                    </button>
                   )}
                 </td>
                 <td style={{ display: "flex", alignItems: "center", gap: 8 }}>

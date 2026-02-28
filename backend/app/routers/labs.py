@@ -338,3 +338,24 @@ def billing_status(
         "billing_email": lab.billing_email,
         "plan_name": "LabAid Annual" if lab.stripe_subscription_id else "Free Trial",
     }
+
+
+@router.post("/{lab_id}/stripe-customer", response_model=schemas.Lab)
+def create_stripe_customer(
+    lab_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    if not app_settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Stripe is not configured")
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.stripe_customer_id:
+        raise HTTPException(status_code=409, detail="Lab already has a Stripe customer")
+
+    from app.services.stripe_service import get_or_create_customer
+    get_or_create_customer(db, lab)
+    db.commit()
+    db.refresh(lab)
+    return lab
