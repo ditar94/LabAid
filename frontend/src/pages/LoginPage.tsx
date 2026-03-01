@@ -115,7 +115,7 @@ export default function LoginPage() {
       <div className={`login-card${shaking ? " shake" : ""}`}>
         <div className="login-brand">
           <div className="login-icon">
-            <img src="/labaid-icon.svg" alt="" style={{ width: 100, height: 100 }} />
+            <img src="/labaid-icon.svg" alt="" style={{ width: 72, height: 72 }} />
           </div>
           <div>
             <h1>LabAid</h1>

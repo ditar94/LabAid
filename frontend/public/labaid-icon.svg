@@ -1,90 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="120 45 272 320" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <!-- Hexagon gradient -->
-    <linearGradient id="hexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="flask" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#4338CA"/>
       <stop offset="100%" style="stop-color:#6D5BF7"/>
     </linearGradient>
-    <!-- Flask body — lighter, blends with hex -->
-    <linearGradient id="flaskGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#3B35B0"/>
-      <stop offset="100%" style="stop-color:#5548E0"/>
+    <linearGradient id="liq" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#A5B4FC;stop-opacity:0.5"/>
+      <stop offset="100%" style="stop-color:#818CF8;stop-opacity:0.8"/>
     </linearGradient>
-    <!-- Liquid — soft luminous fill -->
-    <linearGradient id="liqGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#A5B4FC;stop-opacity:0.45"/>
-      <stop offset="100%" style="stop-color:#818CF8;stop-opacity:0.7"/>
-    </linearGradient>
-    <!-- Subtle ambient glow -->
-    <radialGradient id="bgGlow" cx="50%" cy="48%" r="42%">
-      <stop offset="0%" style="stop-color:#818CF8;stop-opacity:0.12"/>
-      <stop offset="100%" style="stop-color:#818CF8;stop-opacity:0"/>
-    </radialGradient>
-    <!-- Shadow -->
-    <filter id="sh">
-      <feDropShadow dx="0" dy="2.5" stdDeviation="4" flood-color="#312E81" flood-opacity="0.15"/>
-    </filter>
   </defs>
-
-  <!-- Ambient glow -->
-  <ellipse cx="256" cy="200" rx="145" ry="140" fill="url(#bgGlow)"/>
-
-  <!-- === HEXAGON === -->
-  <g filter="url(#sh)">
-    <polygon points="256,68 370,134 370,266 256,332 142,266 142,134" 
-      fill="url(#hexGrad)"/>
-  </g>
-
-  <!-- === FLASK — simplified, lighter fill === -->
-  <g transform="translate(256, 195)">
+  <g transform="translate(256, 272)">
     <!-- Flask body -->
-    <path d="
-      M -15,-70
-      L -15,-24
-      L -48,36
-      Q -54,48 -46,58
-      Q -38,66 -26,66
-      L 26,66
-      Q 38,66 46,58
-      Q 54,48 48,36
-      L 15,-24
-      L 15,-70
-      Z
-    " fill="url(#flaskGrad)" stroke="#FFFFFF" stroke-width="2.5" stroke-opacity="0.85"/>
-
+    <path d="M -72,-224 L -72,-88 L -208,152 Q -237,208 -200,248 Q -168,280 -112,280 L 112,280 Q 168,280 200,248 Q 237,208 208,152 L 72,-88 L 72,-224 Z" fill="url(#flask)"/>
     <!-- Flask rim -->
-    <rect x="-20" y="-76" width="40" height="8" rx="4" fill="#5B54E8" stroke="#FFFFFF" stroke-width="2" stroke-opacity="0.85"/>
-
-    <!-- Liquid -->
-    <path d="
-      M -40,30
-      Q -26,22 -10,30
-      Q 6,38 20,28
-      Q 32,22 42,30
-      L 48,36
-      Q 54,48 46,58
-      Q 38,66 26,66
-      L -26,66
-      Q -38,66 -46,58
-      Q -54,48 -48,36
-      Z
-    " fill="url(#liqGrad)"/>
-
-    <!-- Aid cross — clean, centered in neck -->
-    <rect x="-3.5" y="-56" width="7" height="20" rx="2" fill="#FFFFFF" opacity="0.95"/>
-    <rect x="-10" y="-49.5" width="20" height="7" rx="2" fill="#FFFFFF" opacity="0.95"/>
-  </g>
-
-  <!-- === BARCODE — slightly refined === -->
-  <g transform="translate(234, 284)" opacity="0.85">
-    <rect x="0" y="0" width="3" height="11" rx="1" fill="#FFFFFF"/>
-    <rect x="5" y="0" width="2" height="11" rx="1" fill="#FFFFFF"/>
-    <rect x="9" y="0" width="4" height="11" rx="1" fill="#FFFFFF"/>
-    <rect x="15" y="0" width="2" height="11" rx="1" fill="#FFFFFF"/>
-    <rect x="19" y="0" width="3" height="11" rx="1" fill="#FFFFFF"/>
-    <rect x="24" y="0" width="2" height="11" rx="1" fill="#FFFFFF"/>
-    <rect x="28" y="0" width="4" height="11" rx="1" fill="#FFFFFF"/>
-    <rect x="34" y="0" width="2" height="11" rx="1" fill="#FFFFFF"/>
-    <rect x="38" y="0" width="3" height="11" rx="1" fill="#FFFFFF"/>
+    <rect x="-104" y="-253" width="208" height="40" rx="20" fill="url(#flask)"/>
+    <!-- Liquid area -->
+    <path d="M -176,128 Q -112,88 -48,128 Q 16,168 80,120 Q 144,88 192,128 L 208,152 Q 237,208 200,248 Q 168,280 112,280 L -112,280 Q -168,280 -200,248 Q -237,208 -208,152 Z" fill="url(#liq)"/>
+    <!-- Barcode bars in liquid -->
+    <g opacity="0.85">
+      <rect x="-112" y="144" width="21" height="96" rx="5" fill="#FFFFFF"/>
+      <rect x="-77" y="144" width="13" height="96" rx="4" fill="#FFFFFF"/>
+      <rect x="-51" y="144" width="26" height="96" rx="5" fill="#FFFFFF"/>
+      <rect x="-6" y="144" width="13" height="96" rx="4" fill="#FFFFFF"/>
+      <rect x="22" y="144" width="21" height="96" rx="5" fill="#FFFFFF"/>
+      <rect x="59" y="144" width="13" height="96" rx="4" fill="#FFFFFF"/>
+      <rect x="88" y="144" width="26" height="96" rx="5" fill="#FFFFFF"/>
+    </g>
+    <!-- Plus/cross -->
+    <rect x="-18" y="-184" width="36" height="96" rx="11" fill="#FFFFFF" opacity="0.95"/>
+    <rect x="-51" y="-157" width="102" height="36" rx="11" fill="#FFFFFF" opacity="0.95"/>
   </g>
 </svg>
