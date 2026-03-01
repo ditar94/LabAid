@@ -38,8 +38,9 @@ class LabAidPDF(FPDF):
     """Base PDF class with branded header and footer."""
 
     def __init__(self, title: str, lab_name: str, pulled_by: str = "",
-                 subtitle: str = "", tz: str | None = None):
-        super().__init__(orientation="P", unit="mm", format="A4")
+                 subtitle: str = "", tz: str | None = None,
+                 orientation: str = "P"):
+        super().__init__(orientation=orientation, unit="mm", format="A4")
         self.report_title = title
         self.lab_name = lab_name
         self.pulled_by = pulled_by
@@ -130,9 +131,10 @@ def _render_table(title: str, lab_name: str, pulled_by: str,
 def _render_grouped_table(title: str, lab_name: str, pulled_by: str,
                           columns: list[tuple[str, int]], data: list[dict],
                           row_fn, group_key: str = "antibody_full",
-                          tz: str | None = None) -> bytes:
+                          tz: str | None = None,
+                          orientation: str = "P") -> bytes:
     """Render a PDF with data grouped by antibody, each group as its own table."""
-    pdf = LabAidPDF(title, lab_name, pulled_by, tz=tz)
+    pdf = LabAidPDF(title, lab_name, pulled_by, tz=tz, orientation=orientation)
     pdf.alias_nb_pages()
     pdf.add_page()
     widths = [c[1] for c in columns]
@@ -290,17 +292,58 @@ def render_cocktail_lot_pdf(data: list[dict], lab_name: str,
                              pulled_by: str = "", tz: str | None = None) -> bytes:
     columns = [
         ("Lot #", 20), ("Prepared", 18), ("Expires", 18),
-        ("QC", 12), ("QC By", 20), ("Renewals", 12),
-        ("Tests", 10), ("Status", 14), ("Created By", 20), ("Components", 46),
+        ("QC", 13), ("QC By", 22), ("QC Approved", 18),
+        ("Renewal History", 52), ("Tests", 10),
+        ("Status", 14), ("Created By", 20), ("Components", 52),
     ]
     return _render_grouped_table(
         "Cocktail Lot Report", lab_name, pulled_by, columns, data,
         lambda r: [
             r["lot_number"], r["preparation_date"], r["expiration_date"],
-            r["qc_status"], r["qc_approved_by"], str(r["renewal_count"]),
+            r["qc_status"], r["qc_approved_by"], r.get("qc_approved_at", ""),
+            r.get("renewal_history", ""),
             str(r.get("test_count", "")),
             r["status"], r["created_by"], r["components"],
         ],
         group_key="recipe_name",
         tz=tz,
+        orientation="L",
     )
+
+
+def render_qc_stamp_overlay(filename: str, uploaded_at: str = "",
+                             lot_number: str = "",
+                             period: str = "",
+                             page_w_pt: float = 612,
+                             page_h_pt: float = 792) -> bytes:
+    w_mm = page_w_pt * 25.4 / 72
+    h_mm = page_h_pt * 25.4 / 72
+    pdf = FPDF(unit="mm")
+    pdf.set_auto_page_break(auto=False)
+    pdf.add_page(format=(w_mm, h_mm))
+    lines = []
+    if lot_number:
+        label = f"Lot #: {lot_number}"
+        if period:
+            label += f" ({period})"
+        lines.append(label)
+    elif period:
+        lines.append(period)
+    if uploaded_at:
+        lines.append(f"Uploaded: {uploaded_at}")
+    # Truncate long filenames
+    fn = filename if len(filename) <= 40 else filename[:37] + "..."
+    lines.append(fn)
+    line_h = 3.2
+    block_h = line_h * len(lines) + 2
+    x, y = 4, h_mm - block_h - 4
+    pdf.set_fill_color(255, 255, 255)
+    pdf.set_draw_color(180, 180, 180)
+    pdf.rect(x - 1, y - 1, 58, block_h + 2, style="DF")
+    pdf.set_font("Helvetica", "", 6.5)
+    pdf.set_text_color(80, 80, 80)
+    for line in lines:
+        pdf.set_xy(x, y)
+        pdf.cell(56, line_h, _safe(line))
+        y += line_h
+    return bytes(pdf.output())

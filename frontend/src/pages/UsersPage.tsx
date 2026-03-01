@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { User } from "../api/types";
@@ -14,11 +14,30 @@ export default function UsersPage() {
   const { user: currentUser, labSettings } = useAuth();
   const { labs, selectedLab, setSelectedLab } = useSharedData();
   const queryClient = useQueryClient();
-  const labParams = currentUser?.role === "super_admin" && selectedLab ? { lab_id: selectedLab } : {};
+
+  // Super admin needs its own lab selection — context's selectedLab may be empty
+  // when no labs have support_access_enabled, but Users page should work for all labs.
+  const [localLab, setLocalLab] = useState("");
+  const isSuperAdmin = currentUser?.role === "super_admin";
+  const effectiveLab = isSuperAdmin ? (localLab || selectedLab) : selectedLab;
+
+  // Auto-select first lab if localLab is empty and labs are available
+  useEffect(() => {
+    if (isSuperAdmin && !localLab && labs.length > 0) {
+      setLocalLab(labs[0].id);
+    }
+  }, [isSuperAdmin, localLab, labs]);
+
+  const handleLabChange = (id: string) => {
+    if (isSuperAdmin) setLocalLab(id);
+    setSelectedLab(id);
+  };
+
+  const labParams = isSuperAdmin && effectiveLab ? { lab_id: effectiveLab } : {};
   const { data: users = [], isLoading: loading } = useQuery<User[]>({
-    queryKey: ["users", selectedLab],
+    queryKey: ["users", effectiveLab],
     queryFn: () => api.get("/auth/users", { params: labParams }).then(r => r.data),
-    enabled: !!selectedLab,
+    enabled: !!effectiveLab,
   });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -48,8 +67,8 @@ export default function UsersPage() {
     setInviteResult(null);
     try {
       const params: Record<string, string> = {};
-      if (currentUser?.role === "super_admin" && selectedLab) {
-        params.lab_id = selectedLab;
+      if (currentUser?.role === "super_admin" && effectiveLab) {
+        params.lab_id = effectiveLab;
       }
       const res = await api.post("/auth/users", form, { params });
       setInviteResult({
@@ -181,8 +200,8 @@ export default function UsersPage() {
           {currentUser?.role === "super_admin" && labs.length > 0 && (
             <select
               aria-label="Select lab"
-              value={selectedLab}
-              onChange={(e) => setSelectedLab(e.target.value)}
+              value={effectiveLab}
+              onChange={(e) => handleLabChange(e.target.value)}
             >
               {labs.map((lab) => (
                 <option key={lab.id} value={lab.id}>

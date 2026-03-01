@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, Calendar, Mail, Clock, Shield } from "lucide-react";
+import { CreditCard, Calendar, Mail, Clock, Check } from "lucide-react";
 import api from "../api/client";
 import { useToast } from "../context/ToastContext";
 
@@ -98,6 +98,18 @@ export default function BillingPage() {
     ? Math.max(0, Math.ceil((new Date(billing.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : null;
 
+  const features = [
+    "Barcode scanning on any device",
+    "Full vial lifecycle tracking",
+    "Expiration tracking & alerts",
+    "Visual storage grid mapping",
+    "Immutable audit trail",
+    "Compliance reports & PDF export",
+    "QC document management",
+    "Role-based access control",
+    "Email support",
+  ];
+
   return (
     <div>
       <div className="page-header">
@@ -105,120 +117,124 @@ export default function BillingPage() {
       </div>
 
       <div className="billing-layout">
-        {/* Subscription Status Card */}
-        <div className="card billing-status-card">
-          <div className="billing-status-header">
-            <div>
-              <div className="billing-status-label">Subscription Status</div>
-              <div className="billing-status-value">
-                <span className={`badge ${statusBadgeClass(billing.billing_status)}`}>
-                  {statusLabel(billing.billing_status)}
-                </span>
+        {/* Trial / Cancelled — pricing card */}
+        {(isTrial || isCancelled) && (
+          <div className="card billing-plan-card">
+            <div className="billing-plan-header">
+              <div>
+                <div className="billing-plan-name">
+                  LabAid Standard
+                  <span className={`badge ${statusBadgeClass(billing.billing_status)}`}>
+                    {statusLabel(billing.billing_status)}
+                  </span>
+                </div>
+                <div className="billing-plan-price">
+                  <span className="billing-plan-amount">$350</span>
+                  <span className="billing-plan-period">/month</span>
+                </div>
+                <div className="billing-plan-billed">$4,200 billed annually &middot; Unlimited users</div>
               </div>
             </div>
-            {(isTrial || isCancelled) && (
-              <button className="btn-primary" onClick={() => setShowModal(true)}>
-                {isCancelled ? "Reactivate" : "Subscribe"}
+
+            <ul className="billing-plan-features">
+              {features.map((f) => (
+                <li key={f}>
+                  <Check size={16} className="billing-plan-check" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+
+            <div className="billing-plan-cta">
+              <button className="btn-primary billing-plan-btn" onClick={() => setShowModal(true)}>
+                {isCancelled ? "Reactivate Subscription" : "Subscribe Now"}
               </button>
+            </div>
+
+            {isTrial && (
+              <div className="billing-message billing-message--info" style={{ marginTop: 16 }}>
+                <Clock size={16} />
+                <span>
+                  {trialExpired
+                    ? "Your free trial has expired. Subscribe to continue using LabAid."
+                    : trialDaysLeft !== null
+                      ? `${trialDaysLeft} day${trialDaysLeft !== 1 ? "s" : ""} remaining in your free trial${billing.trial_ends_at ? ` (ends ${new Date(billing.trial_ends_at).toLocaleDateString()})` : ""}.`
+                      : "You're on a free trial. Subscribe to unlock uninterrupted access."}
+                </span>
+              </div>
             )}
-            {isActive && (
-              <button className="btn-primary" onClick={handlePortal}>Manage Billing</button>
-            )}
-            {isPastDue && (
-              <button className="btn-primary" onClick={handlePortal}>Update Payment</button>
+            {isCancelled && (
+              <div className="billing-message billing-message--danger" style={{ marginTop: 16 }}>
+                <Clock size={16} />
+                <span>Your subscription has been cancelled. Reactivate to restore full access.</span>
+              </div>
             )}
           </div>
+        )}
 
-          {/* Status-specific message */}
-          {isTrial && (
-            <div className="billing-message billing-message--info">
-              <Clock size={16} />
-              <span>
-                {trialExpired
-                  ? "Your free trial has expired. Subscribe to continue using LabAid."
-                  : trialDaysLeft !== null
-                    ? `${trialDaysLeft} day${trialDaysLeft !== 1 ? "s" : ""} remaining in your free trial.`
-                    : "You're on a free trial. Subscribe to unlock uninterrupted access."}
-              </span>
+        {/* Active / Past Due — details card */}
+        {(isActive || isPastDue) && (
+          <div className="card billing-plan-card">
+            <div className="billing-plan-header">
+              <div>
+                <div className="billing-plan-name">
+                  {billing.plan_name}
+                  <span className={`badge ${statusBadgeClass(billing.billing_status)}`}>
+                    {statusLabel(billing.billing_status)}
+                  </span>
+                </div>
+              </div>
+              <button className="btn-primary" onClick={handlePortal}>
+                {isPastDue ? "Update Payment" : "Manage Billing"}
+              </button>
             </div>
-          )}
-          {isPastDue && (
-            <div className="billing-message billing-message--warning">
-              <Clock size={16} />
-              <span>Your payment is past due. Please update your payment method to avoid service interruption.</span>
-            </div>
-          )}
-          {isCancelled && (
-            <div className="billing-message billing-message--danger">
-              <Clock size={16} />
-              <span>Your subscription has been cancelled. Reactivate to restore full access.</span>
-            </div>
-          )}
-        </div>
 
-        {/* Details Card — only for active or trial with dates */}
-        {(isActive || (isTrial && billing.trial_ends_at)) && (
-          <div className="card billing-details-card">
-            <h3 className="billing-details-title">Details</h3>
-            <div className="billing-details-grid">
-              {isActive && (
-                <>
-                  <div className="billing-detail">
-                    <Shield size={16} className="billing-detail-icon" />
-                    <div>
-                      <div className="billing-detail-label">Plan</div>
-                      <div className="billing-detail-value">{billing.plan_name}</div>
-                    </div>
-                  </div>
-                  {billing.subscribed_at && (
-                    <div className="billing-detail">
-                      <Calendar size={16} className="billing-detail-icon" />
-                      <div>
-                        <div className="billing-detail-label">Subscribed Since</div>
-                        <div className="billing-detail-value">{formatDate(billing.subscribed_at)}</div>
-                      </div>
-                    </div>
-                  )}
-                  <div className="billing-detail">
-                    <Calendar size={16} className="billing-detail-icon" />
-                    <div>
-                      <div className="billing-detail-label">Current Period</div>
-                      <div className="billing-detail-value">{formatDate(billing.current_period_start)} &ndash; {formatDate(billing.current_period_end)}</div>
-                    </div>
-                  </div>
-                  {billing.current_period_end && (
-                    <div className="billing-detail">
-                      <Clock size={16} className="billing-detail-icon" />
-                      <div>
-                        <div className="billing-detail-label">Next Payment</div>
-                        <div className="billing-detail-value">{formatDate(billing.current_period_end)}</div>
-                      </div>
-                    </div>
-                  )}
-                  <div className="billing-detail">
-                    <CreditCard size={16} className="billing-detail-icon" />
-                    <div>
-                      <div className="billing-detail-label">Payment Method</div>
-                      <div className="billing-detail-value">{paymentMethodLabel(billing.collection_method)}</div>
-                    </div>
-                  </div>
-                  {billing.billing_email && (
-                    <div className="billing-detail">
-                      <Mail size={16} className="billing-detail-icon" />
-                      <div>
-                        <div className="billing-detail-label">Billing Email</div>
-                        <div className="billing-detail-value">{billing.billing_email}</div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-              {isTrial && billing.trial_ends_at && (
+            {isPastDue && (
+              <div className="billing-message billing-message--warning">
+                <Clock size={16} />
+                <span>Your payment is past due. Please update your payment method to avoid service interruption.</span>
+              </div>
+            )}
+
+            <div className="billing-details-grid" style={{ marginTop: 20 }}>
+              {billing.subscribed_at && (
                 <div className="billing-detail">
                   <Calendar size={16} className="billing-detail-icon" />
                   <div>
-                    <div className="billing-detail-label">Trial Ends</div>
-                    <div className="billing-detail-value">{new Date(billing.trial_ends_at).toLocaleDateString()}</div>
+                    <div className="billing-detail-label">Subscribed Since</div>
+                    <div className="billing-detail-value">{formatDate(billing.subscribed_at)}</div>
+                  </div>
+                </div>
+              )}
+              <div className="billing-detail">
+                <Calendar size={16} className="billing-detail-icon" />
+                <div>
+                  <div className="billing-detail-label">Current Period</div>
+                  <div className="billing-detail-value">{formatDate(billing.current_period_start)} &ndash; {formatDate(billing.current_period_end)}</div>
+                </div>
+              </div>
+              {billing.current_period_end && (
+                <div className="billing-detail">
+                  <Clock size={16} className="billing-detail-icon" />
+                  <div>
+                    <div className="billing-detail-label">Next Payment</div>
+                    <div className="billing-detail-value">{formatDate(billing.current_period_end)}</div>
+                  </div>
+                </div>
+              )}
+              <div className="billing-detail">
+                <CreditCard size={16} className="billing-detail-icon" />
+                <div>
+                  <div className="billing-detail-label">Payment Method</div>
+                  <div className="billing-detail-value">{paymentMethodLabel(billing.collection_method)}</div>
+                </div>
+              </div>
+              {billing.billing_email && (
+                <div className="billing-detail">
+                  <Mail size={16} className="billing-detail-icon" />
+                  <div>
+                    <div className="billing-detail-label">Billing Email</div>
+                    <div className="billing-detail-value">{billing.billing_email}</div>
                   </div>
                 </div>
               )}

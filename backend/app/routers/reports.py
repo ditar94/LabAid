@@ -723,6 +723,12 @@ def cocktail_lots_export(
     lots_q = db.query(CocktailLot.id).filter(CocktailLot.lab_id == current_user.lab_id)
     if recipe_id:
         lots_q = lots_q.filter(CocktailLot.recipe_id == recipe_id)
+    if lot_id:
+        lots_q = lots_q.filter(CocktailLot.id == lot_id)
+    if date_from:
+        lots_q = lots_q.filter(CocktailLot.preparation_date >= date_from)
+    if date_to:
+        lots_q = lots_q.filter(CocktailLot.preparation_date <= date_to)
     relevant_ids = [r[0] for r in lots_q.all()]
     docs = fetch_cocktail_qc_documents(db, current_user.lab_id, relevant_ids)
 

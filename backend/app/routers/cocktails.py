@@ -675,11 +675,12 @@ def update_qc_status(
                 CocktailLotDocument.cocktail_lot_id == lot_id,
                 CocktailLotDocument.is_qc_document.is_(True),
                 CocktailLotDocument.is_deleted == False,  # noqa: E712
+                CocktailLotDocument.renewal_number == lot.renewal_count,
             ).first() is not None
             if not has_qc_doc:
                 raise HTTPException(
                     status_code=409,
-                    detail="A QC document must be uploaded before this cocktail lot can be approved.",
+                    detail="A QC document for the current period must be uploaded before approval.",
                 )
 
     from app.services.cocktail_service import _snapshot_cocktail_lot

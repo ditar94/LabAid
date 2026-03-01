@@ -235,8 +235,8 @@ function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUpload
           </div>
           {error && <p className="error">{error}</p>}
         </div>
-        <button onClick={onClose} className="btn-secondary" style={{ marginTop: "var(--space-lg)" }}>
-          {onUploadAndApprove ? "Cancel" : "Close"}
+        <button onClick={onClose} className={onUploadAndApprove ? "btn-secondary" : ""} style={{ marginTop: "var(--space-lg)", width: onUploadAndApprove ? undefined : "100%" }}>
+          {onUploadAndApprove ? "Cancel" : "Done"}
         </button>
       </div>
       {deletePrompt && (

@@ -708,6 +708,30 @@ def get_cocktail_lot_data(
     creator_ids = {cl.created_by for cl in lots if cl.created_by}
     user_map = _resolve_user_map(db, approver_ids | creator_ids)
 
+    # Batch: renewal history from audit log
+    renewal_logs = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.entity_type == "cocktail_lot",
+            AuditLog.entity_id.in_(lot_ids),
+            AuditLog.action == "cocktail_lot.renewed",
+        )
+        .order_by(AuditLog.created_at)
+        .all()
+    )
+    audit_user_ids = {a.user_id for a in renewal_logs}
+    user_map.update(_resolve_user_map(db, audit_user_ids - set(user_map.keys())))
+
+    renewals_by_lot: dict[UUID, list[str]] = {}
+    renewal_counter: dict[UUID, int] = {}
+    for a in renewal_logs:
+        renewal_counter[a.entity_id] = renewal_counter.get(a.entity_id, 0) + 1
+        n = renewal_counter[a.entity_id]
+        who = user_map.get(a.user_id, "?")
+        renewals_by_lot.setdefault(a.entity_id, []).append(
+            f"#{n}: {_fmt_date(a.created_at)} by {who}"
+        )
+
     result = []
     for cl in lots:
         recipe = recipe_map.get(cl.recipe_id)
@@ -737,6 +761,8 @@ def get_cocktail_lot_data(
             else:
                 comp_details.append(name)
 
+        renewal_history = renewals_by_lot.get(cl.id, [])
+
         result.append({
             "recipe_name": recipe_name,
             "lot_number": cl.lot_number,
@@ -744,7 +770,9 @@ def get_cocktail_lot_data(
             "expiration_date": _fmt_date(cl.expiration_date),
             "qc_status": cl.qc_status.value if cl.qc_status else "",
             "qc_approved_by": user_map.get(cl.qc_approved_by, "") if cl.qc_approved_by else "",
+            "qc_approved_at": _fmt_date(cl.qc_approved_at),
             "renewal_count": cl.renewal_count,
+            "renewal_history": "\n".join(renewal_history) if renewal_history else "",
             "test_count": cl.test_count if cl.test_count is not None else "",
             "status": cl.status.value if cl.status else "",
             "created_by": user_map.get(cl.created_by, "") if cl.created_by else "",

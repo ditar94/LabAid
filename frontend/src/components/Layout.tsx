@@ -112,7 +112,7 @@ export default function Layout() {
   const accountBanner = useMemo(() => {
     if (!hasLabContext) return null;
     if (labSettings.is_demo) {
-      return { variant: "trial", icon: Info, message: "This is a demo lab. Explore freely \u2014 all data resets automatically.", action: { text: "Start free trial", type: "signup" as const } };
+      return { variant: "trial", icon: Info, message: "This is a demo lab. Explore freely \u2014 all data resets automatically." };
     }
     const billing = labSettings.billing_status;
     const active = labSettings.is_active;
@@ -416,11 +416,22 @@ export default function Layout() {
             {accountBanner.action && (
               <button
                 className="account-banner-link"
-                onClick={() => accountBanner.action!.type === "signup" ? (window.location.href = "/signup") : accountBanner.action!.type === "checkout" ? setShowPaymentModal(true) : navigate("/billing")}
+                onClick={() => accountBanner.action!.type === "checkout" ? setShowPaymentModal(true) : navigate("/billing")}
               >
                 {accountBanner.action.text}
               </button>
             )}
+          </div>
+        )}
+        {labSettings.is_demo && (
+          <div className="account-banner account-banner--demo-cta">
+            <span>Seen enough? Start your lab's 7-day free trial today!</span>
+            <button
+              className="account-banner-cta"
+              onClick={async () => { await logout(); window.location.href = "/signup"; }}
+            >
+              Start Free Trial
+            </button>
           </div>
         )}
         <RouteErrorBoundary>

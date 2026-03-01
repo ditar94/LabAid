@@ -269,8 +269,8 @@ export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onC
           {error && <p className="error">{error}</p>}
         </div>
 
-        <button onClick={onClose} className="btn-secondary" style={{ marginTop: "var(--space-lg)" }}>
-          Close
+        <button onClick={onClose} style={{ marginTop: "var(--space-lg)", width: "100%" }}>
+          Done
         </button>
       </div>
       {deletePrompt && (

@@ -21,13 +21,15 @@ export const GUIDE_CONTENT: GuideCategory[] = [
       {
         id: "first-login",
         title: "How to Log In for the First Time",
-        body: `When your account is created by a Lab Admin, you'll receive a temporary password.
+        body: `When your account is created by a Lab Admin, you'll receive an email invitation with a link to set your password.
 
-1. Open LabAid and enter your email and temporary password on the login screen.
-2. You'll be prompted to set a new password. Choose something secure — at least 8 characters.
-3. After changing your password, you'll be taken to the Dashboard.
+1. Click the link in the invitation email.
+2. Choose a secure password — at least 10 characters with uppercase, lowercase, and a number.
+3. After setting your password, you'll be able to log in from the login screen.
 
-If you forget your password, ask your Lab Admin to reset it from the Users page. They'll give you a new temporary password to log in with.`,
+If your lab uses SSO (Single Sign-On), you'll sign in with your organization's credentials instead — no separate LabAid password is needed.
+
+If you forget your password, click "Forgot password?" on the login screen to reset it yourself, or ask your Lab Admin to send a reset link from the Users page.`,
       },
       {
         id: "navigating",
@@ -433,26 +435,26 @@ If the unit still has vials in it, the delete will be rejected. Move all vials o
       {
         id: "cocktail-overview",
         title: "What Are Cocktails?",
-        body: `Cocktails are pre-mixed combinations of antibodies used together in a single staining panel. The Cocktails page lets you define reusable recipes and track prepared lots with full traceability.
+        body: `In flow cytometry, a cocktail is a combination of fluorochrome-conjugated antibodies that your lab mixes together into a single tube for staining. Instead of pipetting each antibody individually per sample, technicians prepare a cocktail batch in advance and use it to stain multiple markers in one step — reducing pipetting errors, improving consistency between runs, and saving time.
 
 Key concepts:
-• Recipe — A saved formula listing which antibodies (and volumes) make up a cocktail. Recipes are reusable templates.
-• Cocktail Lot — A physical batch prepared from a recipe. Each lot tracks its preparation date, expiration date, source lots, QC status, and renewal history.
-• Shelf Life — How many days a prepared cocktail lot stays usable, set per recipe.
-• Renewals — Some cocktails can be renewed (re-validated) to extend their usable life. The recipe controls how many renewals are allowed.
+• Cocktail — A saved definition listing which antibodies (and volumes) make up the mix. Cocktails are reusable templates.
+• Cocktail Lot — A physical batch prepared from a cocktail definition. Each lot tracks its preparation date, expiration date, source antibody lots, QC status, and renewal history.
+• Shelf Life — How many days a prepared cocktail lot stays usable, set per cocktail.
+• Renewals — Some cocktail lots can be renewed (re-validated) to extend their usable life. The cocktail definition controls how many renewals are allowed.
 
 The Cocktails page is only visible when the "Cocktails" setting is enabled by a Lab Admin. Go to Settings to turn it on.`,
       },
       {
         id: "create-cocktail-recipe",
-        title: "How to Create a Cocktail Recipe",
+        title: "How to Create a Cocktail",
         role: "supervisor",
-        body: `Recipes define which antibodies go into a cocktail and in what amounts.
+        body: `A cocktail definition specifies which antibodies go into the mix and in what amounts.
 
 1. Go to the Cocktails page.
 2. Click "+ New Cocktail."
 3. Fill in:
-   • Name — A descriptive name for the cocktail (e.g., "T-Cell Panel" or "B-Cell Cocktail")
+   • Name — A descriptive name (e.g., "T-Cell Panel" or "B-Cell Cocktail")
    • Shelf Life (days) — How long a prepared lot is usable
    • Max Renewals — How many times a lot can be renewed (leave blank for unlimited)
 4. Add components:
@@ -462,28 +464,28 @@ The Cocktails page is only visible when the "Cocktails" setting is enabled by a 
    • You can also type a free-text name for non-antibody components (e.g., "Brilliant Stain Buffer")
 5. Click "Create."
 
-The recipe appears as a card on the Cocktails page. Click it to see its lots and details.`,
+The cocktail appears as a card on the Cocktails page. Click it to see its lots and details.`,
       },
       {
         id: "edit-cocktail-recipe",
-        title: "How to Edit a Cocktail Recipe",
+        title: "How to Edit a Cocktail",
         role: "supervisor",
-        body: `You can update a recipe's name, shelf life, renewal limit, and components at any time.
+        body: `You can update a cocktail's name, shelf life, renewal limit, and components at any time.
 
-1. Go to the Cocktails page and find the recipe card.
-2. Click the Edit button on the recipe card.
+1. Go to the Cocktails page and find the cocktail card.
+2. Click the Edit button on the card.
 3. Make your changes — add, remove, or reorder components as needed.
 4. Click "Save."
 
-Editing a recipe does not affect lots that have already been prepared — they retain their original composition.`,
+Editing a cocktail definition does not affect lots that have already been prepared — they retain their original composition.`,
       },
       {
         id: "prepare-cocktail-lot",
         title: "How to Prepare a Cocktail Lot",
         body: `Preparing a lot records that you physically mixed a batch of the cocktail.
 
-1. Go to the Cocktails page and find the recipe.
-2. Click "Prepare" on the recipe card.
+1. Go to the Cocktails page and find the cocktail.
+2. Click "Prepare" on the cocktail card.
 3. Fill in:
    • Lot Number — A unique identifier for this batch
    • Preparation Date — When you mixed it (defaults to today)
@@ -492,7 +494,7 @@ Editing a recipe does not affect lots that have already been prepared — they r
 4. For each component, select which source lot from your inventory was used. This creates full traceability from the cocktail back to individual reagent lots.
 5. Click "Prepare Lot."
 
-The new lot appears under the recipe card with a "Pending" QC status.`,
+The new lot appears under the cocktail card with a "Pending" QC status.`,
       },
       {
         id: "cocktail-qc",
@@ -500,7 +502,7 @@ The new lot appears under the recipe card with a "Pending" QC status.`,
         role: "supervisor",
         body: `Newly prepared cocktail lots start with a "Pending" QC status. A Supervisor or Admin must approve them before they're considered validated.
 
-1. Go to the Cocktails page and expand the recipe.
+1. Go to the Cocktails page and expand the cocktail.
 2. Find the lot and click the checkmark (Approve) button.
 3. The lot's status changes to "Approved."
 
@@ -516,12 +518,12 @@ You can also attach QC documents to a cocktail lot by clicking the document icon
 
 1. Find the approved lot on the Cocktails page.
 2. Click the Renew button (circular arrow icon).
-3. The expiration date advances by the recipe's shelf life, and the renewal count increases.
+3. The expiration date advances by the cocktail's shelf life, and the renewal count increases.
 
 Renewal is only available when:
 • The lot has been QC approved
 • The lot is still active (not depleted or archived)
-• The lot hasn't exceeded the recipe's maximum renewal limit`,
+• The lot hasn't exceeded the cocktail's maximum renewal limit`,
       },
       {
         id: "deplete-archive-cocktail",
@@ -536,7 +538,7 @@ Archive: Hides a lot from the default view to keep things tidy.
 2. Optionally enter an archive note.
 3. Confirm.
 
-To see archived lots, toggle "Show inactive" at the bottom of the recipe's lot list.`,
+To see archived lots, toggle "Show inactive" at the bottom of the cocktail's lot list.`,
       },
       {
         id: "cocktail-documents",
@@ -570,7 +572,7 @@ Uploaded documents appear in the modal list. Click a document name to download i
    • Email address
    • Role — Choose from Supervisor, Tech, or Read Only
 4. Click "Create User."
-5. A success banner appears showing a temporary password. Share this with the user — they'll be required to change it on first login.
+5. An invitation email is sent to the user with a link to set their password.
 
 Best practices:
 • Give each person their own account for accurate audit trails.
@@ -580,14 +582,21 @@ Best practices:
       },
       {
         id: "reset-password",
-        title: "How to Reset a User's Password",
-        role: "admin",
-        body: `If a user forgets their password, a Lab Admin can reset it.
+        title: "How to Reset a Password",
+        body: `There are several ways to reset a password depending on your situation.
 
+If you forgot your own password:
+1. On the login screen, click "Forgot password?"
+2. Enter your email address.
+3. Check your inbox for a password reset link and follow the instructions.
+
+If your lab uses SSO (Single Sign-On):
+Your password is managed by your organization's identity provider (e.g., Microsoft Entra, Google Workspace). Follow your company's policy for resetting your SSO credentials — LabAid cannot reset these passwords.
+
+If you're a Lab Admin resetting another user's password:
 1. Go to the Users page.
 2. Find the user and click "Reset Password" in the actions column.
-3. A new temporary password is generated and shown in a success banner.
-4. Share the temporary password with the user. They'll be required to change it on their next login.`,
+3. A reset email is sent to the user with a link to set a new password.`,
       },
       {
         id: "lab-settings",

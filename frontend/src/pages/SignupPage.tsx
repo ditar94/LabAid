@@ -81,6 +81,7 @@ export default function SignupPage() {
       <div className="login-orb login-orb-2" aria-hidden="true" />
       <div className="login-orb login-orb-3" aria-hidden="true" />
 
+      <a href="/" className="login-back-link"><ArrowLeft size={16} /> Back to home</a>
       <div className="login-card">
         <div className="login-brand">
           <div className="login-icon">
