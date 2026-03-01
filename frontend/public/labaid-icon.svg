@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="130 50 252 310" width="512" height="512">
+  <defs>
+    <!-- Updated gradient to match reference - deep indigo/blue-purple -->
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4338CA"/>
+      <stop offset="100%" style="stop-color:#6D5BF7"/>
+    </linearGradient>
+    <!-- Deep base -->
+    <linearGradient id="gradDeep" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3730A3"/>
+      <stop offset="100%" style="stop-color:#5B4FD6"/>
+    </linearGradient>
+    <!-- Flask liquid -->
+    <linearGradient id="liqGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#A5B4FC;stop-opacity:0.5"/>
+      <stop offset="100%" style="stop-color:#6366F1;stop-opacity:0.8"/>
+    </linearGradient>
+    <!-- Text gradient -->
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4338CA"/>
+      <stop offset="100%" style="stop-color:#6D5BF7"/>
+    </linearGradient>
+    <!-- Glow -->
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="45%">
+      <stop offset="0%" style="stop-color:#818CF8;stop-opacity:0.15"/>
+      <stop offset="100%" style="stop-color:#818CF8;stop-opacity:0"/>
+    </radialGradient>
+    <radialGradient id="bub" cx="35%" cy="30%" r="50%">
+      <stop offset="0%" style="stop-color:#fff;stop-opacity:0.9"/>
+      <stop offset="100%" style="stop-color:#C7D2FE;stop-opacity:0.15"/>
+    </radialGradient>
+    <filter id="sh">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#312E81" flood-opacity="0.18"/>
+    </filter>
+    <filter id="sh2">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="#312E81" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <!-- Background glow -->
+  <ellipse cx="256" cy="210" rx="160" ry="150" fill="url(#bgGlow)"/>
+
+  <!-- === HEXAGON FRAME === -->
+  <g filter="url(#sh)">
+    <polygon points="256,68 370,134 370,266 256,332 142,266 142,134" 
+      fill="url(#grad1)" stroke="#818CF8" stroke-width="2" stroke-opacity="0.3"/>
+    
+    <!-- Inner hexagon outline -->
+    <polygon points="256,88 354,146 354,254 256,312 158,254 158,146" 
+      fill="none" stroke="#A5B4FC" stroke-width="1" stroke-opacity="0.25"/>
+  </g>
+
+
+
+  <!-- === ERLENMEYER FLASK === -->
+  <g transform="translate(256, 195)" filter="url(#sh2)">
+    <path d="
+      M -14,-68
+      L -14,-22
+      L -46,38
+      Q -52,50 -44,60
+      Q -36,68 -24,68
+      L 24,68
+      Q 36,68 44,60
+      Q 52,50 46,38
+      L 14,-22
+      L 14,-68
+      Z
+    " fill="#312E81" stroke="#A5B4FC" stroke-width="2.5"/>
+
+    <rect x="-19" y="-74" width="38" height="9" rx="4.5" fill="#4F46E5" stroke="#A5B4FC" stroke-width="1.5"/>
+
+    <path d="
+      M -38,26
+      Q -24,18 -10,26
+      Q 4,34 18,24
+      Q 30,18 40,26
+      L 46,38
+      Q 52,50 44,60
+      Q 36,68 24,68
+      L -24,68
+      Q -36,68 -44,60
+      Q -52,50 -46,38
+      Z
+    " fill="url(#liqGrad)"/>
+
+    <circle cx="-12" cy="48" r="4" fill="url(#bub)"/>
+    <circle cx="10" cy="42" r="3" fill="url(#bub)"/>
+    <circle cx="-2" cy="58" r="3.5" fill="url(#bub)"/>
+    <circle cx="20" cy="56" r="2.5" fill="url(#bub)"/>
+
+    <line x1="-14" y1="-36" x2="-8" y2="-36" stroke="#C7D2FE" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+    <line x1="-14" y1="-50" x2="-8" y2="-50" stroke="#C7D2FE" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+    <line x1="-14" y1="-22" x2="-8" y2="-22" stroke="#C7D2FE" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+
+    <rect x="-4" y="-58" width="8" height="24" rx="2" fill="#E0E7FF" opacity="0.75"/>
+    <rect x="-12" y="-50" width="24" height="8" rx="2" fill="#E0E7FF" opacity="0.75"/>
+  </g>
+
+  <!-- === BARCODE === -->
+  <g transform="translate(232, 286)" opacity="0.5">
+    <rect x="0" y="0" width="3" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="5" y="0" width="2" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="9" y="0" width="4" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="15" y="0" width="2" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="19" y="0" width="3" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="24" y="0" width="2" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="28" y="0" width="4" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="34" y="0" width="2" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="38" y="0" width="3" height="12" rx="1" fill="#C7D2FE"/>
+    <rect x="43" y="0" width="2" height="12" rx="1" fill="#C7D2FE"/>
+  </g>
+
+
+</svg>

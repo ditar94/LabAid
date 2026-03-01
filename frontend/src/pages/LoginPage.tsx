@@ -1,7 +1,7 @@
 import { useState, lazy, Suspense, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Navigate, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, FlaskConical } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { version } from "../../package.json";
 import { preloadAppChunks } from "../App";
 import api from "../api/client";
@@ -115,7 +115,7 @@ export default function LoginPage() {
       <div className={`login-card${shaking ? " shake" : ""}`}>
         <div className="login-brand">
           <div className="login-icon">
-            <FlaskConical size={26} />
+            <img src="/labaid-icon.svg" alt="" style={{ width: 100, height: 100 }} />
           </div>
           <div>
             <h1>LabAid</h1>

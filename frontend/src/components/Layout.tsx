@@ -210,7 +210,7 @@ export default function Layout() {
       <nav className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-header">
           <div className="sidebar-header-row">
-            <h2>LabAid</h2>
+            <h2 className="sidebar-brand"><img src="/labaid-icon.svg" alt="" className="sidebar-brand-icon" />LabAid</h2>
             <button
               className="sidebar-close-btn"
               onClick={() => setSidebarOpen(false)}
