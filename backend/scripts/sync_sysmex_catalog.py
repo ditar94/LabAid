@@ -34,18 +34,23 @@ OUTPUT_FILE = Path(__file__).parent.parent / "app" / "services" / "sysmex_catalo
 REQUEST_DELAY = 0.5  # seconds between requests
 
 
-def fetch_page(url: str, timeout: float = 30.0) -> str | None:
-    """Fetch a page with error handling."""
-    try:
-        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            resp = client.get(url, headers={
-                "User-Agent": "LabAid-Catalog-Sync/1.0 (contact: support@labaid.io)"
-            })
-            resp.raise_for_status()
-            return resp.text
-    except Exception as e:
-        print(f"  Error fetching {url}: {e}", file=sys.stderr)
-        return None
+def fetch_page(url: str, timeout: float = 30.0, retries: int = 3) -> str | None:
+    """Fetch a page with retry logic for transient failures."""
+    for attempt in range(1, retries + 1):
+        try:
+            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+                resp = client.get(url, headers={
+                    "User-Agent": "LabAid-Catalog-Sync/1.0 (contact: support@labaid.io)"
+                })
+                resp.raise_for_status()
+                return resp.text
+        except Exception as e:
+            print(f"  Attempt {attempt}/{retries} failed for {url}: {e}", file=sys.stderr)
+            if attempt < retries:
+                wait = attempt * 10
+                print(f"  Retrying in {wait}s...", file=sys.stderr)
+                time.sleep(wait)
+    return None
 
 
 def parse_product_list(html: str) -> list[dict]:
