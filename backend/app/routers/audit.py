@@ -80,6 +80,8 @@ def _apply_audit_filters(
             q = q.filter(AuditLog.action == actions[0])
         else:
             q = q.filter(AuditLog.action.in_(actions))
+    else:
+        q = q.filter(AuditLog.action.notin_(["user.login_sso"]))
 
     return q
 
