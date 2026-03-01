@@ -52,7 +52,6 @@ export default function Layout() {
   const [canScrollDown, setCanScrollDown] = useState(false);
   const navLinksRef = useRef<HTMLDivElement>(null);
   const { theme, cycleTheme } = useTheme();
-  const [billingError, setBillingError] = useState<string | null>(null);
 
   // Lock page scroll when mobile sidebar is open
   useEffect(() => {
@@ -96,26 +95,6 @@ export default function Layout() {
   const handleExitImpersonation = async () => {
     await endImpersonation();
     navigate("/dashboard");
-  };
-
-  const handleBillingAction = async (type: "checkout" | "portal") => {
-    try {
-      if (type === "checkout") {
-        const { data } = await api.post<{ url: string }>("/labs/billing/checkout", {
-          success_url: `${window.location.origin}/dashboard?billing=success`,
-          cancel_url: `${window.location.origin}/dashboard`,
-        });
-        window.location.href = data.url;
-      } else {
-        const { data } = await api.post<{ url: string }>("/labs/billing/portal", {
-          return_url: `${window.location.origin}/dashboard`,
-        });
-        window.location.href = data.url;
-      }
-    } catch (err: any) {
-      setBillingError(err.response?.data?.detail || "Billing service unavailable. Please try again later.");
-      setTimeout(() => setBillingError(null), 5000);
-    }
   };
 
   const isSuperAdmin = user?.role === "super_admin";
@@ -345,17 +324,11 @@ export default function Layout() {
                   Fluorochromes
                 </NavLink>
               )}
-              {hasLabContext && isAdmin && !labSettings.is_demo && labSettings.billing_status !== "active" && (
-                <button className="nav-link-btn" onClick={() => handleBillingAction("checkout")}>
+              {hasLabContext && isAdmin && !labSettings.is_demo && (
+                <NavLink to="/billing" onClick={handleNavClick}>
                   <CreditCard className="nav-icon" />
-                  Subscribe
-                </button>
-              )}
-              {hasLabContext && isAdmin && !labSettings.is_demo && labSettings.billing_status === "active" && (
-                <button className="nav-link-btn" onClick={() => handleBillingAction("portal")}>
-                  <CreditCard className="nav-icon" />
-                  Manage Billing
-                </button>
+                  {labSettings.billing_status === "active" ? "Billing" : "Subscribe"}
+                </NavLink>
               )}
               {hasLabContext && isAdmin && (
                 <NavLink to="/settings" onClick={handleNavClick}>
@@ -441,17 +414,11 @@ export default function Layout() {
             {accountBanner.action && (
               <button
                 className="account-banner-link"
-                onClick={() => handleBillingAction(accountBanner.action!.type)}
+                onClick={() => navigate("/billing")}
               >
                 {accountBanner.action.text}
               </button>
             )}
-          </div>
-        )}
-        {billingError && (
-          <div className="account-banner account-banner--danger" role="alert">
-            <span>{billingError}</span>
-            <button className="account-banner-link" onClick={() => setBillingError(null)}>Dismiss</button>
           </div>
         )}
         <RouteErrorBoundary>

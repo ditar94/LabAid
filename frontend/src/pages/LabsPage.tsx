@@ -5,6 +5,7 @@ import api from "../api/client";
 import type { Lab, BillingStatus } from "../api/types";
 import { Building2, LogIn, Shield } from "lucide-react";
 import EmptyState from "../components/EmptyState";
+import CopyButton from "../components/CopyButton";
 import ToggleSwitch from "../components/ToggleSwitch";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -13,6 +14,37 @@ import { Modal } from "../components/Modal";
 import TableSkeleton from "../components/TableSkeleton";
 
 const AuthProviderModal = lazy(() => import("../components/AuthProviderModal"));
+
+interface SubDetailsData {
+  status: string;
+  current_period_start: number | null;
+  current_period_end: number | null;
+  created: number | null;
+  collection_method: string | null;
+  cancel_at_period_end: boolean;
+}
+
+function SubDetails({ labId }: { labId: string }) {
+  const { data, isLoading } = useQuery<SubDetailsData | null>({
+    queryKey: ["lab-subscription", labId],
+    queryFn: () => api.get(`/labs/${labId}/subscription`).then((r) => r.data),
+  });
+
+  if (isLoading) return <div className="text-muted" style={{ marginTop: 6 }}>Loading...</div>;
+  if (!data) return <div className="text-muted" style={{ marginTop: 6 }}>No subscription data</div>;
+
+  const fmt = (ts: number | null) => ts ? new Date(ts * 1000).toLocaleDateString() : "-";
+  const method = data.collection_method === "send_invoice" ? "Invoice" : data.collection_method === "charge_automatically" ? "Card" : data.collection_method || "-";
+
+  return (
+    <div className="sub-details">
+      <div><strong>Subscribed:</strong> {fmt(data.created)}</div>
+      <div><strong>Period:</strong> {fmt(data.current_period_start)} &ndash; {fmt(data.current_period_end)}</div>
+      <div><strong>Payment:</strong> {method}</div>
+      {data.cancel_at_period_end && <div className="text-danger"><strong>Cancels at period end</strong></div>}
+    </div>
+  );
+}
 
 export default function LabsPage() {
   const { refreshLabs } = useSharedData();
@@ -31,6 +63,7 @@ export default function LabsPage() {
   const [trialDate, setTrialDate] = useState("");
   const [ssoLab, setSsoLab] = useState<{ id: string; name: string } | null>(null);
   const [linkingStripeId, setLinkingStripeId] = useState<string | null>(null);
+  const [expandedSubId, setExpandedSubId] = useState<string | null>(null);
   const { addToast } = useToast();
   const { startImpersonation } = useAuth();
   const navigate = useNavigate();
@@ -164,7 +197,7 @@ export default function LabsPage() {
         />
       ) : (
         <div className="table-scroll">
-        <table>
+        <table className="labs-table">
           <thead>
             <tr>
               <th>Name</th>
@@ -253,11 +286,21 @@ export default function LabsPage() {
                 </td>
                 <td>
                   {l.stripe_customer_id ? (
-                    <span title={`Customer: ${l.stripe_customer_id}\nSubscription: ${l.stripe_subscription_id || "None"}\nBilling email: ${l.billing_email || "-"}\nLast updated: ${l.billing_updated_at ? new Date(l.billing_updated_at).toLocaleString() : "-"}`}>
-                      <span className={`badge ${l.stripe_subscription_id ? "badge-success" : "badge-muted"}`}>
-                        {l.stripe_customer_id.slice(0, 15)}...
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span className={`badge ${l.stripe_subscription_id ? "badge-success" : "badge-muted"}`} style={{ fontFamily: "monospace", fontSize: "0.8em" }}>
+                        {l.stripe_customer_id}
                       </span>
-                    </span>
+                      <CopyButton value={l.stripe_customer_id} />
+                      {l.stripe_subscription_id && (
+                        <button
+                          className="btn-sm btn-secondary"
+                          onClick={(e) => { e.stopPropagation(); setExpandedSubId(expandedSubId === l.id ? null : l.id); }}
+                          style={{ marginLeft: 4 }}
+                        >
+                          Details
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <button
                       className="btn-sm"
@@ -267,6 +310,7 @@ export default function LabsPage() {
                       {linkingStripeId === l.id ? "Linking..." : "Link to Stripe"}
                     </button>
                   )}
+                  {expandedSubId === l.id && <SubDetails labId={l.id} />}
                 </td>
                 <td style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <ToggleSwitch

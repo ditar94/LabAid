@@ -969,6 +969,24 @@ class BillingStatusResponse(BaseModel):
     has_subscription: bool
     billing_email: str | None
     plan_name: str
+    current_period_start: int | None = None
+    current_period_end: int | None = None
+    subscribed_at: int | None = None
+    collection_method: str | None = None
+
+
+class InvoiceSubscriptionResponse(BaseModel):
+    subscription_id: str
+    message: str
+
+
+class SubscriptionDetails(BaseModel):
+    status: str
+    current_period_start: int | None = None
+    current_period_end: int | None = None
+    created: int | None = None
+    collection_method: str | None = None
+    cancel_at_period_end: bool = False
 
 
 # ── Demo Environment ──────────────────────────────────────────────────────

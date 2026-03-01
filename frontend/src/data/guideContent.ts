@@ -427,6 +427,133 @@ If the unit still has vials in it, the delete will be rejected. Move all vials o
     ],
   },
   {
+    id: "cocktails",
+    title: "Cocktails",
+    articles: [
+      {
+        id: "cocktail-overview",
+        title: "What Are Cocktails?",
+        body: `Cocktails are pre-mixed combinations of antibodies used together in a single staining panel. The Cocktails page lets you define reusable recipes and track prepared lots with full traceability.
+
+Key concepts:
+• Recipe — A saved formula listing which antibodies (and volumes) make up a cocktail. Recipes are reusable templates.
+• Cocktail Lot — A physical batch prepared from a recipe. Each lot tracks its preparation date, expiration date, source lots, QC status, and renewal history.
+• Shelf Life — How many days a prepared cocktail lot stays usable, set per recipe.
+• Renewals — Some cocktails can be renewed (re-validated) to extend their usable life. The recipe controls how many renewals are allowed.
+
+The Cocktails page is only visible when the "Cocktails" setting is enabled by a Lab Admin. Go to Settings to turn it on.`,
+      },
+      {
+        id: "create-cocktail-recipe",
+        title: "How to Create a Cocktail Recipe",
+        role: "supervisor",
+        body: `Recipes define which antibodies go into a cocktail and in what amounts.
+
+1. Go to the Cocktails page.
+2. Click "+ New Cocktail."
+3. Fill in:
+   • Name — A descriptive name for the cocktail (e.g., "T-Cell Panel" or "B-Cell Cocktail")
+   • Shelf Life (days) — How long a prepared lot is usable
+   • Max Renewals — How many times a lot can be renewed (leave blank for unlimited)
+4. Add components:
+   • Select an antibody from your inventory for each component
+   • Optionally enter a volume in microliters
+   • Use "+ Add Component" to add more rows
+   • You can also type a free-text name for non-antibody components (e.g., "Brilliant Stain Buffer")
+5. Click "Create."
+
+The recipe appears as a card on the Cocktails page. Click it to see its lots and details.`,
+      },
+      {
+        id: "edit-cocktail-recipe",
+        title: "How to Edit a Cocktail Recipe",
+        role: "supervisor",
+        body: `You can update a recipe's name, shelf life, renewal limit, and components at any time.
+
+1. Go to the Cocktails page and find the recipe card.
+2. Click the Edit button on the recipe card.
+3. Make your changes — add, remove, or reorder components as needed.
+4. Click "Save."
+
+Editing a recipe does not affect lots that have already been prepared — they retain their original composition.`,
+      },
+      {
+        id: "prepare-cocktail-lot",
+        title: "How to Prepare a Cocktail Lot",
+        body: `Preparing a lot records that you physically mixed a batch of the cocktail.
+
+1. Go to the Cocktails page and find the recipe.
+2. Click "Prepare" on the recipe card.
+3. Fill in:
+   • Lot Number — A unique identifier for this batch
+   • Preparation Date — When you mixed it (defaults to today)
+   • Expiration Date — Auto-calculated from shelf life, but you can adjust it
+   • Test Count — How many tests this batch provides (optional)
+4. For each component, select which source lot from your inventory was used. This creates full traceability from the cocktail back to individual reagent lots.
+5. Click "Prepare Lot."
+
+The new lot appears under the recipe card with a "Pending" QC status.`,
+      },
+      {
+        id: "cocktail-qc",
+        title: "How to Approve QC on a Cocktail Lot",
+        role: "supervisor",
+        body: `Newly prepared cocktail lots start with a "Pending" QC status. A Supervisor or Admin must approve them before they're considered validated.
+
+1. Go to the Cocktails page and expand the recipe.
+2. Find the lot and click the checkmark (Approve) button.
+3. The lot's status changes to "Approved."
+
+To fail QC, click the X (Fail) button instead. Failed lots cannot be renewed.
+
+You can also attach QC documents to a cocktail lot by clicking the document icon on the lot row.`,
+      },
+      {
+        id: "renew-cocktail-lot",
+        title: "How to Renew a Cocktail Lot",
+        role: "supervisor",
+        body: `Renewing extends a cocktail lot's expiration date by another shelf-life period. This is used when the cocktail has been re-validated and is still good.
+
+1. Find the approved lot on the Cocktails page.
+2. Click the Renew button (circular arrow icon).
+3. The expiration date advances by the recipe's shelf life, and the renewal count increases.
+
+Renewal is only available when:
+• The lot has been QC approved
+• The lot is still active (not depleted or archived)
+• The lot hasn't exceeded the recipe's maximum renewal limit`,
+      },
+      {
+        id: "deplete-archive-cocktail",
+        title: "How to Deplete or Archive a Cocktail Lot",
+        body: `Deplete: Marks a lot as fully used up.
+1. Find the lot on the Cocktails page.
+2. Click the Deplete button.
+3. The lot status changes to "Depleted."
+
+Archive: Hides a lot from the default view to keep things tidy.
+1. Click the Archive button on the lot row.
+2. Optionally enter an archive note.
+3. Confirm.
+
+To see archived lots, toggle "Show inactive" at the bottom of the recipe's lot list.`,
+      },
+      {
+        id: "cocktail-documents",
+        title: "How to Upload Documents to a Cocktail Lot",
+        body: `You can attach documents (validation reports, COAs, etc.) to any cocktail lot.
+
+1. Find the lot on the Cocktails page.
+2. Click the document icon on the lot row.
+3. In the modal, click "Choose File" and select your document.
+4. Enter an optional description.
+5. Click "Upload."
+
+Uploaded documents appear in the modal list. Click a document name to download it.`,
+      },
+    ],
+  },
+  {
     id: "admin-settings",
     title: "Administration",
     articles: [

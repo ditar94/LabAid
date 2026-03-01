@@ -8477,3 +8477,72 @@ textarea:focus-visible {
 
   .mobile-cards tbody td.action-btns::before { display: none; }
 }
+
+/* ── Payment Choice Modal ──────────────────────────────────────────────── */
+
+.payment-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.payment-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.payment-option:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.payment-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.payment-option strong {
+  font-size: 1rem;
+}
+
+.payment-option .text-muted {
+  font-size: 0.85em;
+  line-height: 1.3;
+}
+
+@media (max-width: 480px) {
+  .payment-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Labs Page Table ───────────────────────────────────────────────────── */
+
+.labs-table td,
+.labs-table th {
+  font-size: 0.82rem;
+  white-space: nowrap;
+  padding: 0.5rem 0.6rem;
+}
+
+/* ── Subscription Details (Labs page) ──────────────────────────────────── */
+
+.sub-details {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  font-size: 0.85em;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}

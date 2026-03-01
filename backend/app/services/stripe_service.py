@@ -105,6 +105,49 @@ def create_portal_session(lab: Lab, return_url: str) -> str:
     return session.url
 
 
+def create_invoice_subscription(db: Session, lab: Lab) -> str:
+    client = get_stripe_client()
+    customer_id = get_or_create_customer(db, lab)
+    if lab.stripe_subscription_id:
+        raise ValueError("Lab already has a subscription")
+
+    description = "LabAid Annual Subscription"
+    if settings.STRIPE_CHECK_ADDRESS:
+        description += f"\n\nTo pay by check, please mail to:\n{settings.STRIPE_CHECK_ADDRESS}"
+
+    subscription = client.subscriptions.create(
+        params={
+            "customer": customer_id,
+            "collection_method": "send_invoice",
+            "days_until_due": 30,
+            "items": [{"price": settings.STRIPE_PRICE_ID}],
+            "description": description,
+            "metadata": {"lab_id": str(lab.id)},
+        },
+        options={"idempotency_key": f"invsub_{lab.id}_{int(time.time() // 300)}"},
+    )
+    return subscription.id
+
+
+def get_subscription_details(lab: Lab) -> dict | None:
+    if not lab.stripe_subscription_id:
+        return None
+    client = get_stripe_client()
+    try:
+        sub = client.subscriptions.retrieve(lab.stripe_subscription_id)
+        return {
+            "status": sub.status,
+            "current_period_start": sub.current_period_start,
+            "current_period_end": sub.current_period_end,
+            "created": sub.created,
+            "collection_method": sub.collection_method,
+            "cancel_at_period_end": sub.cancel_at_period_end,
+        }
+    except Exception:
+        logger.warning("Could not fetch subscription %s", lab.stripe_subscription_id)
+        return None
+
+
 def apply_subscription_status(
     db: Session,
     lab: Lab,

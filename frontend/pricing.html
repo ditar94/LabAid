@@ -157,7 +157,7 @@
       bottom: 0;
       left: 0;
       right: 0;
-      height: 200px;
+      height: 80px;
       background: linear-gradient(to bottom, transparent, var(--light-bg));
       z-index: 2;
     }
@@ -186,7 +186,7 @@
     }
     .pricing-hero-content {
       position: relative;
-      z-index: 3;
+      z-index: 5;
       animation: heroEnter 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
     .pricing-hero-label {
@@ -208,7 +208,8 @@
     }
     .pricing-hero p {
       font-size: clamp(1rem, 2vw, 1.15rem);
-      color: var(--slate-400);
+      color: var(--white);
+      opacity: 0.85;
       max-width: 520px;
       margin: 0 auto;
       line-height: 1.7;
@@ -558,7 +559,7 @@
     <div class="pricing-hero-content">
       <span class="pricing-hero-label">Pricing</span>
       <h1>Simple, transparent pricing</h1>
-      <p>One plan with everything your lab needs. No hidden fees, no per-user charges, no surprises.</p>
+      <p>Everything your lab needs to track reagents, manage inventory, and stay audit-ready.</p>
     </div>
   </section>
 
@@ -571,15 +572,11 @@
         <h3>Standard</h3>
         <p class="pricing-desc">Everything you need to manage reagent inventory for your flow cytometry lab.</p>
         <div class="pricing-amount">
-          <span class="price">$3,000</span>
-          <span class="period">/year</span>
+          <span class="price">$350</span>
+          <span class="period">/month</span>
         </div>
-        <p class="pricing-billed">Billed annually. Includes the entire lab.</p>
+        <p class="pricing-billed">$4,200 billed annually. Unlimited users.</p>
         <ul class="pricing-features">
-          <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
-            Unlimited users
-          </li>
           <li>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
             Barcode scanning on any device
@@ -590,7 +587,7 @@
           </li>
           <li>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
-            FEFO logic &amp; expiration alerts
+            Expiration tracking &amp; alerts
           </li>
           <li>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>

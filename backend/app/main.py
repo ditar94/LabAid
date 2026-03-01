@@ -71,6 +71,7 @@ _SUSPENSION_EXEMPT = {
     "/api/stripe/events/cleanup",
     "/api/labs/billing/checkout",
     "/api/labs/billing/portal",
+    "/api/labs/billing/invoice",
     "/api/health",
 }
 

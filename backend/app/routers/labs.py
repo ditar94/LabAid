@@ -343,13 +343,22 @@ def billing_status(
     lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
-    return {
+    result = {
         "billing_status": lab.billing_status,
         "trial_ends_at": lab.trial_ends_at,
         "has_subscription": bool(lab.stripe_subscription_id),
         "billing_email": lab.billing_email,
         "plan_name": "LabAid Annual" if lab.stripe_subscription_id else "Free Trial",
     }
+    if lab.stripe_subscription_id and app_settings.STRIPE_SECRET_KEY:
+        from app.services.stripe_service import get_subscription_details
+        details = get_subscription_details(lab)
+        if details:
+            result["current_period_start"] = details["current_period_start"]
+            result["current_period_end"] = details["current_period_end"]
+            result["subscribed_at"] = details["created"]
+            result["collection_method"] = details["collection_method"]
+    return result
 
 
 @router.post("/{lab_id}/stripe-customer", response_model=schemas.Lab)
@@ -375,3 +384,49 @@ def create_stripe_customer(
     db.commit()
     db.refresh(lab)
     return lab
+
+
+@router.post("/billing/invoice", response_model=schemas.InvoiceSubscriptionResponse)
+def billing_invoice(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
+    )),
+):
+    if not app_settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Billing is not configured")
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.stripe_subscription_id:
+        raise HTTPException(status_code=409, detail="Lab already has an active subscription")
+
+    from app.services.stripe_service import create_invoice_subscription, apply_subscription_status
+    from stripe._error import StripeError
+    try:
+        subscription_id = create_invoice_subscription(db, lab)
+        apply_subscription_status(db, lab, "active", subscription_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    db.commit()
+    return {"subscription_id": subscription_id, "message": "Invoice subscription created. An invoice will be sent to your billing email."}
+
+
+@router.get("/{lab_id}/subscription", response_model=schemas.SubscriptionDetails | None)
+def get_lab_subscription(
+    lab_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    if not app_settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Stripe is not configured")
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    from app.services.stripe_service import get_subscription_details
+    return get_subscription_details(lab)
