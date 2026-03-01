@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Antibody, AuditLogEntry, AuditLogRange, Lab, Lot } from "../api/types";
+import type { Antibody, AuditLogEntry, AuditLogRange, Lot } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 import { ClipboardList, Download } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import MonthPicker, {
@@ -105,25 +107,27 @@ function exportAuditCsv(logs: AuditLogEntry[]) {
 const PAGE_SIZE = 100;
 
 export default function AuditPage() {
-  const { user, impersonatingLab } = useAuth();
-  const [labs, setLabs] = useState<Lab[]>([]);
+  const { user } = useAuth();
+  const { labs } = useSharedData();
+  const isSuperAdmin = user?.role === "super_admin";
   const [selectedLab, setSelectedLab] = useState<string>("");
-  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingLogs, setLoadingLogs] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Filter state
-  const [antibodies, setAntibodies] = useState<Antibody[]>([]);
-  const [lots, setLots] = useState<Lot[]>([]);
   const [filterAntibody, setFilterAntibody] = useState("");
   const [filterLot, setFilterLot] = useState("");
   const [filterActions, setFilterActions] = useState<Set<string>>(new Set());
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [actionDropdownOpen, setActionDropdownOpen] = useState(false);
   const actionDropdownRef = useRef<HTMLDivElement>(null);
-  const [rangeNotice, setRangeNotice] = useState<RangeNotice | null>(null);
   const [rangeNoticeDismissed, setRangeNoticeDismissed] = useState(false);
+
+  // Set initial lab for super admin
+  useEffect(() => {
+    if (isSuperAdmin && labs.length > 0 && !selectedLab) {
+      setSelectedLab(labs[0].id);
+    }
+  }, [isSuperAdmin, labs, selectedLab]);
 
   // Close action dropdown on outside click
   useEffect(() => {
@@ -137,52 +141,38 @@ export default function AuditPage() {
     return () => document.removeEventListener("click", handler, true);
   }, [actionDropdownOpen]);
 
-  // Load labs for super admin (not when impersonating)
-  useEffect(() => {
-    if (user?.role === "super_admin" && !impersonatingLab) {
-      api.get("/labs/")
-        .then((r) => {
-          setLabs(r.data);
-          if (r.data.length > 0) setSelectedLab(r.data[0].id);
-        })
-        .catch(() => {
-          setLabs([]);
-        });
-    }
-  }, [user, impersonatingLab]);
+  const labParam = isSuperAdmin && selectedLab ? selectedLab : undefined;
 
-  // Load antibodies
-  useEffect(() => {
-    const params: Record<string, string> = {};
-    if (user?.role === "super_admin" && selectedLab) params.lab_id = selectedLab;
-    api.get("/antibodies/", { params })
-      .then((r) => setAntibodies(r.data))
-      .catch(() => setAntibodies([]));
-  }, [selectedLab, user]);
+  const { data: antibodies = [] } = useQuery<Antibody[]>({
+    queryKey: ["audit-antibodies", labParam],
+    queryFn: () => {
+      const params: Record<string, string> = {};
+      if (labParam) params.lab_id = labParam;
+      return api.get("/antibodies/", { params }).then((r) => r.data);
+    },
+  });
 
-  // Load lots when antibody changes
-  useEffect(() => {
-    if (!filterAntibody) {
-      setLots([]);
-      return;
-    }
-    const params: Record<string, string> = { antibody_id: filterAntibody, include_archived: "true" };
-    if (user?.role === "super_admin" && selectedLab) params.lab_id = selectedLab;
-    api.get("/lots/", { params })
-      .then((r) => setLots(r.data))
-      .catch(() => setLots([]));
-  }, [filterAntibody, selectedLab]);
+  const { data: lots = [] } = useQuery<Lot[]>({
+    queryKey: ["audit-lots", filterAntibody, labParam],
+    queryFn: () => {
+      const params: Record<string, string> = { antibody_id: filterAntibody, include_archived: "true" };
+      if (labParam) params.lab_id = labParam;
+      return api.get("/lots/", { params }).then((r) => r.data);
+    },
+    enabled: !!filterAntibody,
+  });
 
   // Build shared query params for audit fetches
+  const actionsKey = useMemo(() => Array.from(filterActions).sort().join(","), [filterActions]);
   const buildAuditParams = (offset: number): Record<string, string> => {
     const params: Record<string, string> = {
       limit: String(PAGE_SIZE),
       offset: String(offset),
     };
-    if (user?.role === "super_admin" && selectedLab) params.lab_id = selectedLab;
+    if (labParam) params.lab_id = labParam;
     if (filterAntibody) params.antibody_id = filterAntibody;
     if (filterLot) params.lot_id = filterLot;
-    if (filterActions.size > 0) params.action = Array.from(filterActions).join(",");
+    if (filterActions.size > 0) params.action = actionsKey;
     if (dateRange) {
       const dp = dateRangeToParams(dateRange);
       params.date_from = dp.date_from;
@@ -191,101 +181,65 @@ export default function AuditPage() {
     return params;
   };
 
-  // Load first page of audit logs when filters change
-  useEffect(() => {
-    let cancelled = false;
-    const params = buildAuditParams(0);
-    setLoadingLogs(true);
-    setError(null);
-    api.get("/audit/", { params })
-      .then((r) => {
-        if (cancelled) return;
-        setLogs(r.data);
-        setHasMore(r.data.length === PAGE_SIZE);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        setLogs([]);
-        setHasMore(false);
-        setError(err.response?.data?.detail || "Failed to load audit log");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingLogs(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [filterAntibody, filterLot, filterActions, dateRange, selectedLab]);
+  const {
+    data: auditData,
+    isLoading: loadingLogs,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<AuditLogEntry[]>({
+    queryKey: ["audit-logs", labParam, filterAntibody, filterLot, actionsKey, dateRange],
+    queryFn: ({ pageParam }) => {
+      const params = buildAuditParams(pageParam as number);
+      return api.get("/audit/", { params }).then((r) => r.data);
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < PAGE_SIZE) return undefined;
+      return allPages.reduce((sum, p) => sum + p.length, 0);
+    },
+  });
 
-  const loadMore = () => {
-    const params = buildAuditParams(logs.length);
-    setError(null);
-    api.get("/audit/", { params })
-      .then((r) => {
-        setLogs((prev) => [...prev, ...r.data]);
-        setHasMore(r.data.length === PAGE_SIZE);
-      })
-      .catch((err: any) => {
-        setError(err.response?.data?.detail || "Failed to load more audit entries");
-      });
-  };
+  const logs = useMemo(() => auditData?.pages.flat() ?? [], [auditData]);
 
+  // Range notice query
+  const hasScope = !!filterLot || !!filterAntibody;
+  const { data: rangeNotice } = useQuery<RangeNotice | null>({
+    queryKey: ["audit-range", labParam, filterAntibody, filterLot, actionsKey, dateRange],
+    queryFn: async () => {
+      if (!dateRange) return null;
+      const params: Record<string, string> = {};
+      if (labParam) params.lab_id = labParam;
+      if (filterAntibody) params.antibody_id = filterAntibody;
+      if (filterLot) params.lot_id = filterLot;
+      if (filterActions.size > 0) params.action = actionsKey;
+
+      const r = await api.get<AuditLogRange>("/audit/range", { params });
+      const { min_created_at, max_created_at } = r.data;
+      if (!min_created_at || !max_created_at) return null;
+
+      const minIdx = monthIndexFromDate(new Date(min_created_at));
+      const maxIdx = monthIndexFromDate(new Date(max_created_at));
+      const rangeFromIdx = monthIndex(dateRange.fromYear, dateRange.fromMonth);
+      const rangeToIdx = monthIndex(dateRange.toYear, dateRange.toMonth);
+      if (rangeFromIdx <= minIdx && rangeToIdx >= maxIdx) return null;
+
+      const suggested = monthRangeFromIndex(minIdx, maxIdx);
+      return {
+        suggested,
+        currentLabel: dateRangeLabel(dateRange),
+        suggestedLabel: dateRangeLabel(suggested),
+        earliestLabel: monthLabelFromIndex(minIdx),
+        latestLabel: monthLabelFromIndex(maxIdx),
+      };
+    },
+    enabled: !!dateRange && hasScope,
+  });
+
+  // Reset range notice dismissed when filters change
   useEffect(() => {
     setRangeNoticeDismissed(false);
   }, [filterAntibody, filterLot, filterActions, dateRange, selectedLab]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const hasScope = !!filterLot || !!filterAntibody;
-    if (!dateRange || !hasScope) {
-      setRangeNotice(null);
-      return () => {
-        cancelled = true;
-      };
-    }
-    const activeRange = dateRange;
-
-    const params: Record<string, string> = {};
-    if (user?.role === "super_admin" && selectedLab) params.lab_id = selectedLab;
-    if (filterAntibody) params.antibody_id = filterAntibody;
-    if (filterLot) params.lot_id = filterLot;
-    if (filterActions.size > 0) params.action = Array.from(filterActions).join(",");
-
-    api.get<AuditLogRange>("/audit/range", { params })
-      .then((r) => {
-        if (cancelled) return;
-        const { min_created_at, max_created_at } = r.data;
-        if (!min_created_at || !max_created_at) {
-          setRangeNotice(null);
-          return;
-        }
-
-        const minIdx = monthIndexFromDate(new Date(min_created_at));
-        const maxIdx = monthIndexFromDate(new Date(max_created_at));
-        const rangeFromIdx = monthIndex(activeRange.fromYear, activeRange.fromMonth);
-        const rangeToIdx = monthIndex(activeRange.toYear, activeRange.toMonth);
-        if (rangeFromIdx <= minIdx && rangeToIdx >= maxIdx) {
-          setRangeNotice(null);
-          return;
-        }
-
-        const suggested = monthRangeFromIndex(minIdx, maxIdx);
-        setRangeNotice({
-          suggested,
-          currentLabel: dateRangeLabel(activeRange),
-          suggestedLabel: dateRangeLabel(suggested),
-          earliestLabel: monthLabelFromIndex(minIdx),
-          latestLabel: monthLabelFromIndex(maxIdx),
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setRangeNotice(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dateRange, filterAntibody, filterLot, filterActions, selectedLab, user]);
 
   const toggleAction = (value: string) => {
     setFilterActions((prev) => {
@@ -389,6 +343,7 @@ export default function AuditPage() {
       <div className="audit-filters">
         {user?.role === "super_admin" && labs.length > 0 && (
           <select
+            aria-label="Filter by lab"
             value={selectedLab}
             onChange={(e) => setSelectedLab(e.target.value)}
           >
@@ -400,6 +355,7 @@ export default function AuditPage() {
         )}
 
         <select
+          aria-label="Filter by antibody"
           value={filterAntibody}
           onChange={(e) => { setFilterAntibody(e.target.value); setFilterLot(""); }}
         >
@@ -413,6 +369,7 @@ export default function AuditPage() {
 
         {filterAntibody && lots.length > 0 && (
           <select
+            aria-label="Filter by lot"
             value={filterLot}
             onChange={(e) => setFilterLot(e.target.value)}
           >
@@ -601,6 +558,13 @@ export default function AuditPage() {
               </td>
             </tr>
           ))}
+          {loadingLogs && logs.length === 0 && Array.from({ length: 5 }, (_, i) => (
+            <tr key={`skel-${i}`}>
+              {[1, 2, 3, 4, 5].map((c) => (
+                <td key={c}><span className="shimmer shimmer-text" style={{ width: `${60 + ((i + c) % 4) * 25}px` }} /></td>
+              ))}
+            </tr>
+          ))}
           {!loadingLogs && logs.length === 0 && (
             <tr>
               <td colSpan={5}>
@@ -615,10 +579,10 @@ export default function AuditPage() {
         </tbody>
       </table>
       </div>
-      {hasMore && (
+      {hasNextPage && (
         <div style={{ textAlign: "center", padding: "1rem" }}>
-          <button className="btn-sm btn-secondary" onClick={loadMore}>
-            Load more
+          <button className="btn-sm btn-secondary" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+            {isFetchingNextPage ? "Loading..." : "Load more"}
           </button>
         </div>
       )}

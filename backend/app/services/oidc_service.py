@@ -3,7 +3,8 @@ import time
 from urllib.parse import urlencode
 
 import httpx
-from jose import jwt as jose_jwt, JWTError
+import jwt
+from jwt.exceptions import PyJWTError
 
 from app.models.models import AuthProviderType, LabAuthProvider
 
@@ -169,7 +170,7 @@ async def validate_id_token(
     jwks = await _fetch_jwks(endpoints["jwks"])
 
     # Extract the key ID from the token header to find the right key
-    unverified_header = jose_jwt.get_unverified_header(id_token)
+    unverified_header = jwt.get_unverified_header(id_token)
     kid = unverified_header.get("kid")
 
     rsa_key = None
@@ -182,15 +183,15 @@ async def validate_id_token(
         raise ValueError("Unable to find matching JWKS key for id_token")
 
     try:
-        claims = jose_jwt.decode(
+        signing_key = jwt.PyJWK(rsa_key).key
+        claims = jwt.decode(
             id_token,
-            rsa_key,
+            signing_key,
             algorithms=["RS256"],
             audience=provider.config["client_id"],
             issuer=endpoints["issuer"],
-            options={"verify_at_hash": False},
         )
-    except JWTError as e:
+    except PyJWTError as e:
         raise ValueError(f"id_token validation failed: {e}")
 
     # Validate nonce

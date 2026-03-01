@@ -63,7 +63,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <div
                 key={toast.id}
                 className={`toast toast-${toast.variant}${toast.exiting ? " toast-exiting" : ""}`}
-                role="alert"
               >
                 <Icon className="toast-icon" />
                 <span className="toast-message">{toast.message}</span>

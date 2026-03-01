@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password
 from app.models.models import User, UserRole
 
 
@@ -58,19 +58,49 @@ class TestMe:
 class TestChangePassword:
     def test_change_password(self, client, auth_headers):
         res = client.post("/api/auth/change-password", json={
-            "new_password": "newpass123",
+            "current_password": "password123",
+            "new_password": "NewPass1234",
         }, headers=auth_headers)
         assert res.status_code == 200
 
         # Verify new password works
         res = client.post("/api/auth/login", json={
             "email": "admin@test.com",
-            "password": "newpass123",
+            "password": "NewPass1234",
         })
+        assert res.status_code == 200
+
+    def test_change_password_wrong_current(self, client, auth_headers):
+        res = client.post("/api/auth/change-password", json={
+            "current_password": "wrongpassword",
+            "new_password": "NewPass1234",
+        }, headers=auth_headers)
+        assert res.status_code == 400
+        assert "incorrect" in res.json()["detail"].lower()
+
+    def test_change_password_missing_current(self, client, auth_headers):
+        res = client.post("/api/auth/change-password", json={
+            "new_password": "NewPass1234",
+        }, headers=auth_headers)
+        assert res.status_code == 400
+        assert "required" in res.json()["detail"].lower()
+
+    def test_change_password_forced_skips_current(self, client, admin_user, db):
+        admin_user.must_change_password = True
+        db.commit()
+        token = create_access_token({
+            "sub": str(admin_user.id),
+            "lab_id": str(admin_user.lab_id),
+            "role": admin_user.role.value,
+        })
+        res = client.post("/api/auth/change-password", json={
+            "new_password": "NewPass1234",
+        }, headers={"Authorization": f"Bearer {token}"})
         assert res.status_code == 200
 
     def test_change_password_too_short(self, client, auth_headers):
         res = client.post("/api/auth/change-password", json={
+            "current_password": "password123",
             "new_password": "ab",
         }, headers=auth_headers)
         assert res.status_code == 400
@@ -80,7 +110,7 @@ class TestSetup:
     def test_initial_setup(self, client, db):
         res = client.post("/api/auth/setup", json={
             "email": "first@admin.com",
-            "password": "adminpass",
+            "password": "AdminPass123",
             "full_name": "First Admin",
         })
         assert res.status_code == 200
@@ -90,7 +120,7 @@ class TestSetup:
     def test_setup_blocked_after_first(self, client, super_admin):
         res = client.post("/api/auth/setup", json={
             "email": "second@admin.com",
-            "password": "adminpass",
+            "password": "AdminPass123",
             "full_name": "Second Admin",
         })
         assert res.status_code == 400
@@ -133,7 +163,7 @@ class TestAcceptInvite:
     def test_accept_invite_success(self, client, invited_user):
         res = client.post("/api/auth/accept-invite", json={
             "token": "valid-test-token-abc123",
-            "password": "mynewpass123",
+            "password": "MyNewPass1234",
         })
         assert res.status_code == 200
         data = res.json()
@@ -146,12 +176,12 @@ class TestAcceptInvite:
             "password": "short",
         })
         assert res.status_code == 400
-        assert "8 characters" in res.json()["detail"]
+        assert "10 characters" in res.json()["detail"]
 
     def test_accept_invite_expired(self, client, expired_invite_user):
         res = client.post("/api/auth/accept-invite", json={
             "token": "expired-test-token-xyz",
-            "password": "mynewpass123",
+            "password": "MyNewPass1234",
         })
         assert res.status_code == 400
         assert "expired" in res.json()["detail"].lower()
@@ -160,21 +190,21 @@ class TestAcceptInvite:
         # First use succeeds
         res = client.post("/api/auth/accept-invite", json={
             "token": "valid-test-token-abc123",
-            "password": "mynewpass123",
+            "password": "MyNewPass1234",
         })
         assert res.status_code == 200
 
         # Second use fails (token cleared)
         res = client.post("/api/auth/accept-invite", json={
             "token": "valid-test-token-abc123",
-            "password": "anotherpass123",
+            "password": "AnotherPass123",
         })
         assert res.status_code == 400
 
     def test_accept_invite_invalid_token(self, client):
         res = client.post("/api/auth/accept-invite", json={
             "token": "nonexistent-token",
-            "password": "mynewpass123",
+            "password": "MyNewPass1234",
         })
         assert res.status_code == 400
 
@@ -206,7 +236,7 @@ class TestInviteEndToEnd:
         # 3. Accept the invite (set password)
         res = client.post("/api/auth/accept-invite", json={
             "token": token,
-            "password": "mysecurepass123",
+            "password": "MySecure1234",
         })
         assert res.status_code == 200
         assert "access_token" in res.json()
@@ -221,7 +251,7 @@ class TestInviteEndToEnd:
         # 5. Verify user can login with the new password
         res = client.post("/api/auth/login", json={
             "email": "newtech@test.com",
-            "password": "mysecurepass123",
+            "password": "MySecure1234",
         })
         assert res.status_code == 200
         assert "access_token" in res.json()
@@ -234,14 +264,14 @@ class TestResetPasswordFlow:
         # 1. Accept the original invite to establish a password
         res = client.post("/api/auth/accept-invite", json={
             "token": "valid-test-token-abc123",
-            "password": "originalpass123",
+            "password": "OrigPass12345",
         })
         assert res.status_code == 200
 
         # 2. Verify login works with original password
         res = client.post("/api/auth/login", json={
             "email": "invited@test.com",
-            "password": "originalpass123",
+            "password": "OrigPass12345",
         })
         assert res.status_code == 200
 
@@ -258,7 +288,7 @@ class TestResetPasswordFlow:
         # 4. Old password no longer works (random password was set)
         res = client.post("/api/auth/login", json={
             "email": "invited@test.com",
-            "password": "originalpass123",
+            "password": "OrigPass12345",
         })
         assert res.status_code == 401
 
@@ -274,14 +304,14 @@ class TestResetPasswordFlow:
         # 6. Accept invite with new token
         res = client.post("/api/auth/accept-invite", json={
             "token": new_token,
-            "password": "newpassword123",
+            "password": "NewPassword123",
         })
         assert res.status_code == 200
 
         # 7. Login works with new password
         res = client.post("/api/auth/login", json={
             "email": "invited@test.com",
-            "password": "newpassword123",
+            "password": "NewPassword123",
         })
         assert res.status_code == 200
 
@@ -371,14 +401,14 @@ class TestUpdateUser:
 
         res = client.post("/api/auth/accept-invite", json={
             "token": token,
-            "password": "testpass123",
+            "password": "TestPass1234",
         })
         assert res.status_code == 200
 
         # Verify login works
         res = client.post("/api/auth/login", json={
             "email": "deactivate@test.com",
-            "password": "testpass123",
+            "password": "TestPass1234",
         })
         assert res.status_code == 200
 
@@ -391,7 +421,7 @@ class TestUpdateUser:
         # Login should fail
         res = client.post("/api/auth/login", json={
             "email": "deactivate@test.com",
-            "password": "testpass123",
+            "password": "TestPass1234",
         })
         assert res.status_code == 401
 
@@ -518,7 +548,7 @@ class TestForgotPassword:
         # 3. Use token via accept-invite
         res = client.post("/api/auth/accept-invite", json={
             "token": token,
-            "password": "newpass123456",
+            "password": "NewPass123456",
         })
         assert res.status_code == 200
         assert "access_token" in res.json()
@@ -526,7 +556,7 @@ class TestForgotPassword:
         # 4. Login with new password
         res = client.post("/api/auth/login", json={
             "email": "admin@test.com",
-            "password": "newpass123456",
+            "password": "NewPass123456",
         })
         assert res.status_code == 200
 

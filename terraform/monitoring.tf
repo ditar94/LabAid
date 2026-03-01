@@ -270,15 +270,15 @@ resource "google_logging_metric" "sql_backup_success" {
 }
 
 resource "google_monitoring_alert_policy" "sql_backup_absent" {
-  display_name = "Cloud SQL backup missing (no backup in 26h)"
+  display_name = "Cloud SQL backup missing (no backup in 25h)"
   combiner     = "OR"
 
   conditions {
-    display_name = "No successful backup in 26 hours"
+    display_name = "No successful backup in 25 hours"
 
     condition_absent {
       filter   = "resource.type = \"cloudsql_database\" AND metric.type = \"logging.googleapis.com/user/cloudsql-backup-success\""
-      duration = "93600s"
+      duration = "84600s"
 
       aggregations {
         alignment_period   = "3600s"

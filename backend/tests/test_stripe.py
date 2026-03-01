@@ -50,7 +50,7 @@ class TestApplySubscriptionStatus:
         db.refresh(lab)
 
         assert lab.billing_status == "past_due"
-        assert lab.is_active is False
+        assert lab.is_active is True
 
     def test_trialing_status(self, db, lab, admin_user):
         lab.billing_status = "active"
@@ -84,21 +84,17 @@ class TestWebhookEndpoint:
             "data": {"object": data},
         }
 
-    @patch("app.routers.stripe_webhook.get_stripe_client")
     @patch("app.routers.stripe_webhook.settings")
-    def test_webhook_missing_signature(self, mock_settings, mock_stripe, client, db):
+    def test_webhook_missing_signature(self, mock_settings, client, db):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
         res = client.post("/api/stripe/webhook", content=b"{}")
         assert res.status_code == 400
 
-    @patch("app.routers.stripe_webhook.get_stripe_client")
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
     @patch("app.routers.stripe_webhook.settings")
-    def test_webhook_invalid_signature(self, mock_settings, mock_stripe, client, db):
+    def test_webhook_invalid_signature(self, mock_settings, mock_construct, client, db):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
-        mock_stripe_mod = MagicMock()
-        mock_stripe.return_value = mock_stripe_mod
-        mock_stripe_mod.Webhook.construct_event.side_effect = \
-            SignatureVerificationError("bad sig", "header")
+        mock_construct.side_effect = SignatureVerificationError("bad sig", "header")
         res = client.post(
             "/api/stripe/webhook",
             content=b"{}",
@@ -106,12 +102,10 @@ class TestWebhookEndpoint:
         )
         assert res.status_code == 400
 
-    @patch("app.routers.stripe_webhook.get_stripe_client")
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
     @patch("app.routers.stripe_webhook.settings")
-    def test_checkout_completed(self, mock_settings, mock_stripe, client, db, lab, admin_user):
+    def test_checkout_completed(self, mock_settings, mock_construct, client, db, lab, admin_user):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
-        mock_stripe_mod = MagicMock()
-        mock_stripe.return_value = mock_stripe_mod
 
         event = self._make_event("checkout.session.completed", {
             "client_reference_id": str(lab.id),
@@ -119,7 +113,7 @@ class TestWebhookEndpoint:
             "subscription": "sub_test456",
             "customer_email": "billing@lab.com",
         })
-        mock_stripe_mod.Webhook.construct_event.return_value = event
+        mock_construct.return_value = event
 
         res = client.post(
             "/api/stripe/webhook",
@@ -135,19 +129,17 @@ class TestWebhookEndpoint:
         assert lab.billing_status == "active"
         assert lab.is_active is True
 
-    @patch("app.routers.stripe_webhook.get_stripe_client")
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
     @patch("app.routers.stripe_webhook.settings")
-    def test_event_deduplication(self, mock_settings, mock_stripe, client, db, lab, admin_user):
+    def test_event_deduplication(self, mock_settings, mock_construct, client, db, lab, admin_user):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
-        mock_stripe_mod = MagicMock()
-        mock_stripe.return_value = mock_stripe_mod
 
         event_id = "evt_dedup_test"
         event = self._make_event("invoice.paid", {
             "customer": "cus_dedup",
             "subscription": "sub_dedup",
         }, event_id=event_id)
-        mock_stripe_mod.Webhook.construct_event.return_value = event
+        mock_construct.return_value = event
 
         # Set up lab with stripe_customer_id
         lab.stripe_customer_id = "cus_dedup"
@@ -171,12 +163,10 @@ class TestWebhookEndpoint:
         assert res.status_code == 200
         assert res.json()["status"] == "already_processed"
 
-    @patch("app.routers.stripe_webhook.get_stripe_client")
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
     @patch("app.routers.stripe_webhook.settings")
-    def test_subscription_deleted(self, mock_settings, mock_stripe, client, db, lab, admin_user):
+    def test_subscription_deleted(self, mock_settings, mock_construct, client, db, lab, admin_user):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
-        mock_stripe_mod = MagicMock()
-        mock_stripe.return_value = mock_stripe_mod
 
         lab.stripe_customer_id = "cus_cancel"
         lab.billing_status = "active"
@@ -188,7 +178,7 @@ class TestWebhookEndpoint:
             "customer": "cus_cancel",
             "status": "canceled",
         })
-        mock_stripe_mod.Webhook.construct_event.return_value = event
+        mock_construct.return_value = event
 
         res = client.post(
             "/api/stripe/webhook",
@@ -201,12 +191,10 @@ class TestWebhookEndpoint:
         assert lab.billing_status == "cancelled"
         assert lab.is_active is False
 
-    @patch("app.routers.stripe_webhook.get_stripe_client")
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
     @patch("app.routers.stripe_webhook.settings")
-    def test_invoice_payment_failed(self, mock_settings, mock_stripe, client, db, lab, admin_user):
+    def test_invoice_payment_failed(self, mock_settings, mock_construct, client, db, lab, admin_user):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
-        mock_stripe_mod = MagicMock()
-        mock_stripe.return_value = mock_stripe_mod
 
         lab.stripe_customer_id = "cus_pastdue"
         lab.billing_status = "active"
@@ -216,7 +204,7 @@ class TestWebhookEndpoint:
         event = self._make_event("invoice.payment_failed", {
             "customer": "cus_pastdue",
         })
-        mock_stripe_mod.Webhook.construct_event.return_value = event
+        mock_construct.return_value = event
 
         res = client.post(
             "/api/stripe/webhook",
@@ -227,7 +215,7 @@ class TestWebhookEndpoint:
 
         db.refresh(lab)
         assert lab.billing_status == "past_due"
-        assert lab.is_active is False
+        assert lab.is_active is True
 
 
 class TestBillingEndpoints:
@@ -260,6 +248,37 @@ class TestBillingEndpoints:
         assert res.status_code in (400, 501)
 
 
+class TestEventCleanup:
+    def test_cleanup_requires_super_admin(self, client, auth_headers):
+        res = client.delete("/api/stripe/events/cleanup", headers=auth_headers)
+        assert res.status_code == 403
+
+    def test_cleanup_deletes_old_events(self, client, db, super_admin, super_token):
+        old = StripeEvent(
+            stripe_event_id="evt_old",
+            event_type="invoice.paid",
+            processed_at=datetime.now(timezone.utc) - timedelta(days=31),
+        )
+        recent = StripeEvent(
+            stripe_event_id="evt_recent",
+            event_type="invoice.paid",
+            processed_at=datetime.now(timezone.utc) - timedelta(days=1),
+        )
+        db.add_all([old, recent])
+        db.commit()
+
+        res = client.delete(
+            "/api/stripe/events/cleanup",
+            headers={"Authorization": f"Bearer {super_token}"},
+        )
+        assert res.status_code == 200
+        assert res.json()["deleted"] == 1
+
+        remaining = db.query(StripeEvent).all()
+        assert len(remaining) == 1
+        assert remaining[0].stripe_event_id == "evt_recent"
+
+
 class TestTrialExpiration:
     def test_expired_trial_blocks_writes(self, client, auth_headers, lab, db):
         lab.billing_status = "trial"
@@ -268,7 +287,7 @@ class TestTrialExpiration:
         db.commit()
 
         # Clear the suspension cache so it fetches fresh data
-        from app.main import _suspension_cache
+        from app.core.cache import suspension_cache as _suspension_cache
         _suspension_cache.clear()
 
         # POST should be blocked for expired trial
@@ -285,7 +304,7 @@ class TestTrialExpiration:
         lab.is_active = True
         db.commit()
 
-        from app.main import _suspension_cache
+        from app.core.cache import suspension_cache as _suspension_cache
         _suspension_cache.clear()
 
         # POST should be allowed for active trial (may fail for other reasons but not 403 trial expired)

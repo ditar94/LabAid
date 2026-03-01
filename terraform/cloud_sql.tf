@@ -12,8 +12,14 @@ resource "google_sql_database_instance" "nonprod" {
     deletion_protection_enabled  = true
 
     backup_configuration {
-      enabled                        = false
-      point_in_time_recovery_enabled = false
+      enabled                        = true
+      point_in_time_recovery_enabled = true
+      start_time                     = "04:00"
+      transaction_log_retention_days = 7
+
+      backup_retention_settings {
+        retained_backups = 7
+      }
     }
 
     maintenance_window {
@@ -76,7 +82,7 @@ resource "google_sql_database_instance" "prod" {
       enabled                        = true
       start_time                     = "03:00"
       point_in_time_recovery_enabled = true
-      transaction_log_retention_days = 14
+      transaction_log_retention_days = 7
 
       backup_retention_settings {
         retained_backups = 14

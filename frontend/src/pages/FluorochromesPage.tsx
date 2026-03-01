@@ -65,6 +65,7 @@ export default function FluorochromesPage() {
         <div className="filters">
         {user?.role === "super_admin" && labs.length > 0 && (
             <select
+              aria-label="Select lab"
               value={selectedLab}
               onChange={(e) => setSelectedLab(e.target.value)}
             >
@@ -86,6 +87,7 @@ export default function FluorochromesPage() {
       {showForm && (
         <form className="inline-form" onSubmit={handleSubmit}>
           <input
+            aria-label="Fluorochrome name"
             placeholder="Fluorochrome Name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -93,6 +95,7 @@ export default function FluorochromesPage() {
           />
           <input
             type="color"
+            aria-label="Fluorochrome color"
             value={form.color}
             onChange={(e) => setForm({ ...form, color: e.target.value })}
             required

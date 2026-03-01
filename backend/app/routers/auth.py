@@ -52,7 +52,25 @@ _ROLE_RANK = {
     UserRole.SUPER_ADMIN: 4,
 }
 
-MIN_PASSWORD_LENGTH = 8
+MIN_PASSWORD_LENGTH = 10
+
+
+def _validate_password(pw: str) -> None:
+    """Enforce password policy. Raises HTTPException on failure."""
+    errors = []
+    if len(pw) < MIN_PASSWORD_LENGTH:
+        errors.append(f"at least {MIN_PASSWORD_LENGTH} characters")
+    if not any(c.isupper() for c in pw):
+        errors.append("one uppercase letter")
+    if not any(c.islower() for c in pw):
+        errors.append("one lowercase letter")
+    if not any(c.isdigit() for c in pw):
+        errors.append("one digit")
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must contain {', '.join(errors)}",
+        )
 
 _DEMO_BLOCKED = "This action is not available in demo mode."
 
@@ -94,11 +112,36 @@ def _clear_auth_cookies(response: Response) -> None:
 @limiter.limit("5/minute")
 def login(request: Request, response: Response, body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(func.lower(User.email) == body.email.lower(), User.is_active.is_(True)).first()
+
+    # Check lockout before password verification
+    if user and user.locked_until:
+        lock_time = user.locked_until
+        if lock_time.tzinfo is None:
+            lock_time = lock_time.replace(tzinfo=timezone.utc)
+        remaining = (lock_time - datetime.now(timezone.utc)).total_seconds()
+        if remaining > 0:
+            minutes = max(1, int(remaining // 60) + 1)
+            raise HTTPException(
+                status_code=423,
+                detail=f"Account locked. Try again in {minutes} minute{'s' if minutes != 1 else ''}.",
+            )
+
     if not user or not verify_password(body.password, user.hashed_password):
+        # Track failed attempts
+        if user:
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            if user.failed_login_attempts >= 5:
+                user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+            db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
+
+    # Reset on successful login
+    if user.failed_login_attempts:
+        user.failed_login_attempts = 0
+        user.locked_until = None
 
     if user.lab_id:
         if not password_enabled(db, user.lab_id):
@@ -177,11 +220,7 @@ def initial_setup(body: SetupRequest, response: Response, db: Session = Depends(
     if existing:
         raise HTTPException(status_code=400, detail="Setup already completed")
 
-    if len(body.password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
-        )
+    _validate_password(body.password)
 
     user = User(
         lab_id=None,
@@ -370,11 +409,7 @@ def accept_invite(
     body: AcceptInviteRequest,
     db: Session = Depends(get_db),
 ):
-    if len(body.password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
-        )
+    _validate_password(body.password)
 
     user = db.query(User).filter(
         User.invite_token == body.token,
@@ -536,11 +571,14 @@ def change_password(
 ):
     _check_demo(db, current_user.lab_id)
 
-    if len(body.new_password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
-        )
+    # Require current password unless this is a forced first-login change
+    if not current_user.must_change_password:
+        if not body.current_password:
+            raise HTTPException(status_code=400, detail="Current password is required")
+        if not verify_password(body.current_password, current_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    _validate_password(body.new_password)
 
     current_user.hashed_password = hash_password(body.new_password)
     current_user.must_change_password = False

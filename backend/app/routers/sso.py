@@ -194,6 +194,26 @@ async def sso_callback(
             )
             db.add(ext_identity)
 
+    # If not found by primary email, try preferred_username/upn as fallback
+    # (Microsoft Entra may return a personal email in the "email" claim
+    # while the UPN matches what the lab admin entered when creating the user)
+    if not user and not ext_identity:
+        fallback = (claims.get("preferred_username") or claims.get("upn") or "").lower()
+        if fallback and fallback != email:
+            user = db.query(User).filter(
+                func.lower(User.email) == fallback,
+                User.lab_id == provider.lab_id,
+            ).first()
+            if user:
+                email = fallback
+                ext_identity = ExternalIdentity(
+                    user_id=user.id,
+                    provider_type=provider.provider_type.value,
+                    provider_subject=sub,
+                    provider_email=email,
+                )
+                db.add(ext_identity)
+
     if not user:
         logger.warning("SSO user_not_found: email=%s, provider_lab_id=%s", email, provider.lab_id)
         error_url = f"{settings.APP_URL.rstrip('/')}/auth/callback?error=user_not_found"

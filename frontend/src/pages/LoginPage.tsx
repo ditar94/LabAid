@@ -21,7 +21,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [providers, setProviders] = useState<string[]>([]);
-  const [labName, setLabName] = useState<string | null>(null);
+
   const [error, setError] = useState("");
   const [shaking, setShaking] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -48,7 +48,6 @@ export default function LoginPage() {
       }
 
       setProviders(disc);
-      setLabName(res.data.lab_name || null);
       setStep("auth");
     } catch (err: any) {
       if (err?.response?.status === 429) {
@@ -150,8 +149,6 @@ export default function LoginPage() {
             <button type="button" className="login-back-step" onClick={goBack}>
               <ArrowLeft size={14} /> {email}
             </button>
-
-            {labName && <p className="login-lab-name">{labName}</p>}
 
             {hasPassword && (
               <form onSubmit={handleLogin}>

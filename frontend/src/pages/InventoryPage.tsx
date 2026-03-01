@@ -34,6 +34,7 @@ function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUpload
   const [uploading, setUploading] = useState(false);
   const [docSavingId, setDocSavingId] = useState<string | null>(null);
   const [docDeletingId, setDocDeletingId] = useState<string | null>(null);
+  const [deletePrompt, setDeletePrompt] = useState<LotDocument | null>(null);
   // Incrementing key forces the file input to fully remount after errors
   const [inputKey, setInputKey] = useState(0);
 
@@ -146,15 +147,19 @@ function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUpload
     }
   };
 
-  const deleteDocument = async (doc: LotDocument) => {
-    const confirmed = window.confirm(`Delete ${doc.file_name}? This cannot be undone.`);
-    if (!confirmed) return;
+  const deleteDocument = (doc: LotDocument) => {
+    setDeletePrompt(doc);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletePrompt) return;
     setError(null);
-    setDocDeletingId(doc.id);
+    setDocDeletingId(deletePrompt.id);
     try {
-      await api.delete(`/documents/${doc.id}`);
-      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      await api.delete(`/documents/${deletePrompt.id}`);
+      setDocuments((prev) => prev.filter((d) => d.id !== deletePrompt.id));
       onDocumentsChange?.();
+      setDeletePrompt(null);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to delete document");
     } finally {
@@ -234,6 +239,20 @@ function DocumentModal({ lot, qcDocRequired = false, onClose, onUpload, onUpload
           {onUploadAndApprove ? "Cancel" : "Close"}
         </button>
       </div>
+      {deletePrompt && (
+        <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={() => setDeletePrompt(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Delete document?</h2>
+            <p className="page-desc">Delete {deletePrompt.file_name}? This cannot be undone.</p>
+            <div className="action-btns" style={{ marginTop: "var(--space-lg)" }}>
+              <button className="btn-danger" onClick={confirmDelete} disabled={!!docDeletingId}>
+                {docDeletingId ? "Deleting..." : "Delete"}
+              </button>
+              <button className="btn-secondary" onClick={() => setDeletePrompt(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -304,6 +323,7 @@ export default function InventoryPage() {
   const [editAbLoading, setEditAbLoading] = useState(false);
   const [modalLot, setModalLot] = useState<Lot | null>(null);
   const [qcBlockedLot, setQcBlockedLot] = useState<Lot | null>(null);
+  const [qcConfirmLot, setQcConfirmLot] = useState<Lot | null>(null);
   const [docModalApproveAfter, setDocModalApproveAfter] = useState(false);
 
   // Lot drill-down
@@ -877,12 +897,19 @@ export default function InventoryPage() {
     }
   };
 
+  const requestQCApprove = (lotId: string) => {
+    const lot = lots.find((l) => l.id === lotId) || null;
+    setQcConfirmLot(lot);
+  };
+
   const updateQC = async (lotId: string, status: "approved") => {
     try {
       await api.patch(`/lots/${lotId}/qc`, { qc_status: status });
       await loadData();
+      setQcConfirmLot(null);
     } catch (err: any) {
       if (err.response?.status === 409) {
+        setQcConfirmLot(null);
         const lot = lots.find((l) => l.id === lotId) || null;
         setQcBlockedLot(lot);
       }
@@ -1085,7 +1112,7 @@ export default function InventoryPage() {
               qcDocRequired={labSettings.qc_doc_required ?? false}
               storageEnabled={storageEnabled}
               lotAgeBadgeMap={lotAgeBadgeMap}
-              onApproveQC={(id) => updateQC(id, "approved")}
+              onApproveQC={(id) => requestQCApprove(id)}
               onDeplete={(lot) =>
                 setConfirmAction({
                   lotId: lot.id,
@@ -1113,7 +1140,7 @@ export default function InventoryPage() {
               qcDocRequired={labSettings.qc_doc_required ?? false}
               storageEnabled={storageEnabled}
               lotAgeBadgeMap={lotAgeBadgeMap}
-              onApproveQC={(id) => updateQC(id, "approved")}
+              onApproveQC={(id) => requestQCApprove(id)}
               onDeplete={(lot) =>
                 setConfirmAction({
                   lotId: lot.id,
@@ -1652,6 +1679,22 @@ export default function InventoryPage() {
               <button className="btn-secondary" onClick={() => setQcBlockedLot(null)}>
                 Cancel
               </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {qcConfirmLot && (
+        <Modal onClose={() => setQcConfirmLot(null)} ariaLabel="Confirm QC approval">
+          <div className="modal-content">
+            <h2>Approve QC for Lot {qcConfirmLot.lot_number}?</h2>
+            <p className="page-desc">
+              This will mark the lot as QC approved. This action is recorded in the audit log.
+            </p>
+            <div className="action-btns" style={{ marginTop: "var(--space-lg)" }}>
+              <button className="btn-chip btn-chip-success" onClick={() => updateQC(qcConfirmLot.id, "approved")}>
+                Approve
+              </button>
+              <button className="btn-secondary" onClick={() => setQcConfirmLot(null)}>Cancel</button>
             </div>
           </div>
         </Modal>

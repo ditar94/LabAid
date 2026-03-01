@@ -54,6 +54,7 @@ class UserCreateResponse(UserOut):
 
 
 class ChangePasswordRequest(BaseModel):
+    current_password: str | None = None
     new_password: str
 
 
@@ -116,7 +117,6 @@ class DiscoverRequest(BaseModel):
 
 class DiscoverResponse(BaseModel):
     providers: list[str]
-    lab_name: str | None = None
 
 
 # ── Lab ────────────────────────────────────────────────────────────────────

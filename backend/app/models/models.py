@@ -149,6 +149,8 @@ class User(Base):
     must_change_password = Column(Boolean, default=False, nullable=False)
     invite_token = Column(String(64), nullable=True, unique=True, index=True)
     invite_token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    failed_login_attempts = Column(Integer, default=0, nullable=False, server_default="0")
+    locked_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     lab = relationship("Lab", back_populates="users")

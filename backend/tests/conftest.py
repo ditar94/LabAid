@@ -73,9 +73,8 @@ def client(db):
     # use the test SQLite session instead of the real PostgreSQL engine.
     import app.core.database as db_module
     import app.main as main_module
-    import app.routers.stripe_webhook as stripe_module
     original_session_local = db_module.SessionLocal
-    # Wrap session so middleware/webhook close() calls don't detach test objects
+    # Wrap session so middleware close() calls don't detach test objects
     class _NoClose:
         def __init__(self, s): object.__setattr__(self, '_s', s)
         def close(self): pass
@@ -84,7 +83,6 @@ def client(db):
     _proxy = _NoClose(db)
     db_module.SessionLocal = lambda: _proxy
     main_module.SessionLocal = lambda: _proxy
-    stripe_module.SessionLocal = lambda: _proxy
 
     # Reset rate limiter state so tests don't interfere with each other
     from app.routers.auth import limiter
@@ -99,7 +97,6 @@ def client(db):
 
     db_module.SessionLocal = original_session_local
     main_module.SessionLocal = original_session_local
-    stripe_module.SessionLocal = original_session_local
     app.dependency_overrides.clear()
 
 

@@ -1,4 +1,5 @@
 import type { StorageCell } from "../../api/types";
+import { Modal } from "../Modal";
 
 interface Props {
   cell: StorageCell;
@@ -26,11 +27,8 @@ export default function OpenVialDialog({
     !isOpened && vial.qc_status && vial.qc_status !== "approved";
 
   return (
-    <div className="open-vial-dialog-overlay" onClick={onCancel} role="dialog" aria-modal="true" aria-label="Vial action">
-      <div
-        className="open-vial-dialog"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onCancel} ariaLabel="Vial action">
+      <div className="open-vial-dialog">
         <h3>{vial.antibody_target} - {vial.antibody_fluorochrome}</h3>
         <p>
           Lot: {vial.lot_number} | Cell: {cell.label} | Status: {vial.status}
@@ -71,6 +69,6 @@ export default function OpenVialDialog({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

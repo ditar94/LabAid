@@ -54,6 +54,7 @@ const CocktailsPage = lazy(() => import("./pages/CocktailsPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 const DemoPage = lazy(() => import("./pages/DemoPage"));
 const SSOCallbackPage = lazy(() => import("./pages/SSOCallbackPage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, labSettings } = useAuth();
@@ -125,7 +126,9 @@ function AppRoutes() {
           <Route path="/tickets" element={<TicketsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/global-search" element={<GlobalSearchPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   );

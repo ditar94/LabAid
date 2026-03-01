@@ -334,6 +334,13 @@ export default function DashboardPage() {
     }
   };
 
+  const onKeyActivate = (e: React.KeyboardEvent, handler: () => void) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handler();
+    }
+  };
+
   // Helper: render antibody label + vendor as a prefix column for LotTable/LotCardList
   const renderLotPrefix = (lot: Lot, extraBadges?: React.ReactNode) => {
     const label = lotLabel(lot);
@@ -477,7 +484,7 @@ export default function DashboardPage() {
                 const ab = req.proposed_antibody as Record<string, string>;
                 const abLabel = ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join(" - ") || "Unnamed";
                 return (
-                  <div key={req.id} className="dash-card clickable" onClick={() => setReviewingRequest(req)} role="button" tabIndex={0}>
+                  <div key={req.id} className="dash-card clickable" onClick={() => setReviewingRequest(req)} onKeyDown={(e) => onKeyActivate(e, () => setReviewingRequest(req))} role="button" tabIndex={0}>
                     <div className="dash-card-title">{abLabel}</div>
                     <div className="dash-card-row"><span>Submitted by</span><span>{req.user_full_name || "Unknown"}</span></div>
                     <div className="dash-card-row"><span>Barcode</span><span style={{ fontSize: "0.85em", wordBreak: "break-all" }}>{req.barcode}</span></div>
@@ -583,7 +590,7 @@ export default function DashboardPage() {
                 isMobile ? (
                   <div className="dash-card-list" style={pendingLots.length > 0 ? { marginTop: "1rem" } : undefined}>
                     {pendingCocktailLots.map((cl) => (
-                      <div key={cl.id} className="dash-card clickable" onClick={() => navigate("/cocktails")} role="button" tabIndex={0}>
+                      <div key={cl.id} className="dash-card clickable" onClick={() => navigate("/cocktails")} onKeyDown={(e) => onKeyActivate(e, () => navigate("/cocktails"))} role="button" tabIndex={0}>
                         <div className="dash-card-title">{cl.recipe_name || "Cocktail"}</div>
                         <div className="dash-card-row"><span>Lot #</span><span>{cl.lot_number}</span></div>
                         <div className="dash-card-row"><span>Status</span><span><span className="badge badge-yellow">Pending QC</span></span></div>
@@ -591,7 +598,7 @@ export default function DashboardPage() {
                       </div>
                     ))}
                     {expiredCocktailLots.map((cl) => (
-                      <div key={cl.id} className="dash-card clickable" onClick={() => navigate("/cocktails")} role="button" tabIndex={0}>
+                      <div key={cl.id} className="dash-card clickable" onClick={() => navigate("/cocktails")} onKeyDown={(e) => onKeyActivate(e, () => navigate("/cocktails"))} role="button" tabIndex={0}>
                         <div className="dash-card-title">{cl.recipe_name || "Cocktail"}</div>
                         <div className="dash-card-row"><span>Lot #</span><span>{cl.lot_number}</span></div>
                         <div className="dash-card-row"><span>Status</span><span><span className="badge badge-red">Expired</span></span></div>
@@ -611,7 +618,7 @@ export default function DashboardPage() {
                     </thead>
                     <tbody>
                       {pendingCocktailLots.map((cl) => (
-                        <tr key={cl.id} className="clickable-row" onClick={() => navigate("/cocktails")} role="button" tabIndex={0}>
+                        <tr key={cl.id} className="clickable-row" onClick={() => navigate("/cocktails")} onKeyDown={(e) => onKeyActivate(e, () => navigate("/cocktails"))} role="button" tabIndex={0}>
                           <td>{cl.recipe_name || "Cocktail"}</td>
                           <td>{cl.lot_number}</td>
                           <td><span className="badge badge-yellow">Pending QC</span></td>
@@ -619,7 +626,7 @@ export default function DashboardPage() {
                         </tr>
                       ))}
                       {expiredCocktailLots.map((cl) => (
-                        <tr key={cl.id} className="clickable-row" onClick={() => navigate("/cocktails")} role="button" tabIndex={0}>
+                        <tr key={cl.id} className="clickable-row" onClick={() => navigate("/cocktails")} onKeyDown={(e) => onKeyActivate(e, () => navigate("/cocktails"))} role="button" tabIndex={0}>
                           <td>{cl.recipe_name || "Cocktail"}</td>
                           <td>{cl.lot_number}</td>
                           <td><span className="badge badge-red">Expired</span></td>
@@ -650,6 +657,7 @@ export default function DashboardPage() {
                   key={item.lot_id}
                   className={`dash-card clickable${tempSelectedItem?.lot_id === item.lot_id ? " active" : ""}`}
                   onClick={() => handleTempLotClick(item)}
+                  onKeyDown={(e) => onKeyActivate(e, () => handleTempLotClick(item))}
                   role="button"
                   tabIndex={0}
                 >
@@ -688,6 +696,7 @@ export default function DashboardPage() {
                     key={item.lot_id}
                     className={`clickable-row${tempSelectedItem?.lot_id === item.lot_id ? " active" : ""}`}
                     onClick={() => handleTempLotClick(item)}
+                    onKeyDown={(e) => onKeyActivate(e, () => handleTempLotClick(item))}
                     role="button"
                     tabIndex={0}
                   >

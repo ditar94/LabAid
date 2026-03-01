@@ -701,12 +701,6 @@ body {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
-.login-lab-name {
-  color: var(--neutral-400);
-  font-size: var(--text-sm);
-  margin: 0 0 var(--space-md);
-}
-
 .login-divider {
   display: flex;
   align-items: center;
@@ -983,6 +977,16 @@ body {
   font-size: var(--text-xs);
   margin-top: var(--space-xs);
   transition: color var(--duration-fast) ease;
+}
+
+.password-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.password-rules .field-hint {
+  margin-top: 0;
 }
 
 .hint-success {
@@ -8425,4 +8429,51 @@ textarea:focus-visible {
   .cocktail-lot-actions { flex-direction: column; gap: 0.25rem; }
   .cocktail-lot-actions .btn-chip { justify-content: center; }
   .cocktail-source-item { flex-direction: column; gap: 0.15rem; }
+
+  /* ── Mobile card layout for tables ── */
+  .mobile-cards table,
+  .mobile-cards thead,
+  .mobile-cards tbody,
+  .mobile-cards th,
+  .mobile-cards td,
+  .mobile-cards tr { display: block; }
+
+  .mobile-cards thead { display: none; }
+
+  .mobile-cards tbody tr {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 8px);
+    padding: var(--space-sm) var(--space-md);
+    margin-bottom: var(--space-sm);
+  }
+
+  .mobile-cards tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border: none;
+    text-align: right;
+  }
+
+  .mobile-cards tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-align: left;
+    flex-shrink: 0;
+    margin-right: var(--space-sm);
+  }
+
+  .mobile-cards tbody td.action-btns {
+    justify-content: flex-end;
+    gap: 6px;
+    padding-top: var(--space-xs);
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+
+  .mobile-cards tbody td.action-btns::before { display: none; }
 }

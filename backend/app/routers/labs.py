@@ -293,7 +293,13 @@ def billing_checkout(
         raise HTTPException(status_code=404, detail="Lab not found")
 
     from app.services.stripe_service import create_checkout_session
-    url = create_checkout_session(db, lab, body.success_url, body.cancel_url)
+    from stripe._error import StripeError
+    try:
+        url = create_checkout_session(db, lab, body.success_url, body.cancel_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
     db.commit()
     return {"url": url}
 
@@ -317,7 +323,13 @@ def billing_portal(
         raise HTTPException(status_code=400, detail="No billing account found. Please subscribe first.")
 
     from app.services.stripe_service import create_portal_session
-    url = create_portal_session(lab, body.return_url)
+    from stripe._error import StripeError
+    try:
+        url = create_portal_session(lab, body.return_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
     return {"url": url}
 
 
@@ -355,7 +367,11 @@ def create_stripe_customer(
         raise HTTPException(status_code=409, detail="Lab already has a Stripe customer")
 
     from app.services.stripe_service import get_or_create_customer
-    get_or_create_customer(db, lab)
+    from stripe._error import StripeError
+    try:
+        get_or_create_customer(db, lab)
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
     db.commit()
     db.refresh(lab)
     return lab

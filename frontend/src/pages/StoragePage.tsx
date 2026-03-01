@@ -266,6 +266,7 @@ export default function StoragePage() {
         <div className="filters">
           {user?.role === "super_admin" && labs.length > 0 && (
             <select
+              aria-label="Select lab"
               value={selectedLab}
               onChange={(e) => setSelectedLab(e.target.value)}
             >
@@ -287,6 +288,7 @@ export default function StoragePage() {
       {showForm && (
         <form className="inline-form" onSubmit={handleSubmit}>
           <input
+            aria-label="Storage unit name"
             placeholder="Name (e.g., Freezer Box A1)"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -294,6 +296,7 @@ export default function StoragePage() {
           />
           <input
             type="number"
+            aria-label="Number of rows"
             placeholder="Rows"
             min={1}
             max={26}
@@ -305,6 +308,7 @@ export default function StoragePage() {
           />
           <input
             type="number"
+            aria-label="Number of columns"
             placeholder="Columns"
             min={1}
             max={26}
@@ -315,6 +319,7 @@ export default function StoragePage() {
             required
           />
           <input
+            aria-label="Temperature"
             placeholder="Temperature (e.g., -20C)"
             value={form.temperature}
             onChange={(e) =>

@@ -5,7 +5,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN groupadd -r labaid && useradd -r -g labaid labaid
+
 COPY . .
+
+RUN chown -R labaid:labaid /app
+
+USER labaid
 
 EXPOSE 8080
 

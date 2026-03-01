@@ -276,7 +276,6 @@ def discover_providers(
         return DiscoverResponse(providers=["password"])
 
     lab = db.query(Lab).filter(Lab.id == lab_id).first()
-    lab_name = lab.name if lab else None
     sso_enabled = (lab.settings or {}).get("sso_enabled", False) if lab else False
 
     providers_q = db.query(LabAuthProvider).filter(
@@ -297,4 +296,4 @@ def discover_providers(
     if "password" not in provider_types and password_enabled(db, lab_id):
         provider_types.insert(0, "password")
 
-    return DiscoverResponse(providers=provider_types, lab_name=lab_name)
+    return DiscoverResponse(providers=provider_types)

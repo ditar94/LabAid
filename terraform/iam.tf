@@ -34,7 +34,6 @@ locals {
   github_sa_roles = [
     "roles/run.admin",
     "roles/artifactregistry.writer",
-    "roles/secretmanager.secretAccessor",
     "roles/cloudsql.client",
     "roles/iam.serviceAccountUser",
     "roles/firebasehosting.admin",

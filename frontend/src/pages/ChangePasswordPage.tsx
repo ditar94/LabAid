@@ -11,20 +11,25 @@ export default function ChangePasswordPage() {
     return <Navigate to="/dashboard" replace />;
   }
   const navigate = useNavigate();
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
   const isForced = !!user?.must_change_password;
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
-  const passwordLongEnough = newPassword.length >= 8;
+  const hasLength = newPassword.length >= 10;
+  const hasUpper = /[A-Z]/.test(newPassword);
+  const hasLower = /[a-z]/.test(newPassword);
+  const hasDigit = /\d/.test(newPassword);
+  const passwordValid = hasLength && hasUpper && hasLower && hasDigit;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!passwordLongEnough) {
-      setError("Password must be at least 8 characters");
+    if (!passwordValid) {
+      setError("Password does not meet all requirements");
       return;
     }
     if (!passwordsMatch) {
@@ -33,7 +38,10 @@ export default function ChangePasswordPage() {
     }
 
     try {
-      await api.post("/auth/change-password", { new_password: newPassword });
+      await api.post("/auth/change-password", {
+        ...(!isForced && { current_password: currentPassword }),
+        new_password: newPassword,
+      });
       await refreshUser();
       navigate("/dashboard");
     } catch (err: any) {
@@ -80,22 +88,47 @@ export default function ChangePasswordPage() {
         )}
 
         <form onSubmit={handleSubmit}>
+          {!isForced && (
+            <div className="form-group">
+              <label htmlFor="current-password">Current Password</label>
+              <input
+                id="current-password"
+                type="password"
+                placeholder="Enter your current password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+          )}
           <div className="form-group">
             <label htmlFor="new-password">New Password</label>
             <input
               id="new-password"
               type="password"
-              placeholder="At least 8 characters"
+              placeholder="At least 10 characters"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
-              minLength={8}
-              autoFocus
+              minLength={10}
+              autoFocus={isForced}
             />
             {newPassword.length > 0 && (
-              <span className={`field-hint ${passwordLongEnough ? "hint-success" : "hint-warn"}`}>
-                {passwordLongEnough ? "Looks good" : `${8 - newPassword.length} more character${8 - newPassword.length === 1 ? "" : "s"} needed`}
-              </span>
+              <div className="password-rules">
+                <span className={`field-hint ${hasLength ? "hint-success" : "hint-warn"}`}>
+                  {hasLength ? "Length OK" : `${10 - newPassword.length} more character${10 - newPassword.length === 1 ? "" : "s"}`}
+                </span>
+                <span className={`field-hint ${hasUpper ? "hint-success" : "hint-warn"}`}>
+                  {hasUpper ? "Uppercase OK" : "Need uppercase"}
+                </span>
+                <span className={`field-hint ${hasLower ? "hint-success" : "hint-warn"}`}>
+                  {hasLower ? "Lowercase OK" : "Need lowercase"}
+                </span>
+                <span className={`field-hint ${hasDigit ? "hint-success" : "hint-warn"}`}>
+                  {hasDigit ? "Digit OK" : "Need a digit"}
+                </span>
+              </div>
             )}
           </div>
           <div className="form-group">
@@ -107,7 +140,7 @@ export default function ChangePasswordPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              minLength={8}
+              minLength={10}
             />
             {confirmPassword.length > 0 && (
               <span className={`field-hint ${passwordsMatch ? "hint-success" : "hint-warn"}`}>
@@ -119,7 +152,7 @@ export default function ChangePasswordPage() {
           <button
             type="submit"
             className="login-submit"
-            disabled={!passwordLongEnough || !passwordsMatch}
+            disabled={!passwordValid || !passwordsMatch || (!isForced && !currentPassword)}
           >
             {isForced ? "Set Password & Continue" : "Update Password"}
           </button>

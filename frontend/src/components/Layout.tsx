@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect, lazy, Suspense } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import RouteErrorBoundary from "./RouteErrorBoundary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Antibody, Lot, User } from "../api/types";
@@ -51,6 +52,7 @@ export default function Layout() {
   const [canScrollDown, setCanScrollDown] = useState(false);
   const navLinksRef = useRef<HTMLDivElement>(null);
   const { theme, cycleTheme } = useTheme();
+  const [billingError, setBillingError] = useState<string | null>(null);
 
   // Lock page scroll when mobile sidebar is open
   useEffect(() => {
@@ -110,8 +112,9 @@ export default function Layout() {
         });
         window.location.href = data.url;
       }
-    } catch {
-      // Stripe not configured or network error — fail silently
+    } catch (err: any) {
+      setBillingError(err.response?.data?.detail || "Billing service unavailable. Please try again later.");
+      setTimeout(() => setBillingError(null), 5000);
     }
   };
 
@@ -445,7 +448,15 @@ export default function Layout() {
             )}
           </div>
         )}
-        <Outlet />
+        {billingError && (
+          <div className="account-banner account-banner--danger" role="alert">
+            <span>{billingError}</span>
+            <button className="account-banner-link" onClick={() => setBillingError(null)}>Dismiss</button>
+          </div>
+        )}
+        <RouteErrorBoundary>
+          <Outlet />
+        </RouteErrorBoundary>
       </main>
       {showTerms && (
         <Suspense fallback={null}>

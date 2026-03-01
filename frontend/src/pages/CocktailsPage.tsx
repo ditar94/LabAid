@@ -43,6 +43,7 @@ export default function CocktailsPage() {
   const [prepareLoading, setPrepareLoading] = useState(false);
   const [docModalLotId, setDocModalLotId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [qcConfirmLot, setQcConfirmLot] = useState<CocktailLot | null>(null);
   const [archivePrompt, setArchivePrompt] = useState<{ lotId: string; lotNumber: string } | null>(null);
   const [archiveNote, setArchiveNote] = useState("");
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -431,7 +432,7 @@ export default function CocktailsPage() {
             {canEdit && lot.qc_status === "pending" && !lot.is_archived && (
               <button
                 className="btn-chip btn-chip-success"
-                onClick={() => handleQC(lot.id, "approved")}
+                onClick={() => setQcConfirmLot(lot)}
                 disabled={isLotLoading}
               >
                 <CheckCircle size={14} />
@@ -617,7 +618,17 @@ export default function CocktailsPage() {
         </div>
       </div>
 
-      {isLoading && <p className="page-desc">Loading cocktails...</p>}
+      {isLoading && (
+        <div className="inventory-grid">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="card" style={{ padding: "var(--space-md)" }}>
+              <span className="shimmer shimmer-text" style={{ width: "60%" }} />
+              <span className="shimmer shimmer-text" style={{ width: "40%", marginTop: "var(--space-sm)" }} />
+              <span className="shimmer shimmer-text" style={{ width: "80%", marginTop: "var(--space-sm)" }} />
+            </div>
+          ))}
+        </div>
+      )}
 
       {!isLoading && sortedRecipes.length === 0 && (
         <EmptyState
@@ -786,6 +797,25 @@ export default function CocktailsPage() {
               >
                 {archiveLoading ? "Archiving..." : "Archive Lot"}
               </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {qcConfirmLot && (
+        <Modal onClose={() => setQcConfirmLot(null)} ariaLabel="Confirm QC approval">
+          <div className="modal-content">
+            <h2>Approve QC for this cocktail lot?</h2>
+            <p className="page-desc">
+              This will mark the lot as QC approved. This action is recorded in the audit log.
+            </p>
+            <div className="action-btns" style={{ marginTop: "var(--space-lg)" }}>
+              <button
+                className="btn-chip btn-chip-success"
+                onClick={() => { handleQC(qcConfirmLot.id, "approved"); setQcConfirmLot(null); }}
+              >
+                Approve
+              </button>
+              <button className="btn-secondary" onClick={() => setQcConfirmLot(null)}>Cancel</button>
             </div>
           </div>
         </Modal>

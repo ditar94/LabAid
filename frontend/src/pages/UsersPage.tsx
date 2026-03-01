@@ -6,6 +6,8 @@ import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { Users as UsersIcon, ChevronDown, ChevronRight } from "lucide-react";
 import EmptyState from "../components/EmptyState";
+import { Modal } from "../components/Modal";
+import TableSkeleton from "../components/TableSkeleton";
 import { useToast } from "../context/ToastContext";
 
 export default function UsersPage() {
@@ -37,6 +39,8 @@ export default function UsersPage() {
   const { addToast } = useToast();
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [editEmailValue, setEditEmailValue] = useState("");
+  const [deactivatePrompt, setDeactivatePrompt] = useState<User | null>(null);
+  const [deactivateLoading, setDeactivateLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -128,16 +132,32 @@ export default function UsersPage() {
   };
 
   const handleToggleActive = async (u: User) => {
+    if (u.is_active) {
+      setDeactivatePrompt(u);
+      return;
+    }
     setError(null);
-    const newActive = !u.is_active;
-    const action = newActive ? "reactivate" : "deactivate";
-    if (!confirm(`Are you sure you want to ${action} ${u.full_name}?`)) return;
     try {
-      await api.patch(`/auth/users/${u.id}`, { is_active: newActive });
-      addToast(`${u.full_name} ${newActive ? "reactivated" : "deactivated"}`, "success");
+      await api.patch(`/auth/users/${u.id}`, { is_active: true });
+      addToast(`${u.full_name} reactivated`, "success");
       queryClient.invalidateQueries({ queryKey: ["users"] });
     } catch (err: any) {
-      setError(err.response?.data?.detail || `Failed to ${action} user`);
+      setError(err.response?.data?.detail || "Failed to reactivate user");
+    }
+  };
+
+  const confirmDeactivate = async () => {
+    if (!deactivatePrompt) return;
+    setDeactivateLoading(true);
+    try {
+      await api.patch(`/auth/users/${deactivatePrompt.id}`, { is_active: false });
+      addToast(`${deactivatePrompt.full_name} deactivated`, "success");
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setDeactivatePrompt(null);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to deactivate user");
+    } finally {
+      setDeactivateLoading(false);
     }
   };
 
@@ -160,6 +180,7 @@ export default function UsersPage() {
         <div className="filters">
           {currentUser?.role === "super_admin" && labs.length > 0 && (
             <select
+              aria-label="Select lab"
               value={selectedLab}
               onChange={(e) => setSelectedLab(e.target.value)}
             >
@@ -214,6 +235,7 @@ export default function UsersPage() {
       {showForm && (
         <form className="inline-form" onSubmit={handleSubmit}>
           <input
+            aria-label="Full name"
             placeholder="Full Name"
             value={form.full_name}
             onChange={(e) => setForm({ ...form, full_name: e.target.value })}
@@ -221,12 +243,14 @@ export default function UsersPage() {
           />
           <input
             type="email"
+            aria-label="Email"
             placeholder="Email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             required
           />
           <select
+            aria-label="Role"
             value={form.role}
             onChange={(e) => setForm({ ...form, role: e.target.value })}
           >
@@ -240,7 +264,9 @@ export default function UsersPage() {
         </form>
       )}
 
-      {!loading && users.length === 0 ? (
+      {loading && users.length === 0 ? (
+        <TableSkeleton rows={4} cols={4} />
+      ) : !loading && users.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
           title="No users found"
@@ -248,7 +274,7 @@ export default function UsersPage() {
         />
       ) : (
         <>
-        <div className="table-scroll">
+        <div className="table-scroll mobile-cards">
         <table>
           <thead>
             <tr>
@@ -263,12 +289,13 @@ export default function UsersPage() {
               const canEdit = canManage && u.id !== currentUser?.id && u.role !== "super_admin";
               return (
               <tr key={u.id}>
-                <td>{u.full_name}</td>
-                <td>
+                <td data-label="Name">{u.full_name}</td>
+                <td data-label="Email">
                   {editingEmail === u.id ? (
                     <span className="inline-edit">
                       <input
                         type="email"
+                        aria-label={`Email for ${u.full_name}`}
                         value={editEmailValue}
                         onChange={(e) => setEditEmailValue(e.target.value)}
                         onKeyDown={(e) => {
@@ -295,9 +322,10 @@ export default function UsersPage() {
                     </span>
                   )}
                 </td>
-                <td>
+                <td data-label="Role">
                   {canEdit ? (
                     <select
+                      aria-label={`Role for ${u.full_name}`}
                       value={u.role}
                       onChange={(e) => handleRoleChange(u.id, e.target.value)}
                     >
@@ -311,7 +339,7 @@ export default function UsersPage() {
                     u.role.replaceAll("_", " ")
                   )}
                 </td>
-                <td className="action-btns">
+                <td data-label="Actions" className="action-btns">
                   {canEdit && (
                     <>
                       {labSettings.password_enabled !== false && (
@@ -387,6 +415,22 @@ export default function UsersPage() {
           </div>
         )}
         </>
+      )}
+      {deactivatePrompt && (
+        <Modal onClose={() => setDeactivatePrompt(null)} ariaLabel="Deactivate user">
+          <div className="modal-content">
+            <h2>Deactivate {deactivatePrompt.full_name}?</h2>
+            <p className="page-desc">
+              This user will lose access immediately. You can reactivate them at any time.
+            </p>
+            <div className="action-btns" style={{ marginTop: "var(--space-lg)" }}>
+              <button className="btn-danger" onClick={confirmDeactivate} disabled={deactivateLoading}>
+                {deactivateLoading ? "Deactivating..." : "Deactivate"}
+              </button>
+              <button className="btn-secondary" onClick={() => setDeactivatePrompt(null)}>Cancel</button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

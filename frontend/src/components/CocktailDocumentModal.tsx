@@ -20,6 +20,7 @@ export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onC
   const [uploading, setUploading] = useState(false);
   const [docSavingId, setDocSavingId] = useState<string | null>(null);
   const [docDeletingId, setDocDeletingId] = useState<string | null>(null);
+  const [deletePrompt, setDeletePrompt] = useState<CocktailLotDocument | null>(null);
   const [inputKey, setInputKey] = useState(0);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
@@ -138,15 +139,19 @@ export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onC
     }
   };
 
-  const deleteDocument = async (doc: CocktailLotDocument) => {
-    const confirmed = window.confirm(`Delete ${doc.file_name}? This cannot be undone.`);
-    if (!confirmed) return;
+  const deleteDocument = (doc: CocktailLotDocument) => {
+    setDeletePrompt(doc);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletePrompt) return;
     setError(null);
-    setDocDeletingId(doc.id);
+    setDocDeletingId(deletePrompt.id);
     try {
-      await api.delete(`/cocktail-documents/${doc.id}`);
-      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      await api.delete(`/cocktail-documents/${deletePrompt.id}`);
+      setDocuments((prev) => prev.filter((d) => d.id !== deletePrompt.id));
       onDocumentsChange?.();
+      setDeletePrompt(null);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to delete document");
     } finally {
@@ -268,6 +273,20 @@ export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onC
           Close
         </button>
       </div>
+      {deletePrompt && (
+        <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={() => setDeletePrompt(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Delete document?</h2>
+            <p className="page-desc">Delete {deletePrompt.file_name}? This cannot be undone.</p>
+            <div className="action-btns" style={{ marginTop: "var(--space-lg)" }}>
+              <button className="btn-danger" onClick={confirmDelete} disabled={!!docDeletingId}>
+                {docDeletingId ? "Deleting..." : "Delete"}
+              </button>
+              <button className="btn-secondary" onClick={() => setDeletePrompt(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

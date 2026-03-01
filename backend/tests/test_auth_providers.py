@@ -17,7 +17,7 @@ class TestDiscover:
         assert res.status_code == 200
         data = res.json()
         assert data["providers"] == ["password"]
-        assert data["lab_name"] is None
+        assert "lab_name" not in data
 
     def test_no_providers_configured_returns_password(self, client, lab, admin_user):
         res = client.post("/api/auth/discover", json={"email": "admin@test.com"})
@@ -42,7 +42,6 @@ class TestDiscover:
         data = res.json()
         assert "password" in data["providers"]
         assert "oidc_microsoft" in data["providers"]
-        assert data["lab_name"] == "Test Lab"
 
     def test_disabled_provider_excluded(self, client, db, lab):
         provider = LabAuthProvider(
@@ -136,7 +135,6 @@ class TestDiscover:
         data = res.json()
         # Should get exactly one oidc_microsoft, scoped to Lab B
         assert data["providers"].count("oidc_microsoft") == 1
-        assert data["lab_name"] == "Lab B"
 
 
 class TestPasswordDefaultWithNoProviders:
@@ -387,7 +385,7 @@ class TestPasswordEnabled:
         self._make_sso_only(db, lab)
         res = client.post("/api/auth/accept-invite", json={
             "token": "valid-test-token-abc123",
-            "password": "newpassword123",
+            "password": "NewPassword123",
         })
         assert res.status_code == 403
 

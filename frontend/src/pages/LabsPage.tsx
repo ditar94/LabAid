@@ -10,6 +10,7 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { Modal } from "../components/Modal";
+import TableSkeleton from "../components/TableSkeleton";
 
 const AuthProviderModal = lazy(() => import("../components/AuthProviderModal"));
 
@@ -143,6 +144,7 @@ export default function LabsPage() {
       {showForm && (
         <form className="inline-form" onSubmit={handleSubmit}>
           <input
+            aria-label="Lab name"
             placeholder="Lab Name"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -152,7 +154,9 @@ export default function LabsPage() {
         </form>
       )}
 
-      {!loading && labs.length === 0 ? (
+      {loading && labs.length === 0 ? (
+        <TableSkeleton rows={3} cols={5} />
+      ) : !loading && labs.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="No labs yet"
@@ -179,24 +183,17 @@ export default function LabsPage() {
               <tr key={l.id}>
                 <td>{l.name}</td>
                 <td>
-                  <div
-                    className="active-switch"
-                    onClick={() => {
+                  <ToggleSwitch
+                    checked={l.is_active}
+                    onChange={() => {
                       if (l.is_active) {
                         setSuspendPrompt({ id: l.id, name: l.name });
                       } else {
                         handleToggleSuspend(l.id);
                       }
                     }}
-                    title={l.is_active ? "Suspend this lab" : "Reactivate this lab"}
-                  >
-                    <span className={`active-switch-label ${l.is_active ? "on" : ""}`}>
-                      {l.is_active ? "Active" : "Suspended"}
-                    </span>
-                    <div className={`active-switch-track ${l.is_active ? "on" : ""}`}>
-                      <div className="active-switch-thumb" />
-                    </div>
-                  </div>
+                    label={l.is_active ? "Active" : "Suspended"}
+                  />
                 </td>
                 <td>
                   {l.stripe_subscription_id ? (
@@ -206,6 +203,7 @@ export default function LabsPage() {
                   ) : (
                     <select
                       className="billing-select"
+                      aria-label={`Billing status for ${l.name}`}
                       value={l.billing_status || "trial"}
                       onChange={(e) => handleBillingChange(l.id, e.target.value as BillingStatus)}
                       onClick={(e) => e.stopPropagation()}
@@ -222,27 +220,32 @@ export default function LabsPage() {
                     <span className="text-muted">-</span>
                   ) : l.billing_status === "trial" ? (
                     editingTrialId === l.id ? (
-                      <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      <span className="inline-edit">
                         <input
                           type="date"
+                          aria-label="Trial end date"
                           value={trialDate}
                           onChange={(e) => setTrialDate(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleTrialDateSave(l.id);
+                            if (e.key === "Escape") setEditingTrialId(null);
+                          }}
+                          autoFocus
                           style={{ width: 140 }}
                         />
                         <button className="btn-sm" onClick={() => handleTrialDateSave(l.id)}>Save</button>
                         <button className="btn-sm btn-secondary" onClick={() => setEditingTrialId(null)}>Cancel</button>
                       </span>
                     ) : (
-                      <span
-                        style={{ cursor: "pointer", textDecoration: "underline dotted" }}
-                        title="Click to edit"
+                      <button
+                        className="btn-link"
                         onClick={() => {
                           setEditingTrialId(l.id);
                           setTrialDate(l.trial_ends_at ? l.trial_ends_at.slice(0, 10) : "");
                         }}
                       >
                         {l.trial_ends_at ? new Date(l.trial_ends_at).toLocaleDateString() : "Not set"}
-                      </span>
+                      </button>
                     )
                   ) : (
                     <span className="text-muted">-</span>

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -15,6 +15,12 @@ export default function SettingsPage() {
   const { addToast } = useToast();
   const navigate = useNavigate();
   const [showSsoModal, setShowSsoModal] = useState(false);
+  const [expiryDays, setExpiryDays] = useState(labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS);
+  const expiryTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    setExpiryDays(labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS);
+  }, [labSettings.expiry_warn_days]);
 
   const isAdmin = user?.role === "lab_admin" || user?.role === "super_admin";
 
@@ -36,6 +42,16 @@ export default function SettingsPage() {
     } catch {
       addToast("Failed to update setting", "danger");
     }
+  };
+
+  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseInt(e.target.value, 10);
+    if (!Number.isFinite(val) || val < 1) return;
+    setExpiryDays(val);
+    clearTimeout(expiryTimer.current);
+    expiryTimer.current = setTimeout(() => {
+      updateSetting({ expiry_warn_days: val });
+    }, 500);
   };
 
   return (
@@ -79,13 +95,10 @@ export default function SettingsPage() {
           type="number"
           min={1}
           max={365}
+          aria-label="Expiry warning days"
           className="stability-input"
-          value={labSettings.expiry_warn_days ?? DEFAULT_EXPIRY_WARN_DAYS}
-          onChange={async (e) => {
-            const val = parseInt(e.target.value, 10);
-            if (!Number.isFinite(val) || val < 1) return;
-            await updateSetting({ expiry_warn_days: val });
-          }}
+          value={expiryDays}
+          onChange={handleExpiryChange}
         />
       </div>
 

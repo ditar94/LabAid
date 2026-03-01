@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     DATABASE_URL_MIGRATE: str | None = None  # Alembic uses this if set, falls back to DATABASE_URL
     SECRET_KEY: str = "change-me-in-production-use-a-real-secret"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 240  # 4 hours
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:5173"
@@ -65,3 +65,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+_DEFAULT_SECRET = "change-me-in-production-use-a-real-secret"
+if settings.GCP_PROJECT and settings.SECRET_KEY == _DEFAULT_SECRET:
+    raise RuntimeError(
+        "SECRET_KEY is still the default value. "
+        "Set a real secret via environment variable or GCP Secret Manager."
+    )

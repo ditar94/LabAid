@@ -16,14 +16,18 @@ export default function SetPasswordPage() {
   const [loading, setLoading] = useState(false);
 
   const passwordsMatch = password.length > 0 && password === confirmPassword;
-  const passwordLongEnough = password.length >= 8;
+  const hasLength = password.length >= 10;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigit = /\d/.test(password);
+  const passwordValid = hasLength && hasUpper && hasLower && hasDigit;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!passwordLongEnough) {
-      setError("Password must be at least 8 characters");
+    if (!passwordValid) {
+      setError("Password does not meet all requirements");
       return;
     }
     if (!passwordsMatch) {
@@ -104,21 +108,28 @@ export default function SetPasswordPage() {
             <input
               id="set-password"
               type="password"
-              placeholder="At least 8 characters"
+              placeholder="At least 10 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={8}
+              minLength={10}
               autoFocus
             />
             {password.length > 0 && (
-              <span
-                className={`field-hint ${passwordLongEnough ? "hint-success" : "hint-warn"}`}
-              >
-                {passwordLongEnough
-                  ? "Looks good"
-                  : `${8 - password.length} more character${8 - password.length === 1 ? "" : "s"} needed`}
-              </span>
+              <div className="password-rules">
+                <span className={`field-hint ${hasLength ? "hint-success" : "hint-warn"}`}>
+                  {hasLength ? "Length OK" : `${10 - password.length} more character${10 - password.length === 1 ? "" : "s"}`}
+                </span>
+                <span className={`field-hint ${hasUpper ? "hint-success" : "hint-warn"}`}>
+                  {hasUpper ? "Uppercase OK" : "Need uppercase"}
+                </span>
+                <span className={`field-hint ${hasLower ? "hint-success" : "hint-warn"}`}>
+                  {hasLower ? "Lowercase OK" : "Need lowercase"}
+                </span>
+                <span className={`field-hint ${hasDigit ? "hint-success" : "hint-warn"}`}>
+                  {hasDigit ? "Digit OK" : "Need a digit"}
+                </span>
+              </div>
             )}
           </div>
           <div className="form-group">
@@ -130,7 +141,7 @@ export default function SetPasswordPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              minLength={8}
+              minLength={10}
             />
             {confirmPassword.length > 0 && (
               <span
@@ -144,7 +155,7 @@ export default function SetPasswordPage() {
           <button
             type="submit"
             className="login-submit"
-            disabled={!passwordLongEnough || !passwordsMatch || loading}
+            disabled={!passwordValid || !passwordsMatch || loading}
           >
             {loading ? "Setting password..." : "Set Password & Continue"}
           </button>

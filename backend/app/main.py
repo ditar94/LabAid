@@ -68,6 +68,7 @@ _SUSPENSION_EXEMPT = {
     "/api/demo/login",
     "/api/auth/sso/callback",
     "/api/stripe/webhook",
+    "/api/stripe/events/cleanup",
     "/api/labs/billing/checkout",
     "/api/labs/billing/portal",
     "/api/health",
@@ -167,10 +168,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# Simple TTL cache for lab suspension status
-# Tuple: (is_active, billing_status, trial_ends_at, cache_time)
-_suspension_cache: dict[str, tuple[bool, str | None, datetime | None, float]] = {}
-_SUSPENSION_TTL = 60  # seconds
+from app.core.cache import suspension_cache as _suspension_cache, SUSPENSION_TTL as _SUSPENSION_TTL
 
 
 class LabSuspensionMiddleware(BaseHTTPMiddleware):
@@ -271,8 +269,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",")],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
     expose_headers=["Content-Disposition"],
 )
 
