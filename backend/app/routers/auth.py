@@ -18,9 +18,10 @@ from app.core.security import (
     verify_password,
 )
 from app.middleware.auth import COOKIE_NAME, get_current_user, require_role
-from app.models.models import Lab, User, UserRole
+from app.models.models import AuthProviderType, Lab, LabAuthProvider, User, UserRole
 from app.routers.auth_providers import password_enabled
-from app.services.audit import log_audit, snapshot_user
+from app.services.audit import log_audit, snapshot_lab, snapshot_user
+from app.services.storage import create_temporary_storage
 from app.services.email import send_forgot_password_email, send_invite_email, send_reset_email
 from app.schemas.schemas import (
     AcceptInviteRequest,
@@ -32,6 +33,7 @@ from app.schemas.schemas import (
     ResetPasswordResponse,
     RoleUpdateRequest,
     SetupRequest,
+    SignupRequest,
     TokenResponse,
     UserCreate,
     UserCreateResponse,
@@ -448,6 +450,69 @@ def accept_invite(
 
     token = create_access_token(
         {"sub": str(user.id), "lab_id": str(user.lab_id) if user.lab_id else None, "role": user.role.value}
+    )
+    _set_auth_cookies(response, token)
+    return TokenResponse(access_token=token)
+
+
+@router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("3/minute")
+def signup(
+    request: Request,
+    response: Response,
+    body: SignupRequest,
+    db: Session = Depends(get_db),
+):
+    _validate_password(body.password)
+
+    full_name = body.full_name.strip()
+    lab_name = body.lab_name.strip()
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Full name is required")
+    if not lab_name:
+        raise HTTPException(status_code=400, detail="Lab name is required")
+
+    if db.query(User).filter(func.lower(User.email) == body.email.lower()).first():
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    if db.query(Lab).filter(func.lower(Lab.name) == lab_name.lower()).first():
+        raise HTTPException(status_code=409, detail="A lab with this name already exists")
+
+    lab = Lab(name=lab_name)
+    lab.trial_ends_at = datetime.now(timezone.utc) + timedelta(days=7)
+    db.add(lab)
+    db.flush()
+
+    create_temporary_storage(db, lab.id)
+
+    db.add(LabAuthProvider(
+        lab_id=lab.id,
+        provider_type=AuthProviderType.PASSWORD,
+        config={},
+        is_enabled=True,
+    ))
+
+    user = User(
+        lab_id=lab.id,
+        email=body.email.lower(),
+        hashed_password=hash_password(body.password),
+        full_name=full_name,
+        role=UserRole.LAB_ADMIN,
+        must_change_password=False,
+    )
+    db.add(user)
+    db.flush()
+
+    log_audit(db, lab_id=lab.id, user_id=user.id, action="lab.created",
+              entity_type="lab", entity_id=lab.id, after_state=snapshot_lab(lab))
+    log_audit(db, lab_id=lab.id, user_id=user.id, action="user.created",
+              entity_type="user", entity_id=user.id, after_state=snapshot_user(user),
+              note="Self-service signup")
+
+    db.commit()
+
+    token = create_access_token(
+        {"sub": str(user.id), "lab_id": str(lab.id), "role": user.role.value}
     )
     _set_auth_cookies(response, token)
     return TokenResponse(access_token=token)

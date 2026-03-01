@@ -72,6 +72,13 @@ class AcceptInviteRequest(BaseModel):
     password: str
 
 
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    lab_name: str
+
+
 class UserUpdateRequest(BaseModel):
     email: EmailStr | None = None
     is_active: bool | None = None

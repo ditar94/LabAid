@@ -197,6 +197,9 @@ export default function LoginPage() {
           </>
         )}
 
+        <p className="login-signup-link">
+          Don't have an account? <Link to="/signup">Sign up for free</Link>
+        </p>
         <p className="login-footer">
           Laboratory inventory management &middot; <button type="button" className="link-button" onClick={() => setShowTerms(true)}>Terms of Use</button>
         </p>

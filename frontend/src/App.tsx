@@ -23,6 +23,7 @@ export { queryClient };
 
 // Eagerly-loaded pages (entry points users hit first — no loading flash)
 import LoginPage from "./pages/LoginPage";
+import SignupPage from "./pages/SignupPage";
 import SetupPage from "./pages/SetupPage";
 
 // Eagerly-loaded: primary landing page after login — no chunk-load flash
@@ -81,6 +82,7 @@ function AppRoutes() {
     <Suspense fallback={<div className="page-shell" />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/set-password" element={<SetPasswordPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

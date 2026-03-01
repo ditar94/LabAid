@@ -61,6 +61,7 @@ _SUSPENSION_EXEMPT = {
     "/api/auth/change-password",
     "/api/auth/me",
     "/api/auth/setup",
+    "/api/auth/signup",
     "/api/auth/accept-invite",
     "/api/auth/impersonate",
     "/api/auth/end-impersonate",
@@ -146,7 +147,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     # GET endpoints that carry cacheable list data (revalidate on every request)
     _CACHEABLE = {"/api/antibodies/", "/api/fluorochromes/", "/api/storage/units", "/api/lots/"}
     # Endpoints that must never be cached
-    _NO_STORE = {"/api/auth/login", "/api/auth/me", "/api/auth/setup"}
+    _NO_STORE = {"/api/auth/login", "/api/auth/me", "/api/auth/setup", "/api/auth/signup"}
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)

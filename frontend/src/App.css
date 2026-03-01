@@ -674,6 +674,27 @@ body {
   letter-spacing: 0.03em;
 }
 
+.login-signup-link {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--neutral-400);
+  margin-top: var(--space-md);
+}
+
+.login-signup-link a {
+  color: var(--primary-300);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.login-signup-link a:hover {
+  text-decoration: underline;
+}
+
+input.input-error {
+  border-color: var(--danger);
+}
+
 /* ── Email-first login flow ─────────────────────────────────────────── */
 
 .login-back-step {
