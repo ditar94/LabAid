@@ -41,12 +41,14 @@ import { useTheme } from "../hooks/useTheme";
 import { version } from "../../package.json";
 
 const TermsModal = lazy(() => import("./TermsModal"));
+const PaymentChoiceModal = lazy(() => import("./PaymentChoiceModal"));
 
 export default function Layout() {
   const { user, logout, impersonatingLab, endImpersonation, labSettings, labName } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
@@ -414,7 +416,7 @@ export default function Layout() {
             {accountBanner.action && (
               <button
                 className="account-banner-link"
-                onClick={() => navigate("/billing")}
+                onClick={() => accountBanner.action!.type === "checkout" ? setShowPaymentModal(true) : navigate("/billing")}
               >
                 {accountBanner.action.text}
               </button>
@@ -428,6 +430,11 @@ export default function Layout() {
       {showTerms && (
         <Suspense fallback={null}>
           <TermsModal onClose={() => setShowTerms(false)} />
+        </Suspense>
+      )}
+      {showPaymentModal && (
+        <Suspense fallback={null}>
+          <PaymentChoiceModal onClose={() => setShowPaymentModal(false)} />
         </Suspense>
       )}
     </div>

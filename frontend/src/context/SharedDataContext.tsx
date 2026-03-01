@@ -50,12 +50,17 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
     enabled: !authLoading && !!user && isSuperAdmin && !impersonatingLab,
   });
 
-  // Auto-select first lab for super admin; lock to user.lab_id for others
+  // Auto-select first support-accessible lab for super admin; lock to user.lab_id for others
   useEffect(() => {
     if (authLoading || !user) return;
     if (isSuperAdmin && !impersonatingLab) {
-      if (labs.length > 0 && !selectedLab) {
-        setSelectedLab(labs[0].id);
+      const accessibleLabs = labs.filter(l => l.settings?.support_access_enabled);
+      if (accessibleLabs.length > 0 && !selectedLab) {
+        setSelectedLab(accessibleLabs[0].id);
+      } else if (selectedLab && accessibleLabs.length > 0 && !accessibleLabs.some(l => l.id === selectedLab)) {
+        setSelectedLab(accessibleLabs[0].id);
+      } else if (accessibleLabs.length === 0) {
+        setSelectedLab("");
       }
     } else {
       setSelectedLab(user.lab_id || "");

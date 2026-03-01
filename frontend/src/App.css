@@ -8483,6 +8483,148 @@ textarea:focus-visible {
   .mobile-cards tbody td.action-btns::before { display: none; }
 }
 
+/* ── Billing Page ────────────────────────────────────────────────────── */
+
+.billing-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+}
+
+.billing-status-card {
+  padding: 24px;
+}
+
+.billing-status-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.billing-status-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.billing-status-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.billing-status-value .badge {
+  font-size: 0.875rem;
+  padding: 4px 12px;
+}
+
+.billing-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.billing-message svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.billing-message--info {
+  background: var(--primary-50, #eff6ff);
+  color: var(--primary-700, #1d4ed8);
+  border: 1px solid var(--primary-200, #bfdbfe);
+}
+
+.billing-message--warning {
+  background: #fefce8;
+  color: #a16207;
+  border: 1px solid #fde68a;
+}
+
+.billing-message--danger {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+:root[data-theme="dark"] .billing-message--info {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--primary-300);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+:root[data-theme="dark"] .billing-message--warning {
+  background: rgba(234, 179, 8, 0.1);
+  color: #fbbf24;
+  border-color: rgba(234, 179, 8, 0.2);
+}
+
+:root[data-theme="dark"] .billing-message--danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.billing-details-card {
+  padding: 24px;
+}
+
+.billing-details-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--text);
+}
+
+.billing-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 480px) {
+  .billing-details-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.billing-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.billing-detail-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.billing-detail-label {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.billing-detail-value {
+  font-size: var(--text-sm);
+  color: var(--text);
+  font-weight: 500;
+}
+
 /* ── Payment Choice Modal ──────────────────────────────────────────────── */
 
 .payment-options {
@@ -8500,6 +8642,7 @@ textarea:focus-visible {
   border: 2px solid var(--border);
   border-radius: var(--radius);
   background: var(--card-bg);
+  color: var(--text);
   cursor: pointer;
   text-align: center;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -8534,9 +8677,9 @@ textarea:focus-visible {
 
 .labs-table td,
 .labs-table th {
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   white-space: nowrap;
-  padding: 0.5rem 0.6rem;
+  padding: 0.4rem 0.5rem;
 }
 
 /* ── Subscription Details (Labs page) ──────────────────────────────────── */

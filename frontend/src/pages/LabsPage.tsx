@@ -338,7 +338,7 @@ export default function LabsPage() {
                 </td>
                 <td>{new Date(l.created_at).toLocaleString()}</td>
                 <td>
-                  {l.is_active && (
+                  {l.is_active && l.settings?.support_access_enabled && (
                     <button
                       className="btn-sm"
                       onClick={() => handleEnterLab(l.id)}

@@ -419,22 +419,31 @@ export default function DashboardPage() {
       />
       <div className="page-header">
         <h1>Dashboard</h1>
-        {user?.role === "super_admin" && labs.length > 0 && (
-          <div className="lab-selector">
-            <ChevronDown size={14} className="lab-selector-icon" />
-            <select
-              value={selectedLab}
-              onChange={(e) => setSelectedLab(e.target.value)}
-            >
-              {labs.map((lab) => (
-                <option key={lab.id} value={lab.id}>
-                  {lab.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        {user?.role === "super_admin" && labs.length > 0 && (() => {
+          const accessibleLabs = labs.filter(l => l.settings?.support_access_enabled);
+          return accessibleLabs.length > 0 ? (
+            <div className="lab-selector">
+              <ChevronDown size={14} className="lab-selector-icon" />
+              <select
+                value={selectedLab}
+                onChange={(e) => setSelectedLab(e.target.value)}
+              >
+                {accessibleLabs.map((lab) => (
+                  <option key={lab.id} value={lab.id}>
+                    {lab.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null;
+        })()}
       </div>
+
+      {user?.role === "super_admin" && !selectedLab && labs.length > 0 && (
+        <div className="empty-state" style={{ marginTop: 32 }}>
+          <p>No labs have support access enabled. Labs must enable support access from their settings before you can view their data.</p>
+        </div>
+      )}
 
       {allClear && (
         <div className="dashboard-all-clear">
