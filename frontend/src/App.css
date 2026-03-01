@@ -567,6 +567,7 @@ body {
   margin-bottom: var(--space-xs);
 }
 
+.login-card input[type="text"],
 .login-card input[type="email"],
 .login-card input[type="password"] {
   background: rgba(255, 255, 255, 0.06);
@@ -580,11 +581,13 @@ body {
               background var(--duration-fast) ease;
 }
 
+.login-card input[type="text"]::placeholder,
 .login-card input[type="email"]::placeholder,
 .login-card input[type="password"]::placeholder {
   color: var(--neutral-400);
 }
 
+.login-card input[type="text"]:focus,
 .login-card input[type="email"]:focus,
 .login-card input[type="password"]:focus {
   outline: none;

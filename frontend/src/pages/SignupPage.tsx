@@ -138,7 +138,7 @@ export default function SignupPage() {
               <input
                 id="signup-lab"
                 type="text"
-                placeholder="Smith Flow Cytometry Lab"
+                placeholder="Sacred Heart Flow Cytometry Lab"
                 value={labName}
                 onChange={(e) => { setLabName(e.target.value); setFieldError(null); }}
                 required
