@@ -7,7 +7,7 @@ Maps catalog numbers to product details (target, fluorochrome, clone).
 DO NOT EDIT MANUALLY - regenerate with:
     python scripts/sync_sysmex_catalog.py
 
-Last updated: 2026-02-21
+Last updated: 2026-03-01
 Products: 1457
 """
 
