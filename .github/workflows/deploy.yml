@@ -178,60 +178,10 @@ jobs:
       - name: TypeScript check
         run: cd frontend && npx tsc --noEmit -p tsconfig.app.json
 
-  # ── Start nonprod database ──────────────────────────────────────────────────
-  start-nonprod-db:
-    name: Start Nonprod Database
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-
-      - name: Start nonprod Cloud SQL instance if stopped
-        run: |
-          STATE=$(gcloud sql instances describe labaid-db-nonprod --project ${GCP_PROJECT} --format='value(state)')
-          if [ "$STATE" = "RUNNABLE" ]; then
-            echo "Instance already running, skipping start"
-            exit 0
-          fi
-          echo "Instance is stopped (state: $STATE), starting..."
-          for i in $(seq 1 10); do
-            if gcloud sql instances patch labaid-db-nonprod \
-              --activation-policy=ALWAYS \
-              --project ${GCP_PROJECT} 2>&1; then
-              echo "Start command succeeded"
-              break
-            fi
-            echo "Attempt $i failed (likely concurrent operation), retrying in 30s..."
-            sleep 30
-          done
-
-      - name: Wait for instance to be ready
-        run: |
-          for i in $(seq 1 30); do
-            STATE=$(gcloud sql instances describe labaid-db-nonprod --project ${GCP_PROJECT} --format='value(state)')
-            if [ "$STATE" = "RUNNABLE" ]; then
-              echo "Instance is ready"
-              exit 0
-            fi
-            echo "Waiting for instance... (state: $STATE)"
-            sleep 10
-          done
-          echo "Timeout waiting for instance"
-          exit 1
-
   # ── Staging (auto after tests pass) ─────────────────────────────────────────
   staging-backend:
     name: Deploy Backend (Staging)
-    needs: [test, start-nonprod-db]
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -296,7 +246,7 @@ jobs:
 
   staging-frontend:
     name: Deploy Frontend (Staging)
-    needs: [test, start-nonprod-db]
+    needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
