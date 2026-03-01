@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4338CA"/>
+      <stop offset="100%" stop-color="#6D5BF7"/>
+    </linearGradient>
+  </defs>
+  <!-- Hexagon -->
+  <polygon points="16,1 29.5,8.5 29.5,23.5 16,31 2.5,23.5 2.5,8.5" fill="url(#g)"/>
+  <!-- Simplified flask silhouette -->
+  <g fill="none" stroke="#E0E7FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Flask neck -->
+    <line x1="13.5" y1="8" x2="13.5" y2="14"/>
+    <line x1="18.5" y1="8" x2="18.5" y2="14"/>
+    <!-- Flask cap -->
+    <line x1="12" y1="8" x2="20" y2="8"/>
+    <!-- Flask body -->
+    <path d="M13.5,14 L9,22 Q8,24 10,25 L22,25 Q24,24 23,22 L18.5,14"/>
+  </g>
+  <!-- Liquid fill -->
+  <path d="M10.5,21 Q13,19 16,21 Q19,23 21.5,21 L23,22 Q24,24 22,25 L10,25 Q8,24 9,22 Z" fill="#A5B4FC" opacity="0.6"/>
+</svg>
