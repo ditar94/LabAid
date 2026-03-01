@@ -112,7 +112,7 @@ export default function Layout() {
   const accountBanner = useMemo(() => {
     if (!hasLabContext) return null;
     if (labSettings.is_demo) {
-      return { variant: "trial", icon: Info, message: "This is a demo lab. Explore freely \u2014 all data resets automatically." };
+      return { variant: "trial", icon: Info, message: "This is a demo lab. Explore freely \u2014 all data resets automatically.", action: { text: "Start free trial", type: "signup" as const } };
     }
     const billing = labSettings.billing_status;
     const active = labSettings.is_active;
@@ -416,7 +416,7 @@ export default function Layout() {
             {accountBanner.action && (
               <button
                 className="account-banner-link"
-                onClick={() => accountBanner.action!.type === "checkout" ? setShowPaymentModal(true) : navigate("/billing")}
+                onClick={() => accountBanner.action!.type === "signup" ? (window.location.href = "/signup") : accountBanner.action!.type === "checkout" ? setShowPaymentModal(true) : navigate("/billing")}
               >
                 {accountBanner.action.text}
               </button>
