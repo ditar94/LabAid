@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { DemoLab, DemoLead } from "../api/types";
 import { Play, Plus, Send, Copy, Link, UserPlus } from "lucide-react";
+import { formatDateTime } from "../utils/format";
 import { useToast } from "../context/ToastContext";
 import { Modal } from "../components/Modal";
 import ActionMenu from "../components/ActionMenu";
@@ -229,8 +230,6 @@ export default function DemoPage() {
     }
   };
 
-  const fmtDate = (d: string | null) =>
-    d ? new Date(d).toLocaleString() : "—";
 
   return (
     <div>
@@ -292,8 +291,8 @@ export default function DemoPage() {
                   <td>{lab.name}</td>
                   <td>{statusBadge(lab.demo_status)}</td>
                   <td>{lab.demo_assigned_email || "—"}</td>
-                  <td>{fmtDate(lab.demo_expires_at)}</td>
-                  <td>{fmtDate(lab.demo_assigned_at)}</td>
+                  <td>{formatDateTime(lab.demo_expires_at)}</td>
+                  <td>{formatDateTime(lab.demo_assigned_at)}</td>
                   <td>{lab.demo_cycle_count}</td>
                   <td className="action-btns">
                     {lab.demo_status === "in_use" && (
@@ -325,9 +324,10 @@ export default function DemoPage() {
                         Ready
                       </span>
                     )}
-                    {labActionItems(lab).length > 0 && (
-                      <ActionMenu items={labActionItems(lab)} />
-                    )}
+                    {(() => {
+                      const actions = labActionItems(lab);
+                      return actions.length > 0 ? <ActionMenu items={actions} /> : null;
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -391,8 +391,8 @@ export default function DemoPage() {
                       <td>{leadStatusBadge(lead)}</td>
                       <td>{lead.source || "—"}</td>
                       <td>{lead.login_count || 0}</td>
-                      <td>{fmtDate(lead.last_login_at)}</td>
-                      <td>{fmtDate(lead.created_at)}</td>
+                      <td>{formatDateTime(lead.last_login_at)}</td>
+                      <td>{formatDateTime(lead.created_at)}</td>
                       <td className="action-btns">
                         {(lead.status === "notified" || lead.status === "active") && (
                           <button

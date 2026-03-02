@@ -17,6 +17,7 @@ import { CocktailLotPreparationForm } from "../components/CocktailLotPreparation
 import { CocktailDocumentModal } from "../components/CocktailDocumentModal";
 import { Modal } from "../components/Modal";
 import { FlaskConical, Calendar, RefreshCw, FileText, Archive, CheckCircle, Trash2 } from "lucide-react";
+import { formatDateTime } from "../utils/format";
 
 const CARD_COLLAPSE_MS = 100;
 
@@ -141,10 +142,6 @@ export default function CocktailsPage() {
     return new Date(dateStr + "T00:00:00").toLocaleDateString();
   };
 
-  const formatDateTime = (dateStr: string | null) => {
-    if (!dateStr) return "\u2014";
-    return new Date(dateStr).toLocaleString();
-  };
 
   /** Compute FEFO badges: among active non-archived lots sorted by expiration, first = Current, rest = New. */
   const computeLotBadgeMap = (lots: CocktailLot[]): Map<string, "current" | "new"> => {

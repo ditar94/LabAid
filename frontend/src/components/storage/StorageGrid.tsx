@@ -1,7 +1,8 @@
-import { Fragment, useState, useCallback, useEffect, useRef } from "react";
+import { Fragment, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import type { StorageCell, StorageUnit, Fluorochrome } from "../../api/types";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { qcBadgeClass, qcLabel } from "../QcBadge";
 import GridLegend from "./GridLegend";
 import CapacityBar from "./CapacityBar";
@@ -100,17 +101,23 @@ export default function StorageGrid({
     if (selectionMode !== "normal") setExpandedCellId(null);
   }, [selectionMode]);
 
-  const cellMap = new Map<string, StorageCell>();
-  for (const cell of cells) {
-    cellMap.set(`${cell.row}-${cell.col}`, cell);
-  }
+  const cellMap = useMemo(() => {
+    const map = new Map<string, StorageCell>();
+    for (const cell of cells) {
+      map.set(`${cell.row}-${cell.col}`, cell);
+    }
+    return map;
+  }, [cells]);
 
-  const fluoroMap = new Map<string, string>();
-  for (const f of fluorochromes) {
-    fluoroMap.set(f.name.toLowerCase(), f.color);
-  }
+  const fluoroMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of fluorochromes) {
+      map.set(f.name.toLowerCase(), f.color);
+    }
+    return map;
+  }, [fluorochromes]);
 
-  const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   const handleCellClick = useCallback(
     (cell: StorageCell, isClickable: boolean) => {

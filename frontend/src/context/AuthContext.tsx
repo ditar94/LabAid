@@ -3,6 +3,8 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,14 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     await api.post("/auth/login", { email, password });
     localStorage.removeItem("impersonatingLab");
     setImpersonatingLab(null);
     await fetchUser();
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
     } catch {
@@ -93,33 +95,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setLabSettings({});
     setImpersonatingLab(null);
-  };
+  }, []);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     await fetchUser();
-  };
+  }, []);
 
-  const startImpersonation = async (labId: string) => {
+  const startImpersonation = useCallback(async (labId: string) => {
     const res = await api.post("/auth/impersonate", { lab_id: labId });
     const { lab_name } = res.data;
     const labInfo = { id: labId, name: lab_name };
     localStorage.setItem("impersonatingLab", JSON.stringify(labInfo));
     setImpersonatingLab(labInfo);
     await fetchUser();
-  };
+  }, []);
 
-  const endImpersonation = async () => {
+  const endImpersonation = useCallback(async () => {
     await api.post("/auth/end-impersonate");
     localStorage.removeItem("impersonatingLab");
     setImpersonatingLab(null);
     await fetchUser();
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    user, labSettings, labName, impersonatingLab,
+    login, logout, refreshUser, startImpersonation, endImpersonation, loading,
+  }), [user, labSettings, labName, impersonatingLab, login, logout, refreshUser, startImpersonation, endImpersonation, loading]);
 
   return (
-    <AuthContext.Provider value={{
-      user, labSettings, labName, impersonatingLab,
-      login, logout, refreshUser, startImpersonation, endImpersonation, loading,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -56,6 +56,10 @@ export default function DashboardPage() {
   const [tempMessage, setTempMessage] = useState<string | null>(null);
   const [tempError, setTempError] = useState<string | null>(null);
   const tempViewRef = useRef<StorageViewHandle>(null);
+  const tempHighlightVialIds = useMemo(
+    () => tempSelectedItem ? new Set(tempSelectedItem.vial_ids) : new Set<string>(),
+    [tempSelectedItem],
+  );
 
   const isMobile = useMediaQuery("(max-width: 768px)");
   const LotList = isMobile ? LotCardList : LotTable;
@@ -189,11 +193,14 @@ export default function DashboardPage() {
     return `${diff}d`;
   };
 
-  const fluoroMap = new Map<string, string>();
-  for (const f of fluorochromes) {
-    fluoroMap.set(f.name.toLowerCase(), f.color);
-  }
-  const antibodyMap = new Map(antibodies.map((ab) => [ab.id, ab]));
+  const fluoroMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of fluorochromes) {
+      map.set(f.name.toLowerCase(), f.color);
+    }
+    return map;
+  }, [fluorochromes]);
+  const antibodyMap = useMemo(() => new Map(antibodies.map((ab) => [ab.id, ab])), [antibodies]);
   const lotLabel = (lot: Lot) => {
     if (lot.antibody_target && lot.antibody_fluorochrome) {
       return `${lot.antibody_target}-${lot.antibody_fluorochrome}`;
@@ -989,7 +996,7 @@ export default function DashboardPage() {
               ref={tempViewRef}
               grids={[tempGrid]}
               fluorochromes={fluorochromes}
-              highlightVialIds={new Set(tempSelectedItem.vial_ids)}
+              highlightVialIds={tempHighlightVialIds}
               highlightOnly
               onRefresh={handleTempRefresh}
               onClose={() => setTempSelectedItem(null)}

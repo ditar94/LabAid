@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Antibody, Fluorochrome, Lot, LotDocument, StorageGrid as StorageGridData, VialCounts } from "../api/types";
 import { useAuth } from "../context/AuthContext";
@@ -286,8 +286,6 @@ export default function InventoryPage() {
   const requestedLabId = searchParams.get("labId");
   const sealedOnly = labSettings.sealed_counts_only ?? false;
   const storageEnabled = labSettings.storage_enabled !== false;
-  const [antibodies, setAntibodies] = useState<Antibody[]>([]);
-  const [lots, setLots] = useState<Lot[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [showAbForm, setShowAbForm] = useState(false);
@@ -317,6 +315,24 @@ export default function InventoryPage() {
   const [archiveAbNote, setArchiveAbNote] = useState("");
   const [archiveAbLoading, setArchiveAbLoading] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+
+  const { data: antibodies = [] } = useQuery({
+    queryKey: ["antibodies", selectedLab, showInactive],
+    queryFn: () => {
+      const params: Record<string, string> = { lab_id: selectedLab };
+      if (showInactive) params.include_inactive = "true";
+      return api.get<Antibody[]>("/antibodies/", { params }).then(r => r.data);
+    },
+    enabled: !!selectedLab,
+  });
+
+  const { data: lots = [] } = useQuery({
+    queryKey: ["lots", selectedLab, { includeArchived: true }],
+    queryFn: () =>
+      api.get<Lot[]>("/lots/", { params: { lab_id: selectedLab, include_archived: "true" } }).then(r => r.data),
+    enabled: !!selectedLab,
+  });
+
   const [designationFilter, setDesignationFilter] = useState<string>("");
   const [editAbId, setEditAbId] = useState<string | null>(null);
   const [editAbForm, setEditAbForm] = useState(EMPTY_AB_FORM);
@@ -408,29 +424,11 @@ export default function InventoryPage() {
     }
   }, [requestedLabId, labs]);
 
-  const loadData = async () => {
-    if (!selectedLab) return;
-    const params: Record<string, string> = { lab_id: selectedLab };
-    const abParams: Record<string, string> = { ...params };
-    if (showInactive) abParams.include_inactive = "true";
-    const lotParams: Record<string, string> = { ...params, include_archived: "true" };
-    const [abRes, lotRes] = await Promise.all([
-      api.get<Antibody[]>("/antibodies/", { params: abParams }),
-      api.get<Lot[]>("/lots/", { params: lotParams }),
-    ]);
-    setAntibodies(abRes.data);
-    setLots(lotRes.data);
-    // Invalidate shared TanStack Query cache so other pages get fresh data
+  const invalidateInventory = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["antibodies"] });
     queryClient.invalidateQueries({ queryKey: ["lots"] });
     queryClient.invalidateQueries({ queryKey: ["temp-storage"] });
-  };
-
-  useEffect(() => {
-    if (selectedLab) {
-      loadData();
-    }
-  }, [selectedLab, showInactive]);
+  }, [queryClient]);
 
   useEffect(() => {
     if (!requestedAntibodyId) return;
@@ -689,7 +687,7 @@ export default function InventoryPage() {
   lotsRef.current = lots;
 
   const handleDrilldownRefresh = async () => {
-    await loadData();
+    invalidateInventory();
     const lotId = drilldownLotIdRef.current;
     const lot = lotsRef.current.find((l) => l.id === lotId);
     if (lot) {
@@ -706,7 +704,7 @@ export default function InventoryPage() {
     try {
       await api.post(`/storage/units/${drilldownStockUnitId}/stock`, { barcode: lot.vendor_barcode });
       setMessage("Vial stocked successfully.");
-      await loadData();
+      invalidateInventory();
       setDrilldownLotId(null);
       setTimeout(() => handleLotClick(lot), 50);
     } catch (err: any) {
@@ -788,7 +786,7 @@ export default function InventoryPage() {
       setAbForm(EMPTY_AB_FORM);
       setShowAbForm(false);
       setMessage("Antibody created.");
-      await loadData();
+      invalidateInventory();
       refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create antibody");
@@ -811,7 +809,7 @@ export default function InventoryPage() {
         }
         await api.post("/fluorochromes/", { name: fluoroName, color }, { params });
       }
-      await loadData();
+      invalidateInventory();
       refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update color");
@@ -840,7 +838,7 @@ export default function InventoryPage() {
       });
       setMessage("Lot updated.");
       setEditLot(null);
-      await loadData();
+      invalidateInventory();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update lot");
     } finally {
@@ -889,7 +887,7 @@ export default function InventoryPage() {
       setLotForm(EMPTY_LOT_FORM);
       setShowLotForm(false);
       setMessage("Lot created.");
-      await loadData();
+      invalidateInventory();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create lot");
     } finally {
@@ -905,7 +903,7 @@ export default function InventoryPage() {
   const updateQC = async (lotId: string, status: "approved") => {
     try {
       await api.patch(`/lots/${lotId}/qc`, { qc_status: status });
-      await loadData();
+      invalidateInventory();
       setQcConfirmLot(null);
     } catch (err: any) {
       if (err.response?.status === 409) {
@@ -921,7 +919,7 @@ export default function InventoryPage() {
     try {
       const body = note ? { note } : undefined;
       await api.patch(`/lots/${lotId}/archive`, body);
-      await loadData();
+      invalidateInventory();
       setArchivePrompt(null);
       setArchiveWarning(null);
       setArchiveNote("");
@@ -963,7 +961,7 @@ export default function InventoryPage() {
     try {
       const body = note ? { note } : undefined;
       await api.patch(`/antibodies/${antibodyId}/archive`, body);
-      await loadData();
+      invalidateInventory();
       setArchiveAbPrompt(null);
       setArchiveAbNote("");
     } catch {
@@ -1049,7 +1047,7 @@ export default function InventoryPage() {
       });
       setEditAbId(null);
       setMessage("Antibody updated.");
-      await loadData();
+      invalidateInventory();
       refreshFluorochromes();
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to update antibody");
@@ -1068,7 +1066,7 @@ export default function InventoryPage() {
         await api.post(`/lots/${confirmAction.lotId}/deplete-all-lot`);
       }
       setConfirmAction(null);
-      await loadData();
+      invalidateInventory();
     } catch {
       // keep UI stable on failure
     } finally {
@@ -1635,10 +1633,10 @@ export default function InventoryPage() {
           lot={modalLot}
           qcDocRequired={labSettings.qc_doc_required ?? false}
           onClose={() => { setModalLot(null); setDocModalApproveAfter(false); }}
-          onDocumentsChange={() => { loadData(); }}
+          onDocumentsChange={() => { invalidateInventory(); }}
           onUpload={() => {
             setDocModalApproveAfter(false);
-            loadData();
+            invalidateInventory();
             setModalLot(null);
           }}
           onUploadAndApprove={docModalApproveAfter ? async () => {
@@ -1651,7 +1649,7 @@ export default function InventoryPage() {
                 "Upload succeeded, but lot approval failed.",
               );
             }
-            await loadData();
+            invalidateInventory();
             setModalLot(null);
             setDocModalApproveAfter(false);
           } : undefined}

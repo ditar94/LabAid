@@ -142,15 +142,16 @@ export default function ScanSearchPage() {
   const canReceive = canEdit || user?.role === "tech";
 
   // Auto-trigger lookup if ?barcode= query param is present (e.g. from StoragePage link)
+  const initialBarcodeRef = useRef(searchParams.get("barcode"));
   useEffect(() => {
-    const bc = searchParams.get("barcode");
-    if (bc && mode === "idle") {
+    const bc = initialBarcodeRef.current;
+    if (bc) {
+      initialBarcodeRef.current = null;
       setInput(bc);
       setSearchParams({}, { replace: true });
       handleLookup(bc);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- runs once on mount with ref-captured barcode
 
   const resetScanState = () => {
     setIntent(null);

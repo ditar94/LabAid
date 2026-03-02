@@ -55,17 +55,16 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
     if (authLoading || !user) return;
     if (isSuperAdmin && !impersonatingLab) {
       const accessibleLabs = labs.filter(l => l.settings?.support_access_enabled);
-      if (accessibleLabs.length > 0 && !selectedLab) {
-        setSelectedLab(accessibleLabs[0].id);
-      } else if (selectedLab && accessibleLabs.length > 0 && !accessibleLabs.some(l => l.id === selectedLab)) {
-        setSelectedLab(accessibleLabs[0].id);
-      } else if (accessibleLabs.length === 0) {
-        setSelectedLab("");
-      }
+      setSelectedLab(prev => {
+        if (accessibleLabs.length === 0) return "";
+        if (!prev) return accessibleLabs[0].id;
+        if (!accessibleLabs.some(l => l.id === prev)) return accessibleLabs[0].id;
+        return prev;
+      });
     } else {
       setSelectedLab(user.lab_id || "");
     }
-  }, [user, authLoading, impersonatingLab, isSuperAdmin, labs, selectedLab]);
+  }, [user, authLoading, impersonatingLab, isSuperAdmin, labs]);
 
   // Fluorochromes — same queryKey as FluorochromesPage for shared cache
   const labParams = needsLabParam && selectedLab ? { lab_id: selectedLab } : {};

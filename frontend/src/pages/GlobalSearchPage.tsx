@@ -25,22 +25,25 @@ export default function GlobalSearchPage() {
       setSearched(false);
       return;
     }
+    const controller = new AbortController();
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
         const res = await api.get<GlobalSearchResult>("/search/global", {
           params: { q: query.trim() },
+          signal: controller.signal,
         });
         setResults(res.data);
         setSearched(true);
-      } catch {
-        setResults(null);
+      } catch (err) {
+        if (!controller.signal.aborted) setResults(null);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      controller.abort();
     };
   }, [query]);
 

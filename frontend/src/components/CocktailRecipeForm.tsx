@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, type FormEvent } from "react";
+import { useState, useRef, useMemo, useCallback, type FormEvent } from "react";
 import {
   DndContext,
   closestCenter,
@@ -292,10 +292,10 @@ export function CocktailRecipeForm({
   const antibodyLabel = (ab: Antibody) =>
     ab.name || [ab.target, ab.fluorochrome].filter(Boolean).join("-") || "Unnamed";
 
-  const getAvailableAntibodies = (currentId: string) =>
+  const getAvailableAntibodies = useCallback((currentId: string) =>
     antibodies.filter(
       (ab) => ab.is_active && ab.designation !== "ivd" && (!selectedAntibodyIds.has(ab.id) || ab.id === currentId)
-    );
+    ), [antibodies, selectedAntibodyIds]);
 
   return (
     <Modal onClose={onCancel} ariaLabel={title}>
