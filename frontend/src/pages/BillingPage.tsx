@@ -65,7 +65,7 @@ export default function BillingPage() {
       setSearchParams({}, { replace: true });
       addToast("Payment confirmed! Your subscription is now active.", "success");
     }
-  }, [billing, paymentProcessing]);
+  }, [billing, paymentProcessing, addToast, setSearchParams]);
 
   useEffect(() => {
     if (!paymentProcessing) return;
@@ -75,7 +75,7 @@ export default function BillingPage() {
       queryClient.invalidateQueries({ queryKey: ["billing-status"] });
     }, 30_000);
     return () => clearTimeout(timer);
-  }, [paymentProcessing]);
+  }, [paymentProcessing, setSearchParams, queryClient]);
 
   const handlePortal = async () => {
     try {
