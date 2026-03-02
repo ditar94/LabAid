@@ -64,6 +64,11 @@ resource "google_sql_database" "beta" {
   instance = google_sql_database_instance.nonprod.name
 }
 
+resource "google_sql_database" "staging" {
+  name     = "labaid_staging"
+  instance = google_sql_database_instance.nonprod.name
+}
+
 
 # ── Production instance (separate for isolation) ────────────────────────────
 
@@ -74,8 +79,8 @@ resource "google_sql_database_instance" "prod" {
   deletion_protection = true
 
   settings {
-    tier                         = "db-f1-micro" # upgrade to db-g1-small when needed
-    availability_type            = "REGIONAL"    # HA for production
+    tier                         = "db-g1-small"
+    availability_type            = "REGIONAL"  # HA for production
     deletion_protection_enabled  = true
 
     backup_configuration {
@@ -122,12 +127,31 @@ resource "google_sql_database_instance" "prod" {
       value = "all"
     }
 
+    database_flags {
+      name  = "log_min_duration_statement"
+      value = "1000"
+    }
+
+    database_flags {
+      name  = "log_connections"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "log_disconnections"
+      value = "on"
+    }
+
     password_validation_policy {
       enable_password_policy      = true
       complexity                  = "COMPLEXITY_DEFAULT"
       min_length                  = 8
       disallow_username_substring = true
     }
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
