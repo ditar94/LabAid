@@ -783,7 +783,7 @@ Steps 5, 7, and 10 involve CI/CD changes that should be tested on a feature bran
 | 16 | No Terraform variable validation | Low | 5.2 | DONE |
 | 17 | No prevent_destroy on stateful resources | Low | 5.3 | DONE |
 | 18 | No GCS CORS configuration (informational) | Low | 5.4 | Deferred |
-| 19 | No beta backend deployment in CI/CD | Medium | 6.1 | DONE |
+| 19 | No beta backend deployment in CI/CD | Medium | 6.1 | N/A (beta = local, push deploys to staging) |
 | 20 | No Cloud Scheduler for cleanup tasks | High | 7.1 | DONE |
 | 21 | GCS via HMAC keys instead of native IAM | Medium | 8.1 | Deferred |
 | 22 | No Cloud Armor / WAF | Medium | 8.2 | Deferred |
