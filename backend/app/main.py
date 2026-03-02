@@ -16,7 +16,7 @@ from app.middleware.auth import COOKIE_NAME
 from app.models.models import Lab, User, UserRole
 from app.routers.auth import _set_auth_cookies
 
-from app.routers import admin, antibodies, audit, auth, auth_providers, bootstrap, cocktail_documents, cocktails, demo, lots, lot_requests, reports, scan, search, sso, storage, stripe_webhook, vials, labs, documents, fluorochromes, tickets
+from app.routers import admin, antibodies, audit, auth, auth_providers, bootstrap, cocktail_documents, cocktails, demo, internal, lots, lot_requests, reports, scan, search, sso, storage, stripe_webhook, vials, labs, documents, fluorochromes, tickets
 
 # ── Structured JSON logging ──────────────────────────────────────────────
 
@@ -70,6 +70,7 @@ _SUSPENSION_EXEMPT = {
     "/api/auth/sso/callback",
     "/api/stripe/webhook",
     "/api/stripe/events/cleanup",
+    "/api/internal/stripe-cleanup",
     "/api/labs/billing/checkout",
     "/api/labs/billing/portal",
     "/api/labs/billing/invoice",
@@ -298,6 +299,7 @@ app.include_router(cocktail_documents.router)
 app.include_router(sso.router)
 app.include_router(admin.router)
 app.include_router(stripe_webhook.router)
+app.include_router(internal.router)
 app.include_router(demo.router)
 
 

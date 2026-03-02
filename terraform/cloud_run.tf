@@ -37,6 +37,16 @@ resource "google_cloud_run_v2_service" "backend" {
         failure_threshold     = 12
       }
 
+      liveness_probe {
+        http_get {
+          path = "/api/health"
+          port = 8080
+        }
+        period_seconds    = 30
+        failure_threshold = 3
+        timeout_seconds   = 5
+      }
+
       # Plain environment variables
       env {
         name  = "COOKIE_SECURE"

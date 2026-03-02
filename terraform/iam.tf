@@ -20,6 +20,27 @@ resource "google_project_iam_member" "cloud_run_sql_instance_user" {
   member  = "serviceAccount:${google_service_account.cloud_run.email}"
 }
 
+# Allow Cloud Run SA to create and manage SSO client secrets (labaid-sso-*)
+# oidc_service.py dynamically creates secrets via the Secret Manager API.
+# Custom role with minimal permissions instead of broad secretmanager.admin.
+resource "google_project_iam_custom_role" "sso_secret_manager" {
+  role_id     = "ssoSecretManager"
+  title       = "SSO Secret Manager"
+  description = "Minimal permissions for creating and managing SSO client secrets"
+  permissions = [
+    "secretmanager.secrets.get",
+    "secretmanager.secrets.create",
+    "secretmanager.versions.add",
+    "secretmanager.versions.access",
+  ]
+}
+
+resource "google_project_iam_member" "cloud_run_sso_secrets" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.sso_secret_manager.id
+  member  = "serviceAccount:${google_service_account.cloud_run.email}"
+}
+
 # ── GitHub Actions Service Account ──────────────────────────────────────────
 
 resource "google_service_account" "github_actions" {
