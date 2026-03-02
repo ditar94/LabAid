@@ -11,7 +11,7 @@ pydantic==2.12.5
 pydantic-settings==2.13.1
 email-validator==2.1.0
 httpx==0.27.0
-boto3==1.34.0
+boto3==1.42.59
 slowapi==0.1.9
 resend==2.23.0
 fpdf2==2.8.3
