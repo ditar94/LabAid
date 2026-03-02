@@ -36,6 +36,7 @@ import {
   MoreHorizontal,
   Play,
   CreditCard,
+  BarChart3,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 import { version } from "../../package.json";
@@ -312,6 +313,12 @@ export default function Layout() {
                 <NavLink to="/global-search" onClick={handleNavClick}>
                   <Search className="nav-icon" />
                   Global Search
+                </NavLink>
+              )}
+              {isSuperAdmin && (
+                <NavLink to="/analytics" onClick={handleNavClick}>
+                  <BarChart3 className="nav-icon" />
+                  Analytics
                 </NavLink>
               )}
               {isSupervisor && (

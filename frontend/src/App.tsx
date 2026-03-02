@@ -55,6 +55,7 @@ const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const CocktailsPage = lazy(() => import("./pages/CocktailsPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 const DemoPage = lazy(() => import("./pages/DemoPage"));
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
 const SSOCallbackPage = lazy(() => import("./pages/SSOCallbackPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
@@ -130,6 +131,7 @@ function AppRoutes() {
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/global-search" element={<GlobalSearchPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
