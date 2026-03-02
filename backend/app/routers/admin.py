@@ -538,3 +538,109 @@ def backfill_trial_subscriptions(
 
     db.commit()
     return {"migrated": migrated, "skipped": skipped, "errors": errors}
+
+
+@router.post("/reconcile-subscriptions")
+def reconcile_subscriptions(
+    dry_run: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    from app.core.config import settings
+    from app.services.stripe_service import apply_subscription_status, get_stripe_client
+    if not settings.STRIPE_SECRET_KEY:
+        return {"error": "Stripe not configured", "fixed": 0}
+
+    client = get_stripe_client()
+    fixed = 0
+    errors = []
+    changes = []
+
+    # Pass 1: Check labs with existing subscription IDs
+    labs_with_sub = db.query(Lab).filter(Lab.stripe_subscription_id.isnot(None)).all()
+    for lab in labs_with_sub:
+        try:
+            sub = client.subscriptions.retrieve(lab.stripe_subscription_id)
+            expected_status = {
+                "active": "active", "trialing": "trial", "past_due": "past_due",
+                "canceled": "cancelled", "unpaid": "cancelled",
+                "incomplete": "past_due", "incomplete_expired": "cancelled",
+                "paused": "cancelled",
+            }.get(sub.status)
+
+            needs_fix = False
+            if expected_status and lab.billing_status != expected_status:
+                needs_fix = True
+            elif sub.current_period_end:
+                from datetime import datetime as dt
+                period_end = dt.fromtimestamp(sub.current_period_end, tz=timezone.utc)
+                if lab.current_period_end != period_end:
+                    needs_fix = True
+            cap = getattr(sub, "cancel_at_period_end", False)
+            if lab.cancel_at_period_end != cap:
+                needs_fix = True
+
+            if needs_fix:
+                changes.append({
+                    "lab_id": str(lab.id),
+                    "lab_name": lab.name,
+                    "old_status": lab.billing_status,
+                    "new_status": expected_status or lab.billing_status,
+                    "stripe_status": sub.status,
+                })
+                if not dry_run:
+                    apply_subscription_status(
+                        db, lab, sub.status, subscription_id=sub.id,
+                        current_period_end=sub.current_period_end,
+                        trial_end=sub.trial_end,
+                        cancel_at_period_end=cap,
+                        user_id=current_user.id,
+                    )
+                fixed += 1
+        except Exception as e:
+            errors.append({"lab_id": str(lab.id), "error": type(e).__name__})
+
+    # Pass 2: Check labs with customer ID but no subscription (orphaned customers)
+    orphaned = db.query(Lab).filter(
+        Lab.stripe_customer_id.isnot(None),
+        Lab.stripe_subscription_id.is_(None),
+        Lab.billing_status != "cancelled",
+    ).all()
+    for lab in orphaned:
+        try:
+            subs = client.subscriptions.list(params={
+                "customer": lab.stripe_customer_id,
+                "limit": 1,
+            })
+            active_subs = [s for s in subs.data if s.status in ("active", "trialing", "past_due")]
+            if active_subs:
+                sub = active_subs[0]
+                changes.append({
+                    "lab_id": str(lab.id),
+                    "lab_name": lab.name,
+                    "old_status": lab.billing_status,
+                    "new_status": sub.status,
+                    "stripe_status": sub.status,
+                    "orphaned": True,
+                })
+                if not dry_run:
+                    apply_subscription_status(
+                        db, lab, sub.status, subscription_id=sub.id,
+                        current_period_end=sub.current_period_end,
+                        trial_end=sub.trial_end,
+                        cancel_at_period_end=getattr(sub, "cancel_at_period_end", False),
+                        user_id=current_user.id,
+                    )
+                fixed += 1
+        except Exception as e:
+            errors.append({"lab_id": str(lab.id), "error": type(e).__name__})
+
+    if not dry_run:
+        db.commit()
+    return {
+        "checked": len(labs_with_sub) + len(orphaned),
+        "fixed": fixed,
+        "dry_run": dry_run,
+        "changes": changes,
+        "errors": errors,
+    }

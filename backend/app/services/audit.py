@@ -325,6 +325,10 @@ def snapshot_lab(lab) -> dict:
         "name": lab.name,
         "is_active": lab.is_active,
         "billing_status": getattr(lab, "billing_status", None),
+        "stripe_subscription_id": getattr(lab, "stripe_subscription_id", None),
+        "trial_ends_at": str(lab.trial_ends_at) if getattr(lab, "trial_ends_at", None) else None,
+        "current_period_end": str(lab.current_period_end) if getattr(lab, "current_period_end", None) else None,
+        "cancel_at_period_end": getattr(lab, "cancel_at_period_end", False),
         "settings": lab.settings or {},
     }
 

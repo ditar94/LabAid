@@ -146,8 +146,8 @@ def get_subscription_details(lab: Lab) -> dict | None:
             "collection_method": sub.collection_method,
             "cancel_at_period_end": sub.cancel_at_period_end,
         }
-    except Exception:
-        logger.warning("Could not fetch subscription %s", lab.stripe_subscription_id)
+    except Exception as e:
+        logger.warning("Could not fetch subscription %s: %s", lab.stripe_subscription_id, type(e).__name__)
         return None
 
 
@@ -175,8 +175,8 @@ def create_trial_subscription(db: Session, lab: Lab, trial_days: int = 7) -> str
             lab.trial_ends_at = datetime.fromtimestamp(subscription.trial_end, tz=timezone.utc)
         db.flush()
         return subscription.id
-    except Exception:
-        logger.warning("Failed to create Stripe trial subscription for lab %s", lab.id)
+    except Exception as e:
+        logger.warning("Failed to create Stripe trial subscription for lab %s: %s", lab.id, type(e).__name__)
         return None
 
 
@@ -214,6 +214,7 @@ def convert_trial_to_invoice(db: Session, lab: Lab) -> str:
             "days_until_due": 30,
             "trial_end": "now",
             "description": description,
+            "default_payment_method": "",
         },
     )
     return lab.stripe_subscription_id
@@ -238,6 +239,7 @@ def apply_subscription_status(
     user_id: UUID | None = None,
     current_period_end: int | None = None,
     trial_end: int | None = None,
+    cancel_at_period_end: bool | None = None,
 ) -> None:
     mapping = _STATUS_MAP.get(stripe_status)
     if not mapping:
@@ -255,6 +257,9 @@ def apply_subscription_status(
         lab.current_period_end = datetime.fromtimestamp(current_period_end, tz=timezone.utc)
     if subscription_id:
         lab.stripe_subscription_id = subscription_id
+
+    if cancel_at_period_end is not None:
+        lab.cancel_at_period_end = cancel_at_period_end
 
     if new_billing == BillingStatus.ACTIVE.value:
         lab.trial_ends_at = None
