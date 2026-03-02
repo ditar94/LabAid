@@ -983,6 +983,10 @@ class BillingStatusResponse(BaseModel):
     collection_method: str | None = None
 
 
+class InvoiceSubscriptionRequest(BaseModel):
+    billing_email: EmailStr | None = None
+
+
 class InvoiceSubscriptionResponse(BaseModel):
     subscription_id: str
     message: str
@@ -1095,6 +1099,29 @@ class AdminDashboardStats(BaseModel):
     expired_unconverted: list[AdminTrialSummary] = []
     active_subscribers_list: list[AdminSubscriptionSummary] = []
     renewals_coming_up: list[AdminSubscriptionSummary] = []
+
+
+class ConversionFunnelRow(BaseModel):
+    email: str
+    demo_date: datetime | None = None
+    demo_source: str | None = None
+    demo_logins: int = 0
+    signup_date: datetime | None = None
+    lab_name: str | None = None
+    billing_status: str | None = None
+    paid_date: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ConversionFunnelSummary(BaseModel):
+    total_demos: int
+    converted_to_trial: int
+    converted_to_paid: int
+    demo_to_trial_rate: float
+    trial_to_paid_rate: float
+    rows: list[ConversionFunnelRow]
 
 
 # Rebuild forward references now that all classes are defined

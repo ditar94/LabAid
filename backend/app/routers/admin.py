@@ -24,6 +24,7 @@ from app.schemas.schemas import (
     AdminDashboardStats,
     AdminSubscriptionSummary,
     AdminTrialSummary,
+    ConversionFunnelSummary,
     DemoLeadOut,
 )
 from app.services.audit import log_audit
@@ -392,3 +393,48 @@ def backfill_period_end(
             updated += 1
     db.commit()
     return {"updated": updated}
+
+
+@router.get("/conversion-funnel", response_model=ConversionFunnelSummary)
+def get_conversion_funnel(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    results = (
+        db.query(DemoLead, User, Lab)
+        .outerjoin(User, func.lower(User.email) == func.lower(DemoLead.email))
+        .outerjoin(Lab, (User.lab_id == Lab.id) & (Lab.is_demo.is_(False)))
+        .order_by(DemoLead.created_at.desc())
+        .all()
+    )
+
+    rows = []
+    converted_to_trial = 0
+    converted_to_paid = 0
+
+    for lead, user, lab in results:
+        row = {
+            "email": lead.email,
+            "demo_date": lead.created_at,
+            "demo_source": lead.source,
+            "demo_logins": lead.login_count,
+        }
+        if lab:
+            converted_to_trial += 1
+            row["signup_date"] = user.created_at
+            row["lab_name"] = lab.name
+            row["billing_status"] = lab.billing_status
+            if lab.billing_status == "active":
+                converted_to_paid += 1
+                row["paid_date"] = lab.billing_updated_at
+        rows.append(row)
+
+    total = len(results)
+    return {
+        "total_demos": total,
+        "converted_to_trial": converted_to_trial,
+        "converted_to_paid": converted_to_paid,
+        "demo_to_trial_rate": (converted_to_trial / total * 100) if total > 0 else 0,
+        "trial_to_paid_rate": (converted_to_paid / converted_to_trial * 100) if converted_to_trial > 0 else 0,
+        "rows": rows,
+    }

@@ -1,5 +1,6 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { CreditCard, Calendar, Mail, Clock, Check } from "lucide-react";
 import api from "../api/client";
 import { useToast } from "../context/ToastContext";
@@ -47,12 +48,34 @@ function statusBadgeClass(status: string): string {
 export default function BillingPage() {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(searchParams.get("billing") === "success");
 
   const { data: billing, isLoading } = useQuery<BillingStatus>({
     queryKey: ["billing-status"],
     queryFn: () => api.get("/labs/billing/status").then((r) => r.data),
+    refetchInterval: paymentProcessing ? 3000 : false,
   });
+
+  useEffect(() => {
+    if (!paymentProcessing || !billing) return;
+    if (billing.billing_status !== "trial") {
+      setPaymentProcessing(false);
+      setSearchParams({}, { replace: true });
+      addToast("Payment confirmed! Your subscription is now active.", "success");
+    }
+  }, [billing, paymentProcessing]);
+
+  useEffect(() => {
+    if (!paymentProcessing) return;
+    const timer = setTimeout(() => {
+      setPaymentProcessing(false);
+      setSearchParams({}, { replace: true });
+      queryClient.invalidateQueries({ queryKey: ["billing-status"] });
+    }, 30_000);
+    return () => clearTimeout(timer);
+  }, [paymentProcessing]);
 
   const handlePortal = async () => {
     try {
@@ -115,6 +138,13 @@ export default function BillingPage() {
       <div className="page-header">
         <h1>Billing</h1>
       </div>
+
+      {paymentProcessing && (
+        <div className="billing-message billing-message--info" style={{ marginBottom: 16 }}>
+          <span className="spinner" style={{ marginRight: 8 }} />
+          <span>Processing your payment... This may take a moment.</span>
+        </div>
+      )}
 
       <div className="billing-layout">
         {/* Trial / Cancelled — pricing card */}

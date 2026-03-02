@@ -106,6 +106,12 @@ export default function DashboardPage() {
     enabled: isAdminDashboard,
   });
 
+  const { data: funnel } = useQuery<{ total_demos: number; converted_to_trial: number; converted_to_paid: number; demo_to_trial_rate: number; trial_to_paid_rate: number }>({
+    queryKey: ["conversion-funnel"],
+    queryFn: () => api.get("/admin/conversion-funnel").then(r => r.data),
+    enabled: isAdminDashboard,
+  });
+
   const cocktailsEnabled = labSettings.cocktails_enabled === true;
 
   const { data: allCocktailLots = [] } = useQuery({
@@ -467,6 +473,14 @@ export default function DashboardPage() {
               <>
                 <span className="admin-overview-sep">&middot;</span>
                 <span className="text-danger"><strong>{s.suspended_labs}</strong> suspended</span>
+              </>
+            )}
+            {funnel && funnel.total_demos > 0 && (
+              <>
+                <span className="admin-overview-sep">&middot;</span>
+                <span><strong>{funnel.demo_to_trial_rate.toFixed(0)}%</strong> demo&rarr;trial</span>
+                <span className="admin-overview-sep">&middot;</span>
+                <span><strong>{funnel.trial_to_paid_rate.toFixed(0)}%</strong> trial&rarr;paid</span>
               </>
             )}
           </div>

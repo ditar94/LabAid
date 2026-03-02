@@ -388,6 +388,7 @@ def create_stripe_customer(
 
 @router.post("/billing/invoice", response_model=schemas.InvoiceSubscriptionResponse)
 def billing_invoice(
+    body: schemas.InvoiceSubscriptionRequest = schemas.InvoiceSubscriptionRequest(),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(require_role(
         models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
@@ -402,6 +403,19 @@ def billing_invoice(
         raise HTTPException(status_code=404, detail="Lab not found")
     if lab.stripe_subscription_id:
         raise HTTPException(status_code=409, detail="Lab already has an active subscription")
+
+    if body.billing_email:
+        lab.billing_email = body.billing_email
+        db.flush()
+        if lab.stripe_customer_id:
+            from app.services.stripe_service import get_stripe_client
+            get_stripe_client().customers.update(
+                lab.stripe_customer_id,
+                params={"email": body.billing_email},
+            )
+
+    if not lab.billing_email:
+        raise HTTPException(status_code=400, detail="Billing email is required for invoice subscriptions")
 
     from app.services.stripe_service import create_invoice_subscription, apply_subscription_status
     from stripe._error import StripeError
