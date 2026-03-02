@@ -119,3 +119,65 @@ Comprehensive audit and remediation of React patterns in the LabAid frontend.
 - **Issue**: 1628-line file with embedded cocktail scan result rendering
 - **Fix**: Extract `CocktailScanResult` to `src/components/CocktailScanResult.tsx` (-211 lines)
 - **Status**: DONE
+
+## Phase 6: Re-audit Findings
+
+### 19. SharedDataContext value not memoized
+- **File**: `src/context/SharedDataContext.tsx`
+- **Issue**: Context value object literal inline — causes all consumers to re-render on every provider render
+- **Fix**: Wrap value in `useMemo` (consistent with AuthContext pattern)
+- **Status**: DONE
+
+### 20. BarcodeScannerButton stale closure
+- **File**: `src/components/BarcodeScannerButton.tsx`
+- **Issue**: `scanLoop` captures `onDetected` from closure; parent re-renders pass new reference but scan loop holds stale one
+- **Fix**: Use `onDetectedRef` pattern to always call latest callback
+- **Status**: DONE
+
+### 21. InventoryPage missing useEffect dependency
+- **File**: `src/pages/InventoryPage.tsx`
+- **Issue**: `setSelectedLab` used in effect but not in dependency array
+- **Fix**: Add `setSelectedLab` to deps
+- **Status**: DONE
+
+### 22. CocktailsPage legacy useEffect data fetching
+- **File**: `src/pages/CocktailsPage.tsx`
+- **Issue**: Bare `useEffect` for antibodies — race condition, no cache sharing, silent error swallowing
+- **Fix**: Migrate to `useQuery` with shared `["antibodies", selectedLab]` cache key
+- **Status**: DONE
+
+### 23. ReceivePage legacy useEffect data fetching
+- **File**: `src/pages/ReceivePage.tsx`
+- **Issue**: Three parallel API calls with no AbortController, no error handling, no loading state, no cache sharing
+- **Fix**: Migrate to `useQuery` + `useSharedData().storageUnits`
+- **Status**: DONE
+
+### 24. ScanSearchPage vendor suggestion race condition
+- **File**: `src/pages/ScanSearchPage.tsx`
+- **Issue**: Debounced vendor suggestion API call lacks AbortController — responses can arrive out of order
+- **Fix**: Add `AbortController` with abort-aware error handling
+- **Status**: DONE
+
+### 25. Redundant Escape key handlers
+- **Files**: `src/components/CocktailDocumentModal.tsx`, `src/components/LotRequestReviewModal.tsx`
+- **Issue**: Both add `document`/`window` Escape listeners, but both render inside `<Modal>` which already handles Escape
+- **Fix**: Remove redundant listeners (Modal handles it)
+- **Status**: DONE
+
+### 26. TermsModal not using Modal component
+- **File**: `src/components/TermsModal.tsx`
+- **Issue**: Reimplements Escape, scroll lock, overlay click without focus trap, portal, or aria attributes
+- **Fix**: Refactor to use `<Modal>` — gains focus trap, portal rendering, robust scroll lock
+- **Status**: DONE
+
+### 27. AntibodyCard not memoized
+- **File**: `src/components/AntibodyCard.tsx`
+- **Issue**: Rendered in `.map()` loop for 50+ items; all re-render when any single card expands
+- **Fix**: Wrap in `React.memo`
+- **Status**: DONE
+
+### 28. Duplicate isInactive logic
+- **Files**: `src/components/LotTable.tsx`, `src/components/LotCardList.tsx`
+- **Issue**: Identical `isInactive` function defined in both files
+- **Fix**: Extract `isLotInactive` + `sortLotsActiveFirst` to `src/utils/lotActions.ts`
+- **Status**: DONE
