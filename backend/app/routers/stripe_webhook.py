@@ -113,6 +113,10 @@ def _handle_checkout_completed(db: Session, session: dict) -> None:
         sub_id = metadata.get("convert_trial_subscription")
         setup_intent_id = session.get("setup_intent")
         if sub_id and setup_intent_id:
+            if lab.stripe_subscription_id and sub_id != lab.stripe_subscription_id:
+                logger.warning("Setup mode: subscription mismatch for lab %s (expected %s, got %s)",
+                               lab.id, lab.stripe_subscription_id, sub_id)
+                return
             client = get_stripe_client()
             setup_intent = client.setup_intents.retrieve(setup_intent_id)
             payment_method = setup_intent.payment_method
@@ -316,7 +320,19 @@ def _handle_customer_updated(db: Session, customer: dict) -> None:
         return
     email = customer.get("email")
     if email and email != lab.billing_email:
+        old_email = lab.billing_email
         lab.billing_email = email
+        lab_admin = db.query(User).filter(
+            User.lab_id == lab.id,
+            User.role.in_([UserRole.LAB_ADMIN, UserRole.SUPER_ADMIN]),
+        ).first()
+        if lab_admin:
+            log_audit(
+                db, lab_id=lab.id, user_id=lab_admin.id,
+                action="lab.billing_email_updated",
+                entity_type="lab", entity_id=lab.id,
+                note=f"Stripe: billing email changed from {old_email} to {email}",
+            )
 
 
 @router.delete("/events/cleanup", status_code=200)
