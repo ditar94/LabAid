@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import type { StorageCell, StorageUnit, Fluorochrome } from "../../api/types";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useFluoroMap } from "../../hooks/useFluoroMap";
 import { qcBadgeClass, qcLabel } from "../QcBadge";
 import GridLegend from "./GridLegend";
 import CapacityBar from "./CapacityBar";
@@ -109,13 +110,7 @@ export default function StorageGrid({
     return map;
   }, [cells]);
 
-  const fluoroMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const f of fluorochromes) {
-      map.set(f.name.toLowerCase(), f.color);
-    }
-    return map;
-  }, [fluorochromes]);
+  const fluoroMap = useFluoroMap(fluorochromes);
 
   const isMobile = useMediaQuery("(max-width: 768px)");
 

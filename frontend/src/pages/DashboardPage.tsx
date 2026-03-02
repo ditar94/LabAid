@@ -35,6 +35,7 @@ import CopyButton from "../components/CopyButton";
 import LotTable from "../components/LotTable";
 import LotCardList from "../components/LotCardList";
 import { formatDate } from "../utils/format";
+import { useFluoroMap } from "../hooks/useFluoroMap";
 
 const DEFAULT_EXPIRY_WARN_DAYS = 30;
 const CURRENT_LOT_EXPIRY_WARN_DAYS = 7;
@@ -193,13 +194,7 @@ export default function DashboardPage() {
     return `${diff}d`;
   };
 
-  const fluoroMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const f of fluorochromes) {
-      map.set(f.name.toLowerCase(), f.color);
-    }
-    return map;
-  }, [fluorochromes]);
+  const fluoroMap = useFluoroMap(fluorochromes);
   const antibodyMap = useMemo(() => new Map(antibodies.map((ab) => [ab.id, ab])), [antibodies]);
   const lotLabel = (lot: Lot) => {
     if (lot.antibody_target && lot.antibody_fluorochrome) {

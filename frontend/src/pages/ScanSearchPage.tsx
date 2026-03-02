@@ -16,8 +16,7 @@ import type {
   StorageGrid as StorageGridType,
 } from "../api/types";
 import AntibodyCard from "../components/AntibodyCard";
-import CocktailLotCard from "../components/CocktailLotCard";
-import CocktailRecipeCard from "../components/CocktailRecipeCard";
+import CocktailScanResult from "../components/CocktailScanResult";
 import CopyButton from "../components/CopyButton";
 import ViewToggle from "../components/ViewToggle";
 import LotTable from "../components/LotTable";
@@ -32,6 +31,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { lotSummaryToLot } from "../utils/lotAdapters";
 import { findMatchingAntibody } from "../utils/normalize";
 import AntibodyForm, { NEW_FLUORO_VALUE, EMPTY_AB_FORM } from "../components/AntibodyForm";
+import { useFluoroMap } from "../hooks/useFluoroMap";
 import LotRegistrationForm, { EMPTY_LOT_FORM } from "../components/LotRegistrationForm";
 
 type ResultMode = "idle" | "scan" | "search" | "register";
@@ -830,10 +830,7 @@ export default function ScanSearchPage() {
   const unstored_opened = result?.opened_vials?.filter((v) => !v.location_cell_id) ?? [];
   const canStoreOpen = unstored_opened.length > 0;
 
-  const fluoroMap = new Map<string, string>();
-  for (const f of fluorochromes) {
-    fluoroMap.set(f.name.toLowerCase(), f.color);
-  }
+  const fluoroMap = useFluoroMap(fluorochromes);
 
   return (
     <div>
@@ -1014,225 +1011,16 @@ export default function ScanSearchPage() {
         </div>
       )}
 
-      {/* ── Cocktail Recipe Only (no active lot) ───────────────── */}
-      {mode === "scan" && result?.is_cocktail && !result.cocktail_lot && result.cocktail_recipe && (
-        <div className="scan-result-wrapper">
-          <CocktailRecipeCard
-            recipe={result.cocktail_recipe}
-            counts={{ active: 0, pendingQC: 0, expired: 0, total: 0 }}
-            expanded={true}
-          >
-            {/* Components table */}
-            {result.cocktail_recipe.components.length > 0 && (
-              <div style={{ marginBottom: "0.75rem" }}>
-                <strong style={{ fontSize: "0.9rem" }}>Components</strong>
-                <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style={{ width: "2rem" }}>#</th>
-                        <th>Antibody</th>
-                        <th style={{ textAlign: "right" }}>Volume (uL)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.cocktail_recipe.components
-                        .sort((a, b) => a.ordinal - b.ordinal)
-                        .map((comp) => (
-                          <tr key={comp.id}>
-                            <td>{comp.ordinal}</td>
-                            <td>
-                              {comp.antibody_target || comp.antibody_fluorochrome
-                                ? [comp.antibody_target, comp.antibody_fluorochrome].filter(Boolean).join(" - ")
-                                : comp.free_text_name
-                                  ? <em>{comp.free_text_name}</em>
-                                  : "\u2014"}
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              {comp.volume_ul != null ? comp.volume_ul : "\u2014"}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            <p className="info">
-              No active lots for this recipe. Prepare a new lot from the Cocktails page.
-            </p>
-          </CocktailRecipeCard>
-        </div>
+      {/* ── Cocktail Scan Results ──────────────────────────────── */}
+      {mode === "scan" && result?.is_cocktail && (
+        <CocktailScanResult
+          result={result}
+          canReceive={canReceive}
+          loading={loading}
+          onLookup={(barcode) => { setInput(barcode); handleLookup(barcode); }}
+          onError={(msg) => setError(msg)}
+        />
       )}
-
-      {/* ── Cocktail Scan Result ──────────────────────────────────── */}
-      {mode === "scan" && result?.is_cocktail && result.cocktail_lot && (() => {
-        const cl = result.cocktail_lot;
-        const clExpired = cl.status !== "depleted" && !cl.is_archived &&
-          new Date(cl.expiration_date + "T00:00:00") < new Date(new Date().toDateString());
-        return (
-        <div className="scan-result-wrapper">
-          <CocktailLotCard
-            lot={cl}
-            recipe={result.cocktail_recipe}
-            isExpired={clExpired}
-          >
-            {/* Storage location */}
-            {cl.storage_unit_name && (
-              <p style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-                Stored: <strong>{cl.storage_unit_name}</strong>
-                {cl.storage_cell_label && <> / <strong>{cl.storage_cell_label}</strong></>}
-              </p>
-            )}
-
-            {/* Prepared by */}
-            {cl.created_by_name && (
-              <p style={{ color: "var(--text-muted)", fontSize: "0.85em", marginBottom: "0.5rem" }}>
-                Prepared by: {cl.created_by_name}
-              </p>
-            )}
-
-            {/* Recipe details (collapsible) */}
-            {result.cocktail_recipe && result.cocktail_recipe.components.length > 0 && (
-              <details style={{ marginBottom: "0.75rem" }}>
-                <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                  Recipe Details ({result.cocktail_recipe.components.length} components)
-                </summary>
-                <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style={{ width: "2rem" }}>#</th>
-                        <th>Component</th>
-                        <th style={{ textAlign: "right" }}>Volume (uL)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.cocktail_recipe.components
-                        .sort((a, b) => a.ordinal - b.ordinal)
-                        .map((comp) => (
-                          <tr key={comp.id}>
-                            <td>{comp.ordinal}</td>
-                            <td>
-                              {comp.antibody_target || comp.antibody_fluorochrome
-                                ? [comp.antibody_target, comp.antibody_fluorochrome].filter(Boolean).join(" - ")
-                                : comp.free_text_name
-                                  ? <em>{comp.free_text_name}</em>
-                                  : "\u2014"}
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              {comp.volume_ul != null ? comp.volume_ul : "\u2014"}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            )}
-
-            {/* Source traceability (collapsible) */}
-            {cl.sources && cl.sources.length > 0 && (
-              <details style={{ marginBottom: "0.75rem" }}>
-                <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                  Source Lots ({cl.sources.length})
-                </summary>
-                <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Antibody</th>
-                        <th>Source Lot</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cl.sources.map((s) => (
-                        <tr key={s.id || s.component_id}>
-                          <td>{[s.antibody_target, s.antibody_fluorochrome].filter(Boolean).join(" - ") || "Unknown"}</td>
-                          <td>
-                            {s.source_lot_number ? (
-                              <button
-                                className="btn-link"
-                                style={{ fontSize: "inherit", padding: 0 }}
-                                onClick={() => { setInput(s.source_lot_number!); handleLookup(s.source_lot_number!); }}
-                              >
-                                {s.source_lot_number}
-                              </button>
-                            ) : "\u2014"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            )}
-
-            {/* FEFO warning: older cocktail lots */}
-            {result.older_cocktail_lots && result.older_cocktail_lots.length > 0 && (
-              <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", border: "1px solid var(--warning-border, #f0c040)", borderRadius: "var(--radius-sm)", background: "var(--warning-bg, #fffde7)" }}>
-                <strong style={{ fontSize: "0.85rem" }}>Use First (FEFO)</strong>
-                <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
-                  Other active lots expire later than this one.
-                </p>
-                <div className="table-scroll" style={{ marginTop: "0.5rem" }}>
-                  <table style={{ fontSize: "0.8rem" }}>
-                    <thead>
-                      <tr>
-                        <th>Lot #</th>
-                        <th>Expires</th>
-                        <th>QC</th>
-                        <th>Renewals</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.older_cocktail_lots.map((ol) => (
-                        <tr
-                          key={ol.id}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => { setInput(ol.lot_number); handleLookup(ol.lot_number); }}
-                        >
-                          <td><button className="btn-link" style={{ fontSize: "inherit", padding: 0 }}>{ol.lot_number}</button></td>
-                          <td>{new Date(ol.expiration_date + "T00:00:00").toLocaleDateString()}</td>
-                          <td>
-                            <span className={`badge ${ol.qc_status === "approved" ? "badge-green" : ol.qc_status === "failed" ? "badge-red" : "badge-yellow"}`}>
-                              {ol.qc_status}
-                            </span>
-                          </td>
-                          <td>{ol.renewal_count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Deplete button for active cocktail lots */}
-            {canReceive && cl.status === "active" && (
-              <div className="action-btns">
-                <button
-                  className="btn-danger"
-                  onClick={async () => {
-                    try {
-                      await api.post(`/cocktails/lots/${cl.id}/deplete`);
-                      addToast("Cocktail lot depleted", "success");
-                      handleLookup(input);
-                    } catch (err: any) {
-                      setError(err.response?.data?.detail || "Failed to deplete cocktail lot");
-                    }
-                  }}
-                  disabled={loading}
-                >
-                  Mark as Depleted
-                </button>
-              </div>
-            )}
-          </CocktailLotCard>
-        </div>
-        );
-      })()}
 
       {/* ── Scan Result ────────────────────────────────────────────── */}
       {mode === "scan" && result && !result.is_cocktail && result.antibody && result.lot && (

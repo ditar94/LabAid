@@ -43,6 +43,7 @@ import { version } from "../../package.json";
 
 const TermsModal = lazy(() => import("./TermsModal"));
 const PaymentChoiceModal = lazy(() => import("./PaymentChoiceModal"));
+const CURRENT_YEAR = new Date().getFullYear();
 
 export default function Layout() {
   const { user, logout, impersonatingLab, endImpersonation, labSettings, labName } = useAuth();
@@ -402,7 +403,7 @@ export default function Layout() {
           </button>
         </div>
         <div className="sidebar-copyright">
-          <div>&copy; {new Date().getFullYear()} LabAid</div>
+          <div>&copy; {CURRENT_YEAR} LabAid</div>
           <div>
             v{version}
             {import.meta.env.VITE_APP_ENV && import.meta.env.VITE_APP_ENV !== "production" && (

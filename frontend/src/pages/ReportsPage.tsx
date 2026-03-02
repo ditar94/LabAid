@@ -22,6 +22,13 @@ import EmptyState from "../components/EmptyState";
 
 type ReportType = "lot-activity" | "usage" | "usage-trend" | "cocktail-lots" | "admin-activity" | "audit-trail";
 
+type ReportRow = Record<string, string | number | null>;
+
+interface PreviewData {
+  rows: ReportRow[];
+  total?: number;
+}
+
 const REPORT_CARDS: {
   type: ReportType;
   title: string;
@@ -133,7 +140,7 @@ export default function ReportsPage() {
   const [actionFilter, setActionFilter] = useState("");
 
   // Preview state
-  const [preview, setPreview] = useState<any>(null);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
 
@@ -510,7 +517,7 @@ export default function ReportsPage() {
     if (activeReport === "lot-activity") {
       // Group by antibody when "All Antibodies" selected
       if (isAllAntibodies) {
-        const groups: Record<string, any[]> = {};
+        const groups: Record<string, ReportRow[]> = {};
         for (const r of rows) {
           const ab = r.antibody_full || r.antibody || "Unknown";
           (groups[ab] ??= []).push(r);
@@ -537,7 +544,7 @@ export default function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {groupRows.map((r: any, i: number) => (
+                      {groupRows.map((r: ReportRow, i: number) => (
                         <tr key={i}>
                           <td>{r.lot_number}</td>
                           <td>{r.expiration || "\u2014"}</td>
@@ -578,7 +585,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r: any, i: number) => (
+                {rows.map((r: ReportRow, i: number) => (
                   <tr key={i}>
                     <td>{r.lot_number}</td>
                     <td>{r.expiration || "\u2014"}</td>
@@ -600,7 +607,7 @@ export default function ReportsPage() {
 
     if (activeReport === "usage") {
       if (isAllAntibodies) {
-        const groups: Record<string, any[]> = {};
+        const groups: Record<string, ReportRow[]> = {};
         for (const r of rows) {
           const ab = r.antibody_full || r.antibody || "Unknown";
           (groups[ab] ??= []).push(r);
@@ -628,7 +635,7 @@ export default function ReportsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {groupRows.map((r: any, i: number) => (
+                      {groupRows.map((r: ReportRow, i: number) => (
                         <tr key={i}>
                           <td>{r.lot_number}</td>
                           <td>{r.expiration || "\u2014"}</td>
@@ -671,7 +678,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r: any, i: number) => (
+                {rows.map((r: ReportRow, i: number) => (
                   <tr key={i}>
                     <td>{r.lot_number}</td>
                     <td>{r.expiration || "\u2014"}</td>
@@ -694,7 +701,7 @@ export default function ReportsPage() {
 
     if (activeReport === "usage-trend") {
       // Group by antibody
-      const groups: Record<string, any[]> = {};
+      const groups: Record<string, ReportRow[]> = {};
       for (const r of rows) {
         const ab = r.antibody_full || r.antibody || "Unknown";
         (groups[ab] ??= []).push(r);
@@ -702,7 +709,7 @@ export default function ReportsPage() {
       const antibodyKeys = Object.keys(groups);
       const isSingleAntibody = antibodyKeys.length === 1;
 
-      const renderTrendTable = (groupRows: any[]) => {
+      const renderTrendTable = (groupRows: ReportRow[]) => {
         const totalVials = groupRows[0]?.total_vials ?? 0;
         const totalWeeks = groupRows[0]?.total_weeks ?? "";
         const totalAvg = groupRows[0]?.total_avg_week ?? "";
@@ -719,7 +726,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {groupRows.map((r: any, i: number) => (
+                {groupRows.map((r: ReportRow, i: number) => (
                   <tr key={i}>
                     <td>{r.month_label}</td>
                     <td>{r.vials_opened}</td>
@@ -728,7 +735,7 @@ export default function ReportsPage() {
                     <td>{r.avg_week}</td>
                   </tr>
                 ))}
-                {totalVials > 0 && (
+                {Number(totalVials) > 0 && (
                   <tr style={{ fontWeight: 600, borderTop: "2px solid var(--border)" }}>
                     <td>Total</td>
                     <td>{totalVials}</td>
@@ -767,7 +774,7 @@ export default function ReportsPage() {
 
     if (activeReport === "cocktail-lots") {
       // Group by recipe name
-      const groups: Record<string, any[]> = {};
+      const groups: Record<string, ReportRow[]> = {};
       for (const r of rows) {
         const rn = r.recipe_name || "Unknown Recipe";
         (groups[rn] ??= []).push(r);
@@ -795,7 +802,7 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupRows.map((r: any, i: number) => (
+                    {groupRows.map((r: ReportRow, i: number) => (
                       <tr key={i}>
                         <td>{r.lot_number}</td>
                         <td>{r.preparation_date || "\u2014"}</td>
@@ -812,10 +819,10 @@ export default function ReportsPage() {
                         <td>{r.created_by || "\u2014"}</td>
                         <td style={{ fontSize: "0.8em", maxWidth: 260, whiteSpace: "pre-line", lineHeight: 1.5 }}>
                           {r.components
-                            ? r.components.split("\n").map((line: string, j: number) => (
+                            ? String(r.components).split("\n").map((line: string, j: number, arr: string[]) => (
                                 <span key={j}>
                                   {line}
-                                  {j < r.components.split("\n").length - 1 && <br />}
+                                  {j < arr.length - 1 && <br />}
                                 </span>
                               ))
                             : "\u2014"}
@@ -847,7 +854,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r: any, i: number) => (
+                {rows.map((r: ReportRow, i: number) => (
                   <tr key={i}>
                     <td style={{ whiteSpace: "nowrap" }}>{r.timestamp ? new Date(r.timestamp).toLocaleString() : "\u2014"}</td>
                     <td>
@@ -884,27 +891,30 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r: any, i: number) => (
+              {rows.map((r: ReportRow, i: number) => {
+                const ts = String(r.timestamp ?? "");
+                const action = String(r.action ?? "");
+                return (
                 <tr key={i}>
-                  <td>{r.timestamp?.slice(0, 19)}</td>
+                  <td>{ts.slice(0, 19)}</td>
                   <td>
                     <span
                       className={`action-tag ${
-                        r.action?.startsWith("vial.") ||
-                        r.action?.startsWith("vials.")
+                        action.startsWith("vial.") ||
+                        action.startsWith("vials.")
                           ? "action-vial"
-                          : r.action?.startsWith("lot.")
+                          : action.startsWith("lot.")
                             ? "action-lot"
-                            : r.action?.startsWith("antibody.")
+                            : action.startsWith("antibody.")
                               ? "action-antibody"
-                              : r.action?.startsWith("document.")
+                              : action.startsWith("document.")
                                 ? "action-lot"
-                                : r.action?.startsWith("cocktail_lot.") || r.action?.startsWith("cocktail_recipe.") || r.action?.startsWith("cocktail_document.")
+                                : action.startsWith("cocktail_lot.") || action.startsWith("cocktail_recipe.") || action.startsWith("cocktail_document.")
                                   ? "action-lot"
                                   : "action-admin"
                       }`}
                     >
-                      {r.action}
+                      {action}
                     </span>
                   </td>
                   <td>{r.user}</td>
@@ -912,7 +922,8 @@ export default function ReportsPage() {
                   <td>{r.entity}</td>
                   <td>{r.note || "\u2014"}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

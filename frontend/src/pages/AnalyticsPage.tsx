@@ -61,7 +61,15 @@ export default function AnalyticsPage() {
   const { user } = useAuth();
   const [periodView, setPeriodView] = useState<"monthly" | "weekly">("monthly");
 
-  if (user?.role !== "super_admin") {
+  const isSuperAdmin = user?.role === "super_admin";
+
+  const { data: funnel, isLoading } = useQuery<ConversionFunnel>({
+    queryKey: ["conversion-funnel"],
+    queryFn: () => api.get("/admin/conversion-funnel").then((r) => r.data),
+    enabled: isSuperAdmin,
+  });
+
+  if (!isSuperAdmin) {
     return (
       <div>
         <div className="page-header"><h1>Analytics</h1></div>
@@ -69,11 +77,6 @@ export default function AnalyticsPage() {
       </div>
     );
   }
-
-  const { data: funnel, isLoading } = useQuery<ConversionFunnel>({
-    queryKey: ["conversion-funnel"],
-    queryFn: () => api.get("/admin/conversion-funnel").then((r) => r.data),
-  });
 
   if (isLoading) {
     return (
