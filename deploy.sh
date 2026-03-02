@@ -7,7 +7,6 @@ set -euo pipefail
 GCP_PROJECT="${GCP_PROJECT:-labaid-prod}"
 GCP_REGION="${GCP_REGION:-us-central1}"
 REPO_NAME="${REPO_NAME:-labaid}"
-CLOUD_SQL_INSTANCE="${CLOUD_SQL_INSTANCE:-${GCP_PROJECT}:${GCP_REGION}:labaid-db-nonprod}"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,22 +32,20 @@ Commands:
   staging            Deploy backend + frontend to STAGING environment
   staging-backend    Deploy only backend to staging
   staging-frontend   Deploy only frontend to staging
-  beta               Build & deploy backend + frontend to BETA environment
-  beta-backend       Deploy only backend to beta
-  beta-frontend      Deploy only frontend to beta
   setup              One-time GCP project setup (APIs, Artifact Registry)
 
 Environments:
-  Production:  labaid-backend         → labaid-prod.web.app     (EMAIL_BACKEND=resend)
-  Staging:     labaid-backend-staging → labaid-staging.web.app  (EMAIL_BACKEND=resend)
-  Beta:        labaid-backend-beta    → labaid-beta.web.app     (EMAIL_BACKEND=console)
+  Production:  labaid-backend         → labaid.io        (Terraform-managed config)
+  Staging:     labaid-backend-staging → staging.labaid.io (Terraform-managed config)
+
+Terraform manages all Cloud Run service config (env vars, secrets, scaling, etc.).
+This script only builds and pushes a new container image — matching CI/CD behavior.
 
 CI/CD deploys automatically via GitHub Actions. This script is a manual fallback.
 
 Environment variables:
   GCP_PROJECT          GCP project ID (default: labaid-prod)
   GCP_REGION           GCP region (default: us-central1)
-  CLOUD_SQL_INSTANCE   Cloud SQL instance connection name
 EOF
   exit 0
 }
@@ -81,13 +78,7 @@ setup() {
 
 deploy_backend() {
   local service_name="${1:-labaid-backend}"
-  local db_secret="${2:-DATABASE_URL}"
-  local image_tag="${3:-latest}"
-  local max_instances="${4:-3}"
-  local email_backend="${5:-console}"
-  local app_url="${6:-http://localhost:5173}"
-  local db_migrate_secret="${7:-${db_secret}_MIGRATE}"
-  local sql_instance="${8:-${CLOUD_SQL_INSTANCE}}"
+  local image_tag="${2:-latest}"
   local image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REPO_NAME}/backend:${image_tag}"
 
   info "Building backend Docker image (tag: ${image_tag})..."
@@ -100,34 +91,13 @@ deploy_backend() {
   info "Pushing image to Artifact Registry..."
   docker push "${image}"
 
-  # Build env vars — email backend + app URL are environment-specific
-  local env_vars="COOKIE_SECURE=True,COOKIE_SAMESITE=lax,S3_ENDPOINT_URL=https://storage.googleapis.com,S3_USE_PATH_STYLE=False,GCP_PROJECT=${GCP_PROJECT},EMAIL_BACKEND=${email_backend},APP_URL=${app_url}"
-
-  # Build secrets — only include RESEND_API_KEY for production (resend backend)
-  local secrets="SECRET_KEY=SECRET_KEY:latest,DATABASE_URL=${db_secret}:latest,DATABASE_URL_MIGRATE=${db_migrate_secret}:latest,S3_ACCESS_KEY=S3_ACCESS_KEY:latest,S3_SECRET_KEY=S3_SECRET_KEY:latest,S3_BUCKET=S3_BUCKET:latest,CORS_ORIGINS=CORS_ORIGINS:latest,COOKIE_DOMAIN=COOKIE_DOMAIN:latest"
-  if [ "${email_backend}" = "resend" ]; then
-    secrets="${secrets},RESEND_API_KEY=RESEND_API_KEY:latest"
-  fi
-
-  info "Deploying to Cloud Run (${service_name})..."
-  info "  EMAIL_BACKEND=${email_backend}"
-  info "  APP_URL=${app_url}"
-  gcloud run deploy "${service_name}" \
+  info "Updating Cloud Run image (${service_name})..."
+  gcloud run services update "${service_name}" \
     --image "${image}" \
     --region "${GCP_REGION}" \
-    --platform managed \
-    --allow-unauthenticated \
-    --add-cloudsql-instances "${sql_instance}" \
-    --set-env-vars "${env_vars}" \
-    --set-secrets "${secrets}" \
-    --memory 512Mi \
-    --cpu 1 \
-    --min-instances 0 \
-    --max-instances "${max_instances}" \
-    --port 8080 \
     --project="${GCP_PROJECT}"
 
-  ok "Backend deployed to Cloud Run (${service_name})"
+  ok "Backend image updated (${service_name})"
 
   local backend_url
   backend_url=$(gcloud run services describe "${service_name}" \
@@ -154,29 +124,19 @@ deploy_frontend() {
 
 COMMAND="${1:-all}"
 
-NONPROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db-nonprod"
-PROD_INSTANCE="${GCP_PROJECT}:${GCP_REGION}:labaid-db-prod"
-
 case "${COMMAND}" in
   -h|--help|help) usage ;;
   setup)          setup ;;
-  backend)        deploy_backend "labaid-backend" "DATABASE_URL" "latest" "3" "resend" "https://labaid-prod.web.app" "DATABASE_URL_MIGRATE" "${PROD_INSTANCE}" ;;
+  backend)        deploy_backend "labaid-backend" "latest" ;;
   frontend)       deploy_frontend "labaid-prod" ;;
-  all)            deploy_backend "labaid-backend" "DATABASE_URL" "latest" "3" "resend" "https://labaid-prod.web.app" "DATABASE_URL_MIGRATE" "${PROD_INSTANCE}"
+  all)            deploy_backend "labaid-backend" "latest"
                   deploy_frontend "labaid-prod" ;;
   staging)        warn "Deploying to STAGING environment"
-                  deploy_backend "labaid-backend-staging" "DATABASE_URL_BETA" "staging" "1" "resend" "https://labaid-staging.web.app" "DATABASE_URL_BETA_MIGRATE" "${NONPROD_INSTANCE}"
+                  deploy_backend "labaid-backend-staging" "staging"
                   deploy_frontend "labaid-staging" ;;
   staging-backend) warn "Deploying backend to STAGING"
-                  deploy_backend "labaid-backend-staging" "DATABASE_URL_BETA" "staging" "1" "resend" "https://labaid-staging.web.app" "DATABASE_URL_BETA_MIGRATE" "${NONPROD_INSTANCE}" ;;
+                  deploy_backend "labaid-backend-staging" "staging" ;;
   staging-frontend) warn "Deploying frontend to STAGING"
                   deploy_frontend "labaid-staging" ;;
-  beta)           warn "Deploying to BETA environment"
-                  deploy_backend "labaid-backend-beta" "DATABASE_URL_BETA" "beta" "1" "console" "https://labaid-beta.web.app" "DATABASE_URL_BETA_MIGRATE" "${NONPROD_INSTANCE}"
-                  deploy_frontend "labaid-beta" ;;
-  beta-backend)   warn "Deploying backend to BETA"
-                  deploy_backend "labaid-backend-beta" "DATABASE_URL_BETA" "beta" "1" "console" "https://labaid-beta.web.app" "DATABASE_URL_BETA_MIGRATE" "${NONPROD_INSTANCE}" ;;
-  beta-frontend)  warn "Deploying frontend to BETA"
-                  deploy_frontend "labaid-beta" ;;
   *)              fail "Unknown command: ${COMMAND}. Run './deploy.sh help' for usage." ;;
 esac

@@ -792,6 +792,11 @@ Steps 5, 7, and 10 involve CI/CD changes that should be tested on a feature bran
 | 25 | Migrations in container entrypoint | High | 8.5 | Deferred |
 | 26 | No request timeout on Cloud Run | Low | 2.4 | DONE |
 | 27 | CPU idle config (informational — already optimal) | Low | N/A | No action |
+| 28 | Cloud Run SA cannot create SSO secrets | High | 1.2 | DONE |
+| 29 | No liveness probe on Cloud Run | Low | 2.1 | DONE |
+| 30 | No prevent_destroy on nonprod Cloud SQL | Low | 5.3 | DONE |
+| 31 | deploy.sh out of sync with CI/CD | Low | 4.1 | DONE |
+| 32 | Nonprod missing slow query logging | Low | 3.2 | DONE |
 
 ---
 
@@ -812,5 +817,7 @@ Steps 5, 7, and 10 involve CI/CD changes that should be tested on a feature bran
 | `terraform/scheduler.tf` (new) | 7 |
 | `terraform/main.tf` | 7 |
 | `.github/workflows/deploy.yml` | 2, 4, 6 |
+| `terraform/iam.tf` | 1 |
+| `deploy.sh` | 4 |
 | `backend/app/routers/internal.py` (new) | 7 |
 | `backend/app/main.py` | 7 |

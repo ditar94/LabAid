@@ -50,12 +50,31 @@ resource "google_sql_database_instance" "nonprod" {
       value = "all"
     }
 
+    database_flags {
+      name  = "log_min_duration_statement"
+      value = "1000"
+    }
+
+    database_flags {
+      name  = "log_connections"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "log_disconnections"
+      value = "on"
+    }
+
     password_validation_policy {
       enable_password_policy      = true
       complexity                  = "COMPLEXITY_DEFAULT"
       min_length                  = 8
       disallow_username_substring = true
     }
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
