@@ -64,6 +64,24 @@ variable "github_repo" {
   default     = "ditar94/LabAid"
 }
 
+variable "stripe_secret_key_name" {
+  description = "Secret Manager secret name for STRIPE_SECRET_KEY"
+  type        = string
+  default     = "STRIPE_SECRET_KEY"
+}
+
+variable "stripe_webhook_secret_name" {
+  description = "Secret Manager secret name for STRIPE_WEBHOOK_SECRET"
+  type        = string
+  default     = "STRIPE_WEBHOOK_SECRET"
+}
+
+variable "stripe_price_id_name" {
+  description = "Secret Manager secret name for STRIPE_PRICE_ID"
+  type        = string
+  default     = "STRIPE_PRICE_ID"
+}
+
 variable "alert_email" {
   description = "Email address for monitoring alerts"
   type        = string
