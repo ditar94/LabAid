@@ -102,16 +102,26 @@ class TestWebhookEndpoint:
         )
         assert res.status_code == 400
 
+    @patch("app.routers.stripe_webhook.get_stripe_client")
     @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
     @patch("app.routers.stripe_webhook.settings")
-    def test_checkout_completed(self, mock_settings, mock_construct, client, db, lab, admin_user):
+    def test_checkout_completed(self, mock_settings, mock_construct, mock_get_client, client, db, lab, admin_user):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+        mock_settings.STRIPE_SECRET_KEY = "sk_test"
+
+        mock_sub = MagicMock()
+        mock_sub.status = "active"
+        mock_sub.current_period_end = 1700000000
+        mock_client = MagicMock()
+        mock_client.subscriptions.retrieve.return_value = mock_sub
+        mock_get_client.return_value = mock_client
 
         event = self._make_event("checkout.session.completed", {
             "client_reference_id": str(lab.id),
             "customer": "cus_test123",
             "subscription": "sub_test456",
-            "customer_email": "billing@lab.com",
+            "mode": "subscription",
+            "customer_details": {"email": "billing@lab.com"},
         })
         mock_construct.return_value = event
 
@@ -129,10 +139,18 @@ class TestWebhookEndpoint:
         assert lab.billing_status == "active"
         assert lab.is_active is True
 
+    @patch("app.routers.stripe_webhook.get_stripe_client")
     @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
     @patch("app.routers.stripe_webhook.settings")
-    def test_event_deduplication(self, mock_settings, mock_construct, client, db, lab, admin_user):
+    def test_event_deduplication(self, mock_settings, mock_construct, mock_get_client, client, db, lab, admin_user):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+        mock_settings.STRIPE_SECRET_KEY = "sk_test"
+        mock_sub = MagicMock()
+        mock_sub.status = "active"
+        mock_sub.current_period_end = 1700000000
+        mock_client = MagicMock()
+        mock_client.subscriptions.retrieve.return_value = mock_sub
+        mock_get_client.return_value = mock_client
 
         event_id = "evt_dedup_test"
         event = self._make_event("invoice.paid", {
@@ -169,6 +187,7 @@ class TestWebhookEndpoint:
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
 
         lab.stripe_customer_id = "cus_cancel"
+        lab.stripe_subscription_id = "sub_cancel"
         lab.billing_status = "active"
         lab.is_active = True
         db.commit()

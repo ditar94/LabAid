@@ -38,6 +38,9 @@ _STATUS_MAP = {
     "past_due": (BillingStatus.PAST_DUE.value, True),
     "canceled": (BillingStatus.CANCELLED.value, False),
     "unpaid": (BillingStatus.CANCELLED.value, False),
+    "incomplete": (BillingStatus.PAST_DUE.value, False),
+    "incomplete_expired": (BillingStatus.CANCELLED.value, False),
+    "paused": (BillingStatus.CANCELLED.value, False),
 }
 
 
@@ -177,14 +180,26 @@ def create_trial_subscription(db: Session, lab: Lab, trial_days: int = 7) -> str
         return None
 
 
-def cancel_trial_subscription(db: Session, lab: Lab) -> None:
-    if not lab.stripe_subscription_id or lab.billing_status != "trial":
-        return
+def create_trial_conversion_checkout(db: Session, lab: Lab, success_url: str, cancel_url: str) -> str:
+    validate_redirect_url(success_url)
+    validate_redirect_url(cancel_url)
     client = get_stripe_client()
-    sub_id = lab.stripe_subscription_id
-    lab.stripe_subscription_id = None
-    db.flush()
-    client.subscriptions.cancel(sub_id)
+    customer_id = get_or_create_customer(db, lab)
+    session = client.checkout.sessions.create(
+        params={
+            "customer": customer_id,
+            "client_reference_id": str(lab.id),
+            "mode": "setup",
+            "success_url": success_url,
+            "cancel_url": cancel_url,
+            "metadata": {
+                "lab_id": str(lab.id),
+                "convert_trial_subscription": lab.stripe_subscription_id,
+            },
+        },
+        options={"idempotency_key": f"trial_convert_{lab.id}_{int(time.time() // 300)}"},
+    )
+    return session.url
 
 
 def convert_trial_to_invoice(db: Session, lab: Lab) -> str:

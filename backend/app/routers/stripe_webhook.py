@@ -62,6 +62,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             _handle_invoice_payment_failed(db, data)
         elif event_type in ("invoice.marked_uncollectible", "invoice.overdue"):
             _handle_invoice_payment_failed(db, data)
+        elif event_type == "customer.subscription.created":
+            _handle_subscription_created(db, data)
         elif event_type == "customer.subscription.updated":
             _handle_subscription_updated(db, data)
         elif event_type == "customer.subscription.deleted":
@@ -101,10 +103,34 @@ def _handle_checkout_completed(db: Session, session: dict) -> None:
         return
 
     lab.stripe_customer_id = customer_id
-    if session.get("customer_email"):
-        lab.billing_email = session["customer_email"]
+    if session.get("customer_details", {}).get("email"):
+        lab.billing_email = session["customer_details"]["email"]
 
-    # Fetch actual subscription status instead of hardcoding "active"
+    # Setup mode: trial conversion — collect payment method and end trial
+    if session.get("mode") == "setup":
+        metadata = session.get("metadata") or {}
+        sub_id = metadata.get("convert_trial_subscription")
+        setup_intent_id = session.get("setup_intent")
+        if sub_id and setup_intent_id:
+            try:
+                client = get_stripe_client()
+                setup_intent = client.setup_intents.retrieve(setup_intent_id)
+                payment_method = setup_intent.payment_method
+                if payment_method:
+                    pm_id = payment_method if isinstance(payment_method, str) else payment_method.id
+                    client.payment_methods.attach(pm_id, params={"customer": customer_id})
+                    client.customers.update(customer_id, params={
+                        "invoice_settings": {"default_payment_method": pm_id},
+                    })
+                    client.subscriptions.update(sub_id, params={
+                        "trial_end": "now",
+                        "default_payment_method": pm_id,
+                    })
+            except Exception:
+                logger.exception("Failed to convert trial subscription %s for lab %s", sub_id, lab_id)
+        return
+
+    # Subscription mode: fetch actual subscription status
     status = "active"
     period_end = None
     if subscription_id and settings.STRIPE_SECRET_KEY:
@@ -127,7 +153,19 @@ def _handle_invoice_paid(db: Session, invoice: dict) -> None:
     if not lab:
         return
     subscription_id = invoice.get("subscription")
-    apply_subscription_status(db, lab, "active", subscription_id=subscription_id)
+    if not subscription_id:
+        return
+    status = "active"
+    period_end = None
+    if settings.STRIPE_SECRET_KEY:
+        try:
+            client = get_stripe_client()
+            sub = client.subscriptions.retrieve(subscription_id)
+            status = sub.status or "active"
+            period_end = sub.current_period_end
+        except Exception:
+            logger.warning("Could not fetch subscription %s in invoice.paid handler", subscription_id)
+    apply_subscription_status(db, lab, status, subscription_id=subscription_id, current_period_end=period_end)
 
 
 def _handle_invoice_payment_failed(db: Session, invoice: dict) -> None:
@@ -138,6 +176,20 @@ def _handle_invoice_payment_failed(db: Session, invoice: dict) -> None:
     if not lab:
         return
     apply_subscription_status(db, lab, "past_due")
+
+
+def _handle_subscription_created(db: Session, subscription: dict) -> None:
+    customer_id = subscription.get("customer")
+    if not customer_id:
+        return
+    lab = _find_lab_by_customer(db, customer_id)
+    if not lab:
+        return
+    apply_subscription_status(
+        db, lab, subscription["status"], subscription_id=subscription["id"],
+        current_period_end=subscription.get("current_period_end"),
+        trial_end=subscription.get("trial_end"),
+    )
 
 
 def _handle_subscription_updated(db: Session, subscription: dict) -> None:
@@ -161,9 +213,7 @@ def _handle_subscription_deleted(db: Session, subscription: dict) -> None:
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
         return
-    # Only act if this is the lab's current subscription — prevents a cancelled
-    # trial sub from suspending the lab after a new paid sub has been created.
-    if lab.stripe_subscription_id and lab.stripe_subscription_id != subscription["id"]:
+    if lab.stripe_subscription_id != subscription["id"]:
         logger.info("Ignoring deletion of non-current subscription %s for lab %s", subscription["id"], lab.id)
         return
     apply_subscription_status(

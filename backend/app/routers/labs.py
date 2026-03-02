@@ -310,11 +310,13 @@ def billing_checkout(
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
-    from app.services.stripe_service import create_checkout_session, cancel_trial_subscription
+    from app.services.stripe_service import create_checkout_session, create_trial_conversion_checkout
     from stripe._error import StripeError
     try:
-        cancel_trial_subscription(db, lab)
-        url = create_checkout_session(db, lab, body.success_url, body.cancel_url)
+        if lab.stripe_subscription_id and lab.billing_status == "trial":
+            url = create_trial_conversion_checkout(db, lab, body.success_url, body.cancel_url)
+        else:
+            url = create_checkout_session(db, lab, body.success_url, body.cancel_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except StripeError:
