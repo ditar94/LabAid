@@ -42,6 +42,7 @@ resource "google_project_service" "apis" {
     "iamcredentials.googleapis.com",
     "firebasehosting.googleapis.com",
     "monitoring.googleapis.com",
+    "cloudscheduler.googleapis.com",
   ])
 
   project            = var.project_id

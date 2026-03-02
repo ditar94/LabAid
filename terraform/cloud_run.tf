@@ -3,6 +3,10 @@ resource "google_cloud_run_v2_service" "backend" {
   location = var.region
 
   template {
+    service_account                  = google_service_account.cloud_run.email
+    max_instance_request_concurrency = 30
+    timeout                          = "60s"
+
     scaling {
       min_instance_count = 0
       max_instance_count = var.max_instances
@@ -20,6 +24,17 @@ resource "google_cloud_run_v2_service" "backend" {
           cpu    = "1"
           memory = "512Mi"
         }
+      }
+
+      startup_probe {
+        http_get {
+          path = "/api/health"
+          port = 8080
+        }
+        initial_delay_seconds = 5
+        timeout_seconds       = 5
+        period_seconds        = 10
+        failure_threshold     = 12
       }
 
       # Plain environment variables
@@ -103,31 +118,16 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
       env {
-        name = "S3_BUCKET"
-        value_source {
-          secret_key_ref {
-            secret  = "S3_BUCKET"
-            version = "latest"
-          }
-        }
+        name  = "S3_BUCKET"
+        value = var.s3_bucket
       }
       env {
-        name = "CORS_ORIGINS"
-        value_source {
-          secret_key_ref {
-            secret  = "CORS_ORIGINS"
-            version = "latest"
-          }
-        }
+        name  = "CORS_ORIGINS"
+        value = var.cors_origins
       }
       env {
-        name = "COOKIE_DOMAIN"
-        value_source {
-          secret_key_ref {
-            secret  = "COOKIE_DOMAIN"
-            version = "latest"
-          }
-        }
+        name  = "COOKIE_DOMAIN"
+        value = var.cookie_domain
       }
 
       # RESEND_API_KEY only needed when email_backend=resend

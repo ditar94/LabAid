@@ -21,7 +21,7 @@ resource "google_monitoring_alert_policy" "sql_cpu" {
     display_name = "CPU utilization high"
 
     condition_threshold {
-      filter          = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:labaid-db-prod\" AND metric.type = \"cloudsql.googleapis.com/database/cpu/utilization\""
+      filter          = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:${var.cloud_sql_instance_name}\" AND metric.type = \"cloudsql.googleapis.com/database/cpu/utilization\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0.8
       duration        = "300s"
@@ -50,7 +50,7 @@ resource "google_monitoring_alert_policy" "sql_memory" {
     display_name = "Memory utilization high"
 
     condition_threshold {
-      filter          = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:labaid-db-prod\" AND metric.type = \"cloudsql.googleapis.com/database/memory/utilization\""
+      filter          = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:${var.cloud_sql_instance_name}\" AND metric.type = \"cloudsql.googleapis.com/database/memory/utilization\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0.85
       duration        = "300s"
@@ -79,7 +79,7 @@ resource "google_monitoring_alert_policy" "sql_disk" {
     display_name = "Disk utilization high"
 
     condition_threshold {
-      filter          = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:labaid-db-prod\" AND metric.type = \"cloudsql.googleapis.com/database/disk/utilization\""
+      filter          = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:${var.cloud_sql_instance_name}\" AND metric.type = \"cloudsql.googleapis.com/database/disk/utilization\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0.8
       duration        = "300s"
@@ -108,7 +108,7 @@ resource "google_monitoring_alert_policy" "sql_connections" {
     display_name = "Active connections high"
 
     condition_threshold {
-      filter          = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:labaid-db-prod\" AND metric.type = \"cloudsql.googleapis.com/database/postgresql/num_backends\""
+      filter          = "resource.type = \"cloudsql_database\" AND resource.labels.database_id = \"${var.project_id}:${var.cloud_sql_instance_name}\" AND metric.type = \"cloudsql.googleapis.com/database/postgresql/num_backends\""
       comparison      = "COMPARISON_GT"
       threshold_value = 80
       duration        = "300s"
@@ -139,7 +139,7 @@ resource "google_monitoring_alert_policy" "run_instance_count" {
     display_name = "Instance count at max"
 
     condition_threshold {
-      filter          = "resource.type = \"cloud_run_revision\" AND resource.labels.service_name = \"labaid-backend\" AND metric.type = \"run.googleapis.com/container/instance_count\""
+      filter          = "resource.type = \"cloud_run_revision\" AND resource.labels.service_name = \"${var.cloud_run_service_name}\" AND metric.type = \"run.googleapis.com/container/instance_count\""
       comparison      = "COMPARISON_GT"
       threshold_value = 2
       duration        = "300s"
@@ -168,7 +168,7 @@ resource "google_monitoring_alert_policy" "run_5xx_errors" {
     display_name = "Server error rate high"
 
     condition_threshold {
-      filter          = "resource.type = \"cloud_run_revision\" AND resource.labels.service_name = \"labaid-backend\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
+      filter          = "resource.type = \"cloud_run_revision\" AND resource.labels.service_name = \"${var.cloud_run_service_name}\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.labels.response_code_class = \"5xx\""
       comparison      = "COMPARISON_GT"
       threshold_value = 5
       duration        = "300s"
@@ -197,7 +197,7 @@ resource "google_monitoring_alert_policy" "run_latency" {
     display_name = "Request latency high"
 
     condition_threshold {
-      filter          = "resource.type = \"cloud_run_revision\" AND resource.labels.service_name = \"labaid-backend\" AND metric.type = \"run.googleapis.com/request_latencies\""
+      filter          = "resource.type = \"cloud_run_revision\" AND resource.labels.service_name = \"${var.cloud_run_service_name}\" AND metric.type = \"run.googleapis.com/request_latencies\""
       comparison      = "COMPARISON_GT"
       threshold_value = 5000
       duration        = "300s"
@@ -222,7 +222,7 @@ resource "google_monitoring_alert_policy" "run_latency" {
 
 resource "google_logging_metric" "sql_backup_failure" {
   name   = "cloudsql-backup-failure"
-  filter = "resource.type=\"cloudsql_database\" AND resource.labels.database_id=\"${var.project_id}:labaid-db-prod\" AND protoPayload.methodName=\"cloudsql.backupRuns.insert\" AND severity>=ERROR"
+  filter = "resource.type=\"cloudsql_database\" AND resource.labels.database_id=\"${var.project_id}:${var.cloud_sql_instance_name}\" AND protoPayload.methodName=\"cloudsql.backupRuns.insert\" AND severity>=ERROR"
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -261,7 +261,7 @@ resource "google_monitoring_alert_policy" "sql_backup_failure" {
 
 resource "google_logging_metric" "sql_backup_success" {
   name   = "cloudsql-backup-success"
-  filter = "resource.type=\"cloudsql_database\" AND resource.labels.database_id=\"${var.project_id}:labaid-db-prod\" AND protoPayload.methodName=\"cloudsql.backupRuns.insert\" AND severity<ERROR"
+  filter = "resource.type=\"cloudsql_database\" AND resource.labels.database_id=\"${var.project_id}:${var.cloud_sql_instance_name}\" AND protoPayload.methodName=\"cloudsql.backupRuns.insert\" AND severity<ERROR"
 
   metric_descriptor {
     metric_kind = "DELTA"

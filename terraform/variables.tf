@@ -18,12 +18,22 @@ variable "max_instances" {
   description = "Maximum Cloud Run instances"
   type        = number
   default     = 1
+
+  validation {
+    condition     = var.max_instances >= 1 && var.max_instances <= 10
+    error_message = "max_instances must be between 1 and 10."
+  }
 }
 
 variable "email_backend" {
   description = "Email backend: console or resend"
   type        = string
   default     = "console"
+
+  validation {
+    condition     = contains(["console", "resend"], var.email_backend)
+    error_message = "email_backend must be 'console' or 'resend'."
+  }
 }
 
 variable "app_url" {
@@ -84,5 +94,20 @@ variable "stripe_price_id_name" {
 
 variable "alert_email" {
   description = "Email address for monitoring alerts"
+  type        = string
+}
+
+variable "cors_origins" {
+  description = "Comma-separated CORS origins"
+  type        = string
+}
+
+variable "cookie_domain" {
+  description = "Cookie domain"
+  type        = string
+}
+
+variable "s3_bucket" {
+  description = "GCS bucket name for document storage"
   type        = string
 }
