@@ -35,6 +35,8 @@ export default function BarcodeScannerButton({
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<BarcodeDetector | null>(null);
   const rafRef = useRef<number | null>(null);
+  const onDetectedRef = useRef(onDetected);
+  onDetectedRef.current = onDetected;
 
   const stopStream = () => {
     if (rafRef.current) {
@@ -64,7 +66,7 @@ export default function BarcodeScannerButton({
       if (barcodes && barcodes.length > 0) {
         const value = barcodes[0]?.rawValue;
         if (value) {
-          onDetected(value);
+          onDetectedRef.current(value);
           close();
           return;
         }

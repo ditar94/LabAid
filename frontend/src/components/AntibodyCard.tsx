@@ -11,7 +11,7 @@
 //   Counts  → sealed, opened, depleted, total
 //   Content → children rendered when expanded (lot tables, drilldowns, etc.)
 
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import type { Antibody } from "../api/types";
 import InventoryCardBase from "./InventoryCardBase";
 import CopyButton from "./CopyButton";
@@ -73,7 +73,7 @@ interface AntibodyCardProps {
  *   - Selectable (SearchPage): click highlights the card
  *   - Read-only: no click handler
  */
-export default function AntibodyCard({
+export default memo(function AntibodyCard({
   antibody,
   counts,
   badges,
@@ -240,4 +240,4 @@ export default function AntibodyCard({
       </div>
     </InventoryCardBase>
   );
-}
+})

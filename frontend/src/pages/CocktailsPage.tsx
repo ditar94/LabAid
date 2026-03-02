@@ -51,16 +51,13 @@ export default function CocktailsPage() {
   const [infoRecipe, setInfoRecipe] = useState<CocktailRecipe | null>(null);
   const [showInactiveLots, setShowInactiveLots] = useState(false);
 
-  // Antibodies for recipe form
-  const [antibodies, setAntibodies] = useState<Antibody[]>([]);
-
-  useEffect(() => {
-    if (!selectedLab) return;
-    api
-      .get<Antibody[]>("/antibodies/", { params: { lab_id: selectedLab } })
-      .then((r) => setAntibodies(r.data))
-      .catch(() => {});
-  }, [selectedLab]);
+  // Antibodies for recipe form (shared cache with InventoryPage)
+  const { data: antibodies = [] } = useQuery({
+    queryKey: ["antibodies", selectedLab],
+    queryFn: () =>
+      api.get<Antibody[]>("/antibodies/", { params: { lab_id: selectedLab } }).then((r) => r.data),
+    enabled: !!selectedLab,
+  });
 
   // Data
   const { data: recipes = [], isLoading } = useQuery<CocktailRecipeWithLots[]>({

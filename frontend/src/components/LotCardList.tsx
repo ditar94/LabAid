@@ -9,7 +9,7 @@ import CopyButton from "./CopyButton";
 import QcBadge from "./QcBadge";
 import LotAgeBadge from "./LotAgeBadge";
 import { formatDate } from "../utils/format";
-import { buildLotActions } from "../utils/lotActions";
+import { buildLotActions, isLotInactive } from "../utils/lotActions";
 import { useLotBarcodeCopy } from "../hooks/useLotBarcodeCopy";
 
 export default function LotCardList({
@@ -37,10 +37,8 @@ export default function LotCardList({
 }: LotListProps) {
   const { expandedBarcode, setExpandedBarcode } = useLotBarcodeCopy();
 
-  const isInactive = (l: typeof lots[0]) =>
-    l.is_archived || ((l.vial_counts?.sealed ?? 0) + (l.vial_counts?.opened ?? 0) === 0);
-  const activeLots = lots.filter((l) => !isInactive(l));
-  const inactiveLots = lots.filter(isInactive);
+  const activeLots = lots.filter((l) => !isLotInactive(l));
+  const inactiveLots = lots.filter(isLotInactive);
   const sortedLots = [...activeLots, ...inactiveLots];
 
   return (
@@ -52,7 +50,7 @@ export default function LotCardList({
           )}
         <div className="lot-card-wrapper">
           <div
-            className={`lot-card${isInactive(lot) ? " lot-row-inactive" : ""}${onLotClick ? " clickable" : ""}${selectedLotId === lot.id ? " active" : ""}`}
+            className={`lot-card${isLotInactive(lot) ? " lot-row-inactive" : ""}${onLotClick ? " clickable" : ""}${selectedLotId === lot.id ? " active" : ""}`}
             onClick={() => onLotClick?.(lot)}
           >
             {/* Optional prefix (e.g., antibody name + vendor for Dashboard) */}

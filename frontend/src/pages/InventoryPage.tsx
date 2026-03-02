@@ -183,7 +183,7 @@ export default function InventoryPage() {
     if (requestedLabId && labs.some((lab) => lab.id === requestedLabId)) {
       setSelectedLab(requestedLabId);
     }
-  }, [requestedLabId, labs]);
+  }, [requestedLabId, labs, setSelectedLab]);
 
   const invalidateInventory = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["antibodies"] });

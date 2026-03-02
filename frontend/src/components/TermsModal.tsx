@@ -1,28 +1,10 @@
-import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { Modal } from "./Modal";
 import TermsContent from "./TermsContent";
 
 export default function TermsModal({ onClose }: { onClose: () => void }) {
-  const overlayRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [onClose]);
-
   return (
-    <div
-      className="terms-modal-overlay"
-      ref={overlayRef}
-      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
-    >
+    <Modal onClose={onClose} ariaLabel="Terms of Use">
       <div className="terms-modal">
         <div className="terms-modal-header">
           <div>
@@ -38,6 +20,6 @@ export default function TermsModal({ onClose }: { onClose: () => void }) {
           <TermsContent />
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
