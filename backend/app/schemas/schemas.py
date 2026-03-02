@@ -1115,12 +1115,21 @@ class ConversionFunnelRow(BaseModel):
         from_attributes = True
 
 
+class ConversionPeriodStats(BaseModel):
+    period: str
+    demos: int = 0
+    trials: int = 0
+    paid: int = 0
+
+
 class ConversionFunnelSummary(BaseModel):
     total_demos: int
     converted_to_trial: int
     converted_to_paid: int
     demo_to_trial_rate: float
     trial_to_paid_rate: float
+    monthly: list[ConversionPeriodStats] = []
+    weekly: list[ConversionPeriodStats] = []
     rows: list[ConversionFunnelRow]
 
 
