@@ -216,6 +216,7 @@ def convert_trial_to_invoice(db: Session, lab: Lab) -> str:
             "description": description,
             "default_payment_method": "",
         },
+        options={"idempotency_key": f"trial_to_inv_{lab.id}_{int(time.time() // 300)}"},
     )
     return lab.stripe_subscription_id
 
@@ -228,6 +229,7 @@ def extend_trial(db: Session, lab: Lab, new_trial_end: datetime) -> None:
     client.subscriptions.update(
         lab.stripe_subscription_id,
         params={"trial_end": timestamp},
+        options={"idempotency_key": f"extend_trial_{lab.id}_{timestamp}"},
     )
 
 

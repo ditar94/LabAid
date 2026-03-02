@@ -981,6 +981,7 @@ class BillingStatusResponse(BaseModel):
     current_period_end: int | None = None
     subscribed_at: int | None = None
     collection_method: str | None = None
+    cancel_at_period_end: bool = False
 
 
 class InvoiceSubscriptionRequest(BaseModel):
