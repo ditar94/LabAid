@@ -1,6 +1,16 @@
 import type { Lot } from "../api/types";
 import type { ActionMenuItem } from "../components/ActionMenu";
 
+export function isLotInactive(lot: Lot): boolean {
+  return lot.is_archived || ((lot.vial_counts?.sealed ?? 0) + (lot.vial_counts?.opened ?? 0) === 0);
+}
+
+export function sortLotsActiveFirst(lots: Lot[]): Lot[] {
+  const active = lots.filter((l) => !isLotInactive(l));
+  const inactive = lots.filter(isLotInactive);
+  return [...active, ...inactive];
+}
+
 // ── Options — each page passes only the callbacks it supports ────────────
 interface BuildLotActionsOptions {
   lot: Lot;

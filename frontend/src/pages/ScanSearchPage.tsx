@@ -104,15 +104,24 @@ export default function ScanSearchPage() {
       setDynamicVendorSuggestion(null);
       return;
     }
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await api.get("/antibodies/vendor/suggest", { params: { q: newAbForm.vendor } });
+        const res = await api.get("/antibodies/vendor/suggest", {
+          params: { q: newAbForm.vendor },
+          signal: controller.signal,
+        });
         setDynamicVendorSuggestion(res.data.suggestion);
       } catch {
-        setDynamicVendorSuggestion(null);
+        if (!controller.signal.aborted) {
+          setDynamicVendorSuggestion(null);
+        }
       }
     }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [newAbForm.vendor]);
 
   // ── Search state ────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -110,21 +111,24 @@ export function SharedDataProvider({ children }: { children: ReactNode }) {
     authLoading ||
     (!!user && isSuperAdmin && !impersonatingLab && !labsLoaded);
 
+  const value = useMemo(
+    () => ({
+      labs,
+      fluorochromes,
+      storageUnits,
+      selectedLab,
+      setSelectedLab,
+      loading,
+      refreshLabs,
+      refreshFluorochromes,
+      refreshStorageUnits,
+      refreshLabData,
+    }),
+    [labs, fluorochromes, storageUnits, selectedLab, setSelectedLab, loading, refreshLabs, refreshFluorochromes, refreshStorageUnits, refreshLabData],
+  );
+
   return (
-    <SharedDataContext.Provider
-      value={{
-        labs,
-        fluorochromes,
-        storageUnits,
-        selectedLab,
-        setSelectedLab,
-        loading,
-        refreshLabs,
-        refreshFluorochromes,
-        refreshStorageUnits,
-        refreshLabData,
-      }}
-    >
+    <SharedDataContext.Provider value={value}>
       {children}
     </SharedDataContext.Provider>
   );

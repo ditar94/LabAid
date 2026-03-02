@@ -42,15 +42,6 @@ export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onC
     }
   }, [isOpen, refreshDocuments]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
   // Group documents by renewal_number, sorted descending (newest period first)
   const groupedDocs = useMemo(() => {
     const groups = new Map<number, CocktailLotDocument[]>();

@@ -10,7 +10,7 @@ import CopyButton from "./CopyButton";
 import QcBadge from "./QcBadge";
 import LotAgeBadge from "./LotAgeBadge";
 import { formatDate } from "../utils/format";
-import { buildLotActions } from "../utils/lotActions";
+import { buildLotActions, isLotInactive } from "../utils/lotActions";
 import { useLotBarcodeCopy } from "../hooks/useLotBarcodeCopy";
 
 export interface LotListProps {
@@ -80,10 +80,8 @@ export default function LotTable({
   // Depleted column hidden by sealedOnly OR the explicit hideDepleted flag
   const showDepleted = !sealedOnly && !hideDepleted;
 
-  const isInactive = (l: Lot) =>
-    l.is_archived || ((l.vial_counts?.sealed ?? 0) + (l.vial_counts?.opened ?? 0) === 0);
-  const activeLots = lots.filter((l) => !isInactive(l));
-  const inactiveLots = lots.filter(isInactive);
+  const activeLots = lots.filter((l) => !isLotInactive(l));
+  const inactiveLots = lots.filter(isLotInactive);
   const sortedLots = [...activeLots, ...inactiveLots];
   const colCount =
     4 +
@@ -122,7 +120,7 @@ export default function LotTable({
                 <td colSpan={colCount}>Inactive</td>
               </tr>
             )}
-          <tr className={`${onLotClick ? "clickable-row" : ""}${selectedLotId === lot.id ? " active" : ""}${isInactive(lot) ? " lot-row-inactive" : ""}`} onClick={() => onLotClick?.(lot)}>
+          <tr className={`${onLotClick ? "clickable-row" : ""}${selectedLotId === lot.id ? " active" : ""}${isLotInactive(lot) ? " lot-row-inactive" : ""}`} onClick={() => onLotClick?.(lot)}>
             {/* Optional prefix column (e.g., antibody name for Dashboard) */}
             {prefixColumn && <td>{prefixColumn.render(lot)}</td>}
 

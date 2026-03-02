@@ -1,18 +1,28 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Lot, Antibody, StorageUnit } from "../api/types";
+import type { Lot, Antibody } from "../api/types";
 import { useAuth } from "../context/AuthContext";
+import { useSharedData } from "../context/SharedDataContext";
 
 export default function ReceivePage() {
   const { user } = useAuth();
+  const { storageUnits } = useSharedData();
   const canReceive =
     user?.role === "super_admin" ||
     user?.role === "lab_admin" ||
     user?.role === "supervisor";
 
-  const [lots, setLots] = useState<Lot[]>([]);
-  const [antibodies, setAntibodies] = useState<Antibody[]>([]);
-  const [units, setUnits] = useState<StorageUnit[]>([]);
+  const { data: lots = [] } = useQuery({
+    queryKey: ["lots"],
+    queryFn: () => api.get<Lot[]>("/lots/").then((r) => r.data),
+    enabled: canReceive,
+  });
+  const { data: antibodies = [] } = useQuery({
+    queryKey: ["antibodies-receive"],
+    queryFn: () => api.get<Antibody[]>("/antibodies/").then((r) => r.data),
+    enabled: canReceive,
+  });
   const [form, setForm] = useState({
     lot_id: "",
     quantity: 1,
@@ -20,13 +30,6 @@ export default function ReceivePage() {
   });
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!canReceive) return;
-    api.get("/lots/").then((r) => setLots(r.data));
-    api.get("/antibodies/").then((r) => setAntibodies(r.data));
-    api.get("/storage/units").then((r) => setUnits(r.data));
-  }, [canReceive]);
 
   if (!canReceive) {
     return (
@@ -109,7 +112,7 @@ export default function ReceivePage() {
             }
           >
             <option value="">No storage assignment</option>
-            {units.map((u) => (
+            {storageUnits.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name} ({u.rows}x{u.cols}) {u.temperature || ""}
               </option>
