@@ -17,6 +17,7 @@ interface BillingStatus {
   current_period_end: number | null;
   subscribed_at: number | null;
   collection_method: string | null;
+  cancel_at_period_end?: boolean;
 }
 
 function formatDate(ts: number | null | undefined): string {
@@ -223,6 +224,12 @@ export default function BillingPage() {
               <div className="billing-message billing-message--warning">
                 <Clock size={16} />
                 <span>Your payment is past due. Please update your payment method to avoid service interruption.</span>
+              </div>
+            )}
+            {isActive && billing.cancel_at_period_end && (
+              <div className="billing-message billing-message--warning">
+                <Clock size={16} />
+                <span>Your subscription is set to cancel at the end of the current period ({formatDate(billing.current_period_end)}). To keep your subscription, click Manage Billing above.</span>
               </div>
             )}
 

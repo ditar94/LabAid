@@ -458,3 +458,362 @@ class TestSubscriptionDeletedGuard:
         db.refresh(lab)
         assert lab.billing_status == "cancelled"
         assert lab.is_active is False
+
+
+def _make_event(event_type, data, event_id=None):
+    return {
+        "id": event_id or f"evt_{uuid.uuid4().hex[:24]}",
+        "type": event_type,
+        "data": {"object": data},
+    }
+
+
+class TestSetupModeCheckout:
+    @patch("app.routers.stripe_webhook.get_stripe_client")
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_setup_mode_converts_trial(self, mock_settings, mock_construct,
+                                        mock_get_client, client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        mock_setup_intent = MagicMock()
+        mock_setup_intent.payment_method = "pm_card_visa"
+
+        mock_sub = MagicMock()
+        mock_sub.status = "active"
+        mock_sub.current_period_end = 1700000000
+        mock_sub.cancel_at_period_end = False
+
+        mock_client = MagicMock()
+        mock_client.setup_intents.retrieve.return_value = mock_setup_intent
+        mock_client.subscriptions.retrieve.return_value = mock_sub
+        mock_get_client.return_value = mock_client
+
+        lab.stripe_customer_id = "cus_trial"
+        lab.stripe_subscription_id = "sub_trial"
+        lab.billing_status = "trial"
+        lab.is_active = True
+        db.commit()
+
+        event = _make_event("checkout.session.completed", {
+            "client_reference_id": str(lab.id),
+            "customer": "cus_trial",
+            "subscription": None,
+            "mode": "setup",
+            "setup_intent": "seti_123",
+            "customer_details": {"email": "billing@lab.com"},
+            "metadata": {
+                "lab_id": str(lab.id),
+                "convert_trial_subscription": "sub_trial",
+            },
+        })
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+
+        mock_client.payment_methods.attach.assert_called_once()
+        mock_client.customers.update.assert_called_once()
+        mock_client.subscriptions.update.assert_called_once()
+        mock_client.subscriptions.retrieve.assert_called_once_with("sub_trial")
+
+        db.refresh(lab)
+        assert lab.billing_status == "active"
+        assert lab.stripe_subscription_id == "sub_trial"
+        assert lab.current_period_end is not None
+
+    @patch("app.routers.stripe_webhook.get_stripe_client")
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_setup_mode_card_declined(self, mock_settings, mock_construct,
+                                       mock_get_client, client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        mock_setup_intent = MagicMock()
+        mock_setup_intent.payment_method = "pm_card_declined"
+
+        mock_sub = MagicMock()
+        mock_sub.status = "past_due"
+        mock_sub.current_period_end = 1700000000
+        mock_sub.cancel_at_period_end = False
+
+        mock_client = MagicMock()
+        mock_client.setup_intents.retrieve.return_value = mock_setup_intent
+        mock_client.subscriptions.retrieve.return_value = mock_sub
+        mock_get_client.return_value = mock_client
+
+        lab.stripe_customer_id = "cus_trial2"
+        lab.stripe_subscription_id = "sub_trial2"
+        lab.billing_status = "trial"
+        lab.is_active = True
+        db.commit()
+
+        event = _make_event("checkout.session.completed", {
+            "client_reference_id": str(lab.id),
+            "customer": "cus_trial2",
+            "subscription": None,
+            "mode": "setup",
+            "setup_intent": "seti_456",
+            "customer_details": {},
+            "metadata": {
+                "lab_id": str(lab.id),
+                "convert_trial_subscription": "sub_trial2",
+            },
+        })
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+
+        db.refresh(lab)
+        assert lab.billing_status == "past_due"
+
+
+class TestSubscriptionUpdated:
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_cancel_at_period_end(self, mock_settings, mock_construct,
+                                   client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        lab.stripe_customer_id = "cus_cap"
+        lab.stripe_subscription_id = "sub_cap"
+        lab.billing_status = "active"
+        lab.is_active = True
+        db.commit()
+
+        event = _make_event("customer.subscription.updated", {
+            "id": "sub_cap",
+            "customer": "cus_cap",
+            "status": "active",
+            "current_period_end": 1700000000,
+            "trial_end": None,
+            "cancel_at_period_end": True,
+        })
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+
+        db.refresh(lab)
+        assert lab.cancel_at_period_end is True
+        assert lab.billing_status == "active"
+
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_subscription_created(self, mock_settings, mock_construct,
+                                   client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        lab.stripe_customer_id = "cus_new"
+        lab.billing_status = "trial"
+        lab.is_active = True
+        db.commit()
+
+        event = _make_event("customer.subscription.created", {
+            "id": "sub_new",
+            "customer": "cus_new",
+            "status": "trialing",
+            "current_period_end": 1700000000,
+            "trial_end": 1700000000,
+            "cancel_at_period_end": False,
+        })
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+
+        db.refresh(lab)
+        assert lab.stripe_subscription_id == "sub_new"
+        assert lab.billing_status == "trial"
+
+
+class TestDisputeHandler:
+    @patch("app.routers.stripe_webhook.get_stripe_client")
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_resolves_customer_from_charge_string(self, mock_settings,
+                                                    mock_construct, mock_get_client,
+                                                    client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        mock_charge = MagicMock()
+        mock_charge.customer = "cus_disputed"
+        mock_client = MagicMock()
+        mock_client.charges.retrieve.return_value = mock_charge
+        mock_get_client.return_value = mock_client
+
+        lab.stripe_customer_id = "cus_disputed"
+        db.commit()
+
+        event = _make_event("charge.dispute.created", {
+            "charge": "ch_123",
+            "amount": 42000,
+            "reason": "fraudulent",
+        })
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+        mock_client.charges.retrieve.assert_called_once_with("ch_123")
+
+
+class TestCustomerUpdated:
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_syncs_billing_email(self, mock_settings, mock_construct,
+                                  client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        lab.stripe_customer_id = "cus_email"
+        lab.billing_email = "old@lab.com"
+        db.commit()
+
+        event = _make_event("customer.updated", {
+            "id": "cus_email",
+            "email": "new@lab.com",
+        })
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+
+        db.refresh(lab)
+        assert lab.billing_email == "new@lab.com"
+
+
+class TestSubscriptionDeletedResetsCancel:
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_resets_cancel_at_period_end(self, mock_settings, mock_construct,
+                                          client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        lab.stripe_customer_id = "cus_reset"
+        lab.stripe_subscription_id = "sub_reset"
+        lab.billing_status = "active"
+        lab.is_active = True
+        lab.cancel_at_period_end = True
+        db.commit()
+
+        event = _make_event("customer.subscription.deleted", {
+            "id": "sub_reset",
+            "customer": "cus_reset",
+            "status": "canceled",
+        })
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+
+        db.refresh(lab)
+        assert lab.billing_status == "cancelled"
+        assert lab.cancel_at_period_end is False
+
+
+class TestCheckoutGuards:
+    @patch("app.routers.labs.app_settings")
+    def test_active_lab_cannot_checkout(self, mock_settings, client, auth_headers, lab, db):
+        mock_settings.STRIPE_SECRET_KEY = "sk_test"
+        lab.billing_status = "active"
+        db.commit()
+
+        res = client.post("/api/labs/billing/checkout", json={
+            "success_url": "http://localhost/success",
+            "cancel_url": "http://localhost/cancel",
+        }, headers=auth_headers)
+        assert res.status_code == 409
+
+    @patch("app.routers.labs.app_settings")
+    def test_past_due_lab_cannot_checkout(self, mock_settings, client, auth_headers, lab, db):
+        mock_settings.STRIPE_SECRET_KEY = "sk_test"
+        lab.billing_status = "past_due"
+        db.commit()
+
+        res = client.post("/api/labs/billing/checkout", json={
+            "success_url": "http://localhost/success",
+            "cancel_url": "http://localhost/cancel",
+        }, headers=auth_headers)
+        assert res.status_code == 409
+
+
+class TestApplyStatusCancelAtPeriodEnd:
+    def test_sets_cancel_at_period_end(self, db, lab, admin_user):
+        lab.billing_status = "active"
+        lab.is_active = True
+        db.commit()
+
+        apply_subscription_status(
+            db, lab, "active", subscription_id="sub_cap",
+            cancel_at_period_end=True,
+        )
+        db.commit()
+        db.refresh(lab)
+
+        assert lab.cancel_at_period_end is True
+        assert lab.billing_status == "active"
+
+    def test_clears_cancel_at_period_end(self, db, lab, admin_user):
+        lab.billing_status = "active"
+        lab.is_active = True
+        lab.cancel_at_period_end = True
+        db.commit()
+
+        apply_subscription_status(
+            db, lab, "active", subscription_id="sub_cap",
+            cancel_at_period_end=False,
+        )
+        db.commit()
+        db.refresh(lab)
+
+        assert lab.cancel_at_period_end is False
+
+
+class TestValidateRedirectUrl:
+    def test_valid_origin_accepted(self):
+        import app.services.stripe_service as svc
+        original = svc._ALLOWED_ORIGINS
+        try:
+            svc._ALLOWED_ORIGINS = {"https://localhost:5173"}
+            result = svc.validate_redirect_url("https://localhost:5173/billing?success=true")
+            assert result == "https://localhost:5173/billing?success=true"
+        finally:
+            svc._ALLOWED_ORIGINS = original
+
+    def test_invalid_origin_rejected(self):
+        import app.services.stripe_service as svc
+        original = svc._ALLOWED_ORIGINS
+        try:
+            svc._ALLOWED_ORIGINS = {"https://localhost:5173"}
+            with pytest.raises(ValueError, match="Invalid redirect URL origin"):
+                svc.validate_redirect_url("https://evil.com/steal")
+        finally:
+            svc._ALLOWED_ORIGINS = original

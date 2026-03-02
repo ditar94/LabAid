@@ -312,10 +312,16 @@ def billing_checkout(
 
     from app.services.stripe_service import create_checkout_session, create_trial_conversion_checkout
     from stripe._error import StripeError
+    if lab.billing_status in ("active", "past_due"):
+        raise HTTPException(status_code=409, detail="Please use the billing portal to manage your existing subscription")
     try:
         if lab.stripe_subscription_id and lab.billing_status == "trial":
             url = create_trial_conversion_checkout(db, lab, body.success_url, body.cancel_url)
         else:
+            # Clear stale subscription ID for cancelled/expired labs resubscribing
+            if lab.stripe_subscription_id:
+                lab.stripe_subscription_id = None
+                db.flush()
             url = create_checkout_session(db, lab, body.success_url, body.cancel_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -379,6 +385,7 @@ def billing_status(
             result["current_period_end"] = details["current_period_end"]
             result["subscribed_at"] = details["created"]
             result["collection_method"] = details["collection_method"]
+            result["cancel_at_period_end"] = details.get("cancel_at_period_end", False)
     return result
 
 
@@ -425,21 +432,21 @@ def billing_invoice(
     if body.billing_email:
         lab.billing_email = body.billing_email
         db.flush()
-        if lab.stripe_customer_id:
-            from app.services.stripe_service import get_stripe_client
-            get_stripe_client().customers.update(
-                lab.stripe_customer_id,
-                params={"email": body.billing_email},
-            )
 
     if not lab.billing_email:
         raise HTTPException(status_code=400, detail="Billing email is required for invoice subscriptions")
 
-    from app.services.stripe_service import create_invoice_subscription, apply_subscription_status, convert_trial_to_invoice
+    from app.services.stripe_service import create_invoice_subscription, apply_subscription_status, convert_trial_to_invoice, get_stripe_client
     from stripe._error import StripeError
     try:
+        if body.billing_email and lab.stripe_customer_id:
+            get_stripe_client().customers.update(
+                lab.stripe_customer_id,
+                params={"email": body.billing_email},
+            )
         if lab.stripe_subscription_id and lab.billing_status == "trial":
             subscription_id = convert_trial_to_invoice(db, lab)
+            apply_subscription_status(db, lab, "active", subscription_id, current_user.id)
         elif not lab.stripe_subscription_id:
             subscription_id = create_invoice_subscription(db, lab)
             apply_subscription_status(db, lab, "active", subscription_id, current_user.id)

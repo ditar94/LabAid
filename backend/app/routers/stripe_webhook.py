@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.core.cache import suspension_cache
 from app.core.config import settings
 from app.core.database import get_db
 from app.middleware.auth import require_role
@@ -72,6 +71,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             _handle_trial_will_end(db, data)
         elif event_type == "charge.dispute.created":
             _handle_dispute_created(db, data)
+        elif event_type == "customer.updated":
+            _handle_customer_updated(db, data)
         else:
             logger.info("Unhandled Stripe event: %s", event_type)
 
@@ -112,22 +113,26 @@ def _handle_checkout_completed(db: Session, session: dict) -> None:
         sub_id = metadata.get("convert_trial_subscription")
         setup_intent_id = session.get("setup_intent")
         if sub_id and setup_intent_id:
-            try:
-                client = get_stripe_client()
-                setup_intent = client.setup_intents.retrieve(setup_intent_id)
-                payment_method = setup_intent.payment_method
-                if payment_method:
-                    pm_id = payment_method if isinstance(payment_method, str) else payment_method.id
-                    client.payment_methods.attach(pm_id, params={"customer": customer_id})
-                    client.customers.update(customer_id, params={
-                        "invoice_settings": {"default_payment_method": pm_id},
-                    })
-                    client.subscriptions.update(sub_id, params={
-                        "trial_end": "now",
-                        "default_payment_method": pm_id,
-                    })
-            except Exception:
-                logger.exception("Failed to convert trial subscription %s for lab %s", sub_id, lab_id)
+            client = get_stripe_client()
+            setup_intent = client.setup_intents.retrieve(setup_intent_id)
+            payment_method = setup_intent.payment_method
+            if payment_method:
+                pm_id = payment_method if isinstance(payment_method, str) else payment_method.id
+                client.payment_methods.attach(pm_id, params={"customer": customer_id})
+                client.customers.update(customer_id, params={
+                    "invoice_settings": {"default_payment_method": pm_id},
+                })
+                client.subscriptions.update(sub_id, params={
+                    "trial_end": "now",
+                    "default_payment_method": pm_id,
+                })
+                # M1+M2: Fetch actual subscription status instead of hardcoding "active"
+                sub = client.subscriptions.retrieve(sub_id)
+                apply_subscription_status(
+                    db, lab, sub.status, subscription_id=sub_id,
+                    current_period_end=sub.current_period_end,
+                    cancel_at_period_end=getattr(sub, "cancel_at_period_end", False),
+                )
         return
 
     # Subscription mode: fetch actual subscription status
@@ -175,7 +180,16 @@ def _handle_invoice_payment_failed(db: Session, invoice: dict) -> None:
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
         return
-    apply_subscription_status(db, lab, "past_due")
+    subscription_id = invoice.get("subscription")
+    status = "past_due"
+    if subscription_id and settings.STRIPE_SECRET_KEY:
+        try:
+            client = get_stripe_client()
+            sub = client.subscriptions.retrieve(subscription_id)
+            status = sub.status or "past_due"
+        except Exception:
+            logger.warning("Could not fetch subscription %s in invoice.payment_failed handler", subscription_id)
+    apply_subscription_status(db, lab, status, subscription_id=subscription_id)
 
 
 def _handle_subscription_created(db: Session, subscription: dict) -> None:
@@ -189,6 +203,7 @@ def _handle_subscription_created(db: Session, subscription: dict) -> None:
         db, lab, subscription["status"], subscription_id=subscription["id"],
         current_period_end=subscription.get("current_period_end"),
         trial_end=subscription.get("trial_end"),
+        cancel_at_period_end=subscription.get("cancel_at_period_end", False),
     )
 
 
@@ -203,6 +218,7 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
         db, lab, subscription["status"], subscription_id=subscription["id"],
         current_period_end=subscription.get("current_period_end"),
         trial_end=subscription.get("trial_end"),
+        cancel_at_period_end=subscription.get("cancel_at_period_end", False),
     )
 
 
@@ -219,6 +235,7 @@ def _handle_subscription_deleted(db: Session, subscription: dict) -> None:
     apply_subscription_status(
         db, lab, "canceled", subscription_id=subscription["id"],
         current_period_end=subscription.get("current_period_end"),
+        cancel_at_period_end=False,
     )
 
 
@@ -247,15 +264,22 @@ def _handle_trial_will_end(db: Session, subscription: dict) -> None:
 
 
 def _handle_dispute_created(db: Session, dispute: dict) -> None:
-    charge = dispute.get("charge")
+    charge_ref = dispute.get("charge")
     amount = dispute.get("amount")
     reason = dispute.get("reason", "unknown")
     customer_id = None
 
-    if isinstance(dispute.get("payment_intent"), dict):
-        customer_id = dispute["payment_intent"].get("customer")
-    elif isinstance(dispute.get("charge"), dict):
-        customer_id = dispute["charge"].get("customer")
+    # M3: Webhook payloads send charge/payment_intent as string IDs, not expanded objects
+    if isinstance(charge_ref, str):
+        try:
+            client = get_stripe_client()
+            charge_obj = client.charges.retrieve(charge_ref)
+            cust = charge_obj.customer
+            customer_id = cust if isinstance(cust, str) else getattr(cust, "id", None)
+        except Exception:
+            logger.warning("charge.dispute.created: could not fetch charge %s", charge_ref)
+    elif isinstance(charge_ref, dict):
+        customer_id = charge_ref.get("customer")
 
     if not customer_id:
         logger.warning("charge.dispute.created: could not determine customer_id")
@@ -278,9 +302,21 @@ def _handle_dispute_created(db: Session, dispute: dict) -> None:
             action="lab.payment_disputed",
             entity_type="lab",
             entity_id=lab.id,
-            note=f"Dispute: {reason}, amount: {amount}, charge: {charge}",
+            note=f"Dispute: {reason}, amount: {amount}, charge: {charge_ref}",
         )
     logger.warning("Payment dispute for lab %s: reason=%s amount=%s", lab.id, reason, amount)
+
+
+def _handle_customer_updated(db: Session, customer: dict) -> None:
+    customer_id = customer.get("id")
+    if not customer_id:
+        return
+    lab = _find_lab_by_customer(db, customer_id)
+    if not lab:
+        return
+    email = customer.get("email")
+    if email and email != lab.billing_email:
+        lab.billing_email = email
 
 
 @router.delete("/events/cleanup", status_code=200)
