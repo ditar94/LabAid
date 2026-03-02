@@ -10,7 +10,7 @@ import pytest
 from stripe._error import SignatureVerificationError
 
 from app.models.models import Lab, StripeEvent
-from app.services.stripe_service import apply_subscription_status
+from app.services.stripe_service import apply_subscription_status, create_trial_subscription
 
 
 class TestApplySubscriptionStatus:
@@ -313,3 +313,129 @@ class TestTrialExpiration:
             "fluorochrome": "FITC",
         }, headers=auth_headers)
         assert res.status_code != 403 or "trial" not in res.json().get("detail", "")
+
+
+class TestCreateTrialSubscription:
+    @patch("app.services.stripe_service.get_stripe_client")
+    @patch("app.services.stripe_service.settings")
+    def test_success(self, mock_settings, mock_get_client, db, lab, admin_user):
+        mock_settings.STRIPE_SECRET_KEY = "sk_test"
+        mock_settings.STRIPE_PRICE_ID = "price_test"
+
+        mock_sub = MagicMock()
+        mock_sub.id = "sub_trial_123"
+        mock_sub.trial_end = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
+
+        mock_client = MagicMock()
+        mock_client.subscriptions.create.return_value = mock_sub
+        mock_client.customers.create.return_value = MagicMock(id="cus_new")
+        mock_get_client.return_value = mock_client
+
+        result = create_trial_subscription(db, lab)
+        db.commit()
+        db.refresh(lab)
+
+        assert result == "sub_trial_123"
+        assert lab.stripe_subscription_id == "sub_trial_123"
+        assert lab.trial_ends_at is not None
+
+    @patch("app.services.stripe_service.get_stripe_client")
+    @patch("app.services.stripe_service.settings")
+    def test_graceful_failure(self, mock_settings, mock_get_client, db, lab, admin_user):
+        mock_settings.STRIPE_SECRET_KEY = "sk_test"
+        mock_settings.STRIPE_PRICE_ID = "price_test"
+
+        mock_client = MagicMock()
+        mock_client.customers.create.side_effect = Exception("Stripe down")
+        mock_get_client.return_value = mock_client
+
+        result = create_trial_subscription(db, lab)
+
+        assert result is None
+        assert lab.stripe_subscription_id is None
+
+
+class TestApplySubscriptionStatusTrialEnd:
+    def test_syncs_trial_end(self, db, lab, admin_user):
+        expected_dt = datetime.now(timezone.utc) + timedelta(days=5)
+        trial_end_ts = int(expected_dt.timestamp())
+        apply_subscription_status(
+            db, lab, "trialing", subscription_id="sub_t1", trial_end=trial_end_ts,
+        )
+        db.commit()
+        db.refresh(lab)
+
+        assert lab.billing_status == "trial"
+        assert lab.trial_ends_at is not None
+        # SQLite stores naive datetimes, so compare without timezone
+        stored = lab.trial_ends_at.replace(tzinfo=timezone.utc) if lab.trial_ends_at.tzinfo is None else lab.trial_ends_at
+        assert abs(stored.timestamp() - trial_end_ts) < 2
+
+
+class TestSubscriptionDeletedGuard:
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_ignores_non_current_subscription(self, mock_settings, mock_construct, client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        lab.stripe_customer_id = "cus_guard"
+        lab.stripe_subscription_id = "sub_new_paid"
+        lab.billing_status = "active"
+        lab.is_active = True
+        db.commit()
+
+        event = {
+            "id": f"evt_{uuid.uuid4().hex[:24]}",
+            "type": "customer.subscription.deleted",
+            "data": {"object": {
+                "id": "sub_old_trial",
+                "customer": "cus_guard",
+                "status": "canceled",
+            }},
+        }
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+
+        db.refresh(lab)
+        assert lab.billing_status == "active"
+        assert lab.is_active is True
+        assert lab.stripe_subscription_id == "sub_new_paid"
+
+    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
+    @patch("app.routers.stripe_webhook.settings")
+    def test_current_subscription_deleted_suspends(self, mock_settings, mock_construct, client, db, lab, admin_user):
+        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+        lab.stripe_customer_id = "cus_expire"
+        lab.stripe_subscription_id = "sub_trial_expire"
+        lab.billing_status = "trial"
+        lab.is_active = True
+        db.commit()
+
+        event = {
+            "id": f"evt_{uuid.uuid4().hex[:24]}",
+            "type": "customer.subscription.deleted",
+            "data": {"object": {
+                "id": "sub_trial_expire",
+                "customer": "cus_expire",
+                "status": "canceled",
+            }},
+        }
+        mock_construct.return_value = event
+
+        res = client.post(
+            "/api/stripe/webhook",
+            content=json.dumps(event).encode(),
+            headers={"stripe-signature": "valid_sig"},
+        )
+        assert res.status_code == 200
+
+        db.refresh(lab)
+        assert lab.billing_status == "cancelled"
+        assert lab.is_active is False

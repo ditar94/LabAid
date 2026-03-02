@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import List
 from uuid import UUID
@@ -15,6 +16,8 @@ from app.core.config import settings as app_settings
 from app.services.audit import log_audit, snapshot_lab
 from app.services.object_storage import object_storage
 from app.services.storage import create_temporary_storage
+
+logger = logging.getLogger("labaid")
 
 router = APIRouter(
     prefix="/api/labs",
@@ -53,6 +56,16 @@ def create_lab(
     )
 
     db.commit()
+
+    if app_settings.STRIPE_SECRET_KEY and app_settings.STRIPE_PRICE_ID:
+        try:
+            from app.services.stripe_service import create_trial_subscription
+            sub_id = create_trial_subscription(db, db_lab)
+            if sub_id:
+                db.commit()
+        except Exception:
+            logger.warning("Failed to create Stripe trial for lab %s", db_lab.id)
+
     db.refresh(db_lab)
     return db_lab
 
@@ -248,8 +261,13 @@ def update_trial_ends_at(
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
-    if lab.stripe_subscription_id:
-        raise HTTPException(status_code=409, detail="This lab's billing is managed by Stripe.")
+    if lab.stripe_subscription_id and body.trial_ends_at:
+        from app.services.stripe_service import extend_trial
+        from stripe._error import StripeError
+        try:
+            extend_trial(db, lab, body.trial_ends_at)
+        except StripeError:
+            raise HTTPException(status_code=502, detail="Could not update Stripe trial end")
 
     before = snapshot_lab(lab)
     lab.trial_ends_at = body.trial_ends_at
@@ -292,9 +310,10 @@ def billing_checkout(
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
-    from app.services.stripe_service import create_checkout_session
+    from app.services.stripe_service import create_checkout_session, cancel_trial_subscription
     from stripe._error import StripeError
     try:
+        cancel_trial_subscription(db, lab)
         url = create_checkout_session(db, lab, body.success_url, body.cancel_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -401,9 +420,6 @@ def billing_invoice(
     lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
-    if lab.stripe_subscription_id:
-        raise HTTPException(status_code=409, detail="Lab already has an active subscription")
-
     if body.billing_email:
         lab.billing_email = body.billing_email
         db.flush()
@@ -417,11 +433,16 @@ def billing_invoice(
     if not lab.billing_email:
         raise HTTPException(status_code=400, detail="Billing email is required for invoice subscriptions")
 
-    from app.services.stripe_service import create_invoice_subscription, apply_subscription_status
+    from app.services.stripe_service import create_invoice_subscription, apply_subscription_status, convert_trial_to_invoice
     from stripe._error import StripeError
     try:
-        subscription_id = create_invoice_subscription(db, lab)
-        apply_subscription_status(db, lab, "active", subscription_id, current_user.id)
+        if lab.stripe_subscription_id and lab.billing_status == "trial":
+            subscription_id = convert_trial_to_invoice(db, lab)
+        elif not lab.stripe_subscription_id:
+            subscription_id = create_invoice_subscription(db, lab)
+            apply_subscription_status(db, lab, "active", subscription_id, current_user.id)
+        else:
+            raise HTTPException(status_code=409, detail="Lab already has an active subscription")
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except StripeError:

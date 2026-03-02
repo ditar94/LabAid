@@ -1,3 +1,4 @@
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -41,6 +42,7 @@ from app.schemas.schemas import (
     UserUpdateRequest,
 )
 
+logger = logging.getLogger("labaid")
 limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -510,6 +512,16 @@ def signup(
               note="Self-service signup")
 
     db.commit()
+
+    if settings.STRIPE_SECRET_KEY and settings.STRIPE_PRICE_ID:
+        try:
+            from app.services.stripe_service import create_trial_subscription
+            lab.billing_email = body.email.lower()
+            sub_id = create_trial_subscription(db, lab)
+            if sub_id:
+                db.commit()
+        except Exception:
+            logger.warning("Failed to create Stripe trial for lab %s", lab.id)
 
     token = create_access_token(
         {"sub": str(user.id), "lab_id": str(lab.id), "role": user.role.value}

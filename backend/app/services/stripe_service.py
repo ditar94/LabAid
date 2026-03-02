@@ -148,6 +148,73 @@ def get_subscription_details(lab: Lab) -> dict | None:
         return None
 
 
+def create_trial_subscription(db: Session, lab: Lab, trial_days: int = 7) -> str | None:
+    try:
+        customer_id = get_or_create_customer(db, lab)
+        client = get_stripe_client()
+        subscription = client.subscriptions.create(
+            params={
+                "customer": customer_id,
+                "items": [{"price": settings.STRIPE_PRICE_ID}],
+                "trial_period_days": trial_days,
+                "trial_settings": {
+                    "end_behavior": {"missing_payment_method": "cancel"},
+                },
+                "payment_settings": {
+                    "save_default_payment_method": "on_subscription",
+                },
+                "metadata": {"lab_id": str(lab.id)},
+            },
+            options={"idempotency_key": f"trialsub_{lab.id}"},
+        )
+        lab.stripe_subscription_id = subscription.id
+        if subscription.trial_end:
+            lab.trial_ends_at = datetime.fromtimestamp(subscription.trial_end, tz=timezone.utc)
+        db.flush()
+        return subscription.id
+    except Exception:
+        logger.warning("Failed to create Stripe trial subscription for lab %s", lab.id)
+        return None
+
+
+def cancel_trial_subscription(db: Session, lab: Lab) -> None:
+    if not lab.stripe_subscription_id or lab.billing_status != "trial":
+        return
+    client = get_stripe_client()
+    sub_id = lab.stripe_subscription_id
+    lab.stripe_subscription_id = None
+    db.flush()
+    client.subscriptions.cancel(sub_id)
+
+
+def convert_trial_to_invoice(db: Session, lab: Lab) -> str:
+    client = get_stripe_client()
+    description = "LabAid Annual Subscription"
+    if settings.STRIPE_CHECK_ADDRESS:
+        description += f"\n\nTo pay by check, please mail to:\n{settings.STRIPE_CHECK_ADDRESS}"
+    client.subscriptions.update(
+        lab.stripe_subscription_id,
+        params={
+            "collection_method": "send_invoice",
+            "days_until_due": 30,
+            "trial_end": "now",
+            "description": description,
+        },
+    )
+    return lab.stripe_subscription_id
+
+
+def extend_trial(db: Session, lab: Lab, new_trial_end: datetime) -> None:
+    if not lab.stripe_subscription_id:
+        return
+    client = get_stripe_client()
+    timestamp = int(new_trial_end.timestamp())
+    client.subscriptions.update(
+        lab.stripe_subscription_id,
+        params={"trial_end": timestamp},
+    )
+
+
 def apply_subscription_status(
     db: Session,
     lab: Lab,
@@ -155,6 +222,7 @@ def apply_subscription_status(
     subscription_id: str | None = None,
     user_id: UUID | None = None,
     current_period_end: int | None = None,
+    trial_end: int | None = None,
 ) -> None:
     mapping = _STATUS_MAP.get(stripe_status)
     if not mapping:
@@ -175,6 +243,8 @@ def apply_subscription_status(
 
     if new_billing == BillingStatus.ACTIVE.value:
         lab.trial_ends_at = None
+    elif new_billing == BillingStatus.TRIAL.value and trial_end:
+        lab.trial_ends_at = datetime.fromtimestamp(trial_end, tz=timezone.utc)
 
     # For webhook-driven updates, find a lab admin to attribute the audit entry to
     audit_user_id = user_id

@@ -10,7 +10,8 @@ interface PaymentChoiceModalProps {
 }
 
 export default function PaymentChoiceModal({ onClose, onSuccess }: PaymentChoiceModalProps) {
-  const { user } = useAuth();
+  const { user, labSettings } = useAuth();
+  const isTrial = labSettings?.billing_status === "trial";
   const [loading, setLoading] = useState<"card" | "invoice" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"choice" | "invoice-email">("choice");
@@ -61,7 +62,11 @@ export default function PaymentChoiceModal({ onClose, onSuccess }: PaymentChoice
               >
                 <CreditCard size={28} />
                 <strong>Pay Now</strong>
-                <span className="text-muted">Pay by credit or debit card via Stripe's secure checkout.</span>
+                <span className="text-muted">
+                  {isTrial
+                    ? "Pay by credit or debit card. Your trial will end and billing starts immediately."
+                    : "Pay by credit or debit card via Stripe's secure checkout."}
+                </span>
                 {loading === "card" && <span className="spinner" />}
               </button>
               <button
@@ -71,7 +76,11 @@ export default function PaymentChoiceModal({ onClose, onSuccess }: PaymentChoice
               >
                 <FileText size={28} />
                 <strong>Pay by Invoice</strong>
-                <span className="text-muted">Receive a net-30 invoice. Pay by card, ACH, or check.</span>
+                <span className="text-muted">
+                  {isTrial
+                    ? "Receive a net-30 invoice. Billing starts immediately."
+                    : "Receive a net-30 invoice. Pay by card, ACH, or check."}
+                </span>
               </button>
             </div>
             {error && <div className="form-error" style={{ marginTop: 12 }}>{error}</div>}

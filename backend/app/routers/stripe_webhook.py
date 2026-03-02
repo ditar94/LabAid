@@ -150,6 +150,7 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
     apply_subscription_status(
         db, lab, subscription["status"], subscription_id=subscription["id"],
         current_period_end=subscription.get("current_period_end"),
+        trial_end=subscription.get("trial_end"),
     )
 
 
@@ -159,6 +160,11 @@ def _handle_subscription_deleted(db: Session, subscription: dict) -> None:
         return
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
+        return
+    # Only act if this is the lab's current subscription — prevents a cancelled
+    # trial sub from suspending the lab after a new paid sub has been created.
+    if lab.stripe_subscription_id and lab.stripe_subscription_id != subscription["id"]:
+        logger.info("Ignoring deletion of non-current subscription %s for lab %s", subscription["id"], lab.id)
         return
     apply_subscription_status(
         db, lab, "canceled", subscription_id=subscription["id"],

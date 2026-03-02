@@ -25,11 +25,12 @@ from app.schemas.schemas import (
     AdminSubscriptionSummary,
     AdminTrialSummary,
     ConversionFunnelSummary,
+    ConversionPeriodStats,
     DemoLeadOut,
 )
 from app.services.audit import log_audit
 from app.services.object_storage import object_storage
-from app.services.stripe_service import get_subscription_details
+from app.services.stripe_service import get_or_create_customer, get_subscription_details
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +234,7 @@ def get_admin_dashboard(
     expired_unconverted_count = db.query(func.count(Lab.id)).filter(
         Lab.is_demo.is_(False), Lab.is_active.is_(True),
         Lab.billing_status == "trial",
-        Lab.trial_ends_at <= now, Lab.stripe_subscription_id.is_(None),
+        Lab.trial_ends_at <= now,
     ).scalar()
 
     # Subscription metrics (non-suspended)
@@ -293,7 +294,7 @@ def get_admin_dashboard(
         .filter(
             Lab.is_demo.is_(False), Lab.is_active.is_(True),
             Lab.billing_status == "trial",
-            Lab.trial_ends_at <= now, Lab.stripe_subscription_id.is_(None),
+            Lab.trial_ends_at <= now,
         )
         .order_by(Lab.trial_ends_at.desc())
         .limit(20)
@@ -411,6 +412,8 @@ def get_conversion_funnel(
     rows = []
     converted_to_trial = 0
     converted_to_paid = 0
+    monthly: dict[str, dict] = {}
+    weekly: dict[str, dict] = {}
 
     for lead, user, lab in results:
         row = {
@@ -419,14 +422,41 @@ def get_conversion_funnel(
             "demo_source": lead.source,
             "demo_logins": lead.login_count,
         }
+
+        # Time grouping keys
+        if lead.created_at:
+            m_key = lead.created_at.strftime("%Y-%m")
+            w_key = lead.created_at.strftime("%Y-W%W")
+            monthly.setdefault(m_key, {"period": m_key, "demos": 0, "trials": 0, "paid": 0})
+            weekly.setdefault(w_key, {"period": w_key, "demos": 0, "trials": 0, "paid": 0})
+            monthly[m_key]["demos"] += 1
+            weekly[w_key]["demos"] += 1
+
         if lab:
             converted_to_trial += 1
             row["signup_date"] = user.created_at
             row["lab_name"] = lab.name
             row["billing_status"] = lab.billing_status
+
+            if user.created_at:
+                tm = user.created_at.strftime("%Y-%m")
+                tw = user.created_at.strftime("%Y-W%W")
+                monthly.setdefault(tm, {"period": tm, "demos": 0, "trials": 0, "paid": 0})
+                weekly.setdefault(tw, {"period": tw, "demos": 0, "trials": 0, "paid": 0})
+                monthly[tm]["trials"] += 1
+                weekly[tw]["trials"] += 1
+
             if lab.billing_status == "active":
                 converted_to_paid += 1
                 row["paid_date"] = lab.billing_updated_at
+                if lab.billing_updated_at:
+                    pm = lab.billing_updated_at.strftime("%Y-%m")
+                    pw = lab.billing_updated_at.strftime("%Y-W%W")
+                    monthly.setdefault(pm, {"period": pm, "demos": 0, "trials": 0, "paid": 0})
+                    weekly.setdefault(pw, {"period": pw, "demos": 0, "trials": 0, "paid": 0})
+                    monthly[pm]["paid"] += 1
+                    weekly[pw]["paid"] += 1
+
         rows.append(row)
 
     total = len(results)
@@ -436,5 +466,75 @@ def get_conversion_funnel(
         "converted_to_paid": converted_to_paid,
         "demo_to_trial_rate": (converted_to_trial / total * 100) if total > 0 else 0,
         "trial_to_paid_rate": (converted_to_paid / converted_to_trial * 100) if converted_to_trial > 0 else 0,
+        "monthly": sorted(monthly.values(), key=lambda x: x["period"], reverse=True),
+        "weekly": sorted(weekly.values(), key=lambda x: x["period"], reverse=True),
         "rows": rows,
     }
+
+
+@router.post("/backfill-trial-subscriptions")
+def backfill_trial_subscriptions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    from app.core.config import settings
+    from app.services.stripe_service import get_stripe_client
+
+    if not settings.STRIPE_SECRET_KEY or not settings.STRIPE_PRICE_ID:
+        return {"migrated": 0, "skipped": 0, "errors": ["Stripe not configured"]}
+
+    now = datetime.now(timezone.utc)
+    min_remaining = now + timedelta(hours=1)
+
+    labs = db.query(Lab).filter(
+        Lab.billing_status == "trial",
+        Lab.stripe_subscription_id.is_(None),
+        Lab.trial_ends_at > min_remaining,
+        Lab.is_demo.is_(False),
+    ).all()
+
+    client = get_stripe_client()
+    migrated = 0
+    skipped = 0
+    errors = []
+
+    for lab in labs:
+        try:
+            if not lab.billing_email:
+                admin = db.query(User).filter(
+                    User.lab_id == lab.id,
+                    User.role.in_([UserRole.LAB_ADMIN, UserRole.SUPER_ADMIN]),
+                ).first()
+                if admin:
+                    lab.billing_email = admin.email
+                else:
+                    skipped += 1
+                    continue
+
+            customer_id = get_or_create_customer(db, lab)
+            trial_end_ts = int(lab.trial_ends_at.timestamp())
+
+            subscription = client.subscriptions.create(
+                params={
+                    "customer": customer_id,
+                    "items": [{"price": settings.STRIPE_PRICE_ID}],
+                    "trial_end": trial_end_ts,
+                    "trial_settings": {
+                        "end_behavior": {"missing_payment_method": "cancel"},
+                    },
+                    "payment_settings": {
+                        "save_default_payment_method": "on_subscription",
+                    },
+                    "metadata": {"lab_id": str(lab.id)},
+                },
+                options={"idempotency_key": f"backfill_{lab.id}"},
+            )
+            lab.stripe_subscription_id = subscription.id
+            db.flush()
+            migrated += 1
+        except Exception as e:
+            logger.exception("Backfill failed for lab %s", lab.id)
+            errors.append(f"lab {lab.id}: {str(e)}")
+
+    db.commit()
+    return {"migrated": migrated, "skipped": skipped, "errors": errors}
