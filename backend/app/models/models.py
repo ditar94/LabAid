@@ -105,6 +105,7 @@ class Lab(Base):
     stripe_customer_id = Column(String(255), nullable=True, unique=True)
     stripe_subscription_id = Column(String(255), nullable=True)
     billing_email = Column(String(255), nullable=True)
+    current_period_end = Column(DateTime(timezone=True), nullable=True)
     settings = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

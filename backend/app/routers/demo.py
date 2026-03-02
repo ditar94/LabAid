@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -36,6 +37,86 @@ DEMO_DURATION_HOURS = 72
 DEMO_MAGIC_LINK_EXPIRY_MINUTES = 15
 DEMO_RESERVATION_TIMEOUT_MINUTES = 20
 DEMO_USER_EMAIL_PATTERN = "demo-{}@demo.labaid.io"
+
+
+def _run_expire_stale(db: Session) -> dict:
+    """Expire stale demo reservations and sessions. Called lazily on key endpoints."""
+    now = datetime.now(timezone.utc)
+    released = 0
+    expired = 0
+
+    # Pass 1: Reservation timeout (magic link never clicked)
+    timeout_cutoff = now - timedelta(minutes=DEMO_RESERVATION_TIMEOUT_MINUTES)
+    stale_reservations = (
+        db.query(Lab)
+        .filter(
+            Lab.is_demo.is_(True),
+            Lab.demo_status == "in_use",
+            Lab.demo_assigned_at < timeout_cutoff,
+        )
+        .all()
+    )
+    for lab in stale_reservations:
+        demo_user = (
+            db.query(User)
+            .filter(User.lab_id == lab.id, User.email.like("demo-%@demo.labaid.io"))
+            .first()
+        )
+        if demo_user and demo_user.invite_token is not None:
+            lab.demo_status = "available"
+            lab.demo_assigned_email = None
+            lab.demo_expires_at = None
+            lab.demo_assigned_at = None
+            demo_user.is_active = False
+            demo_user.invite_token = None
+            demo_user.invite_token_expires_at = None
+            released += 1
+
+    # Pass 2: Expired demos — full reset (wipe + reseed → available)
+    # Catches both freshly expired (in_use past deadline) and already-expired labs
+    expired_labs = (
+        db.query(Lab)
+        .filter(
+            Lab.is_demo.is_(True),
+            or_(
+                (Lab.demo_status == "in_use") & (Lab.demo_expires_at < now),
+                Lab.demo_status == "expired",
+            ),
+        )
+        .all()
+    )
+    for lab in expired_labs:
+        demo_user = (
+            db.query(User)
+            .filter(User.lab_id == lab.id, User.email.like("demo-%@demo.labaid.io"))
+            .first()
+        )
+        if demo_user:
+            demo_user.is_active = False
+
+        lead = (
+            db.query(DemoLead)
+            .filter(DemoLead.demo_lab_id == lab.id, DemoLead.status.in_(["notified", "active"]))
+            .first()
+        )
+        if lead:
+            lead.status = "completed"
+
+        # Wipe and reseed the lab data, then mark available
+        wipe_demo_lab(db, lab)
+        if demo_user:
+            seed_demo_lab(db, lab, demo_user)
+
+        lab.demo_status = "available"
+        lab.demo_assigned_email = None
+        lab.demo_expires_at = None
+        lab.demo_assigned_at = None
+        lab.demo_cycle_count = (lab.demo_cycle_count or 0) + 1
+
+        _try_assign_waitlisted(db, lab)
+        expired += 1
+
+    return {"released": released, "expired": expired}
 
 
 def _try_assign_waitlisted(db: Session, lab: Lab) -> bool:
@@ -99,6 +180,10 @@ def try_demo(
     email = body.email.lower().strip()
     now = datetime.now(timezone.utc)
 
+    # Lazy expiration: free up expired demos before processing
+    _run_expire_stale(db)
+    db.flush()
+
     # Check for existing active demo (re-entry)
     active_lead = (
         db.query(DemoLead)
@@ -149,17 +234,14 @@ def try_demo(
                 message="You're already on the waitlist. We'll notify you when a slot opens up.",
                 auto_login=False,
             )
-        if previous_lead.status in ("completed", "rerequested"):
-            previous_lead.status = "rerequested"
-            db.commit()
-            return TryDemoResponse(
-                status="waitlisted",
-                message="You've already completed a demo. We'll be in touch!",
-                auto_login=False,
-            )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="DEMO_ALREADY_USED",
+        # Any other status (completed, rerequested, notified, active, claimed)
+        # where the active_lead check above didn't match → allow re-request
+        previous_lead.status = "rerequested"
+        db.commit()
+        return TryDemoResponse(
+            status="waitlisted",
+            message="Looks like you've already taken part in a demo. We'll be in touch!",
+            auto_login=False,
         )
 
     # Find next available demo lab (race-safe)
@@ -300,12 +382,15 @@ def list_demo_labs(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
 ):
+    _run_expire_stale(db)
+    db.flush()
     labs = (
         db.query(Lab)
         .filter(Lab.is_demo.is_(True))
         .order_by(Lab.name)
         .all()
     )
+    db.commit()
     return labs
 
 
@@ -464,12 +549,16 @@ def list_demo_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
 ):
-    return (
+    _run_expire_stale(db)
+    db.flush()
+    leads = (
         db.query(DemoLead)
         .order_by(DemoLead.created_at.desc())
         .limit(200)
         .all()
     )
+    db.commit()
+    return leads
 
 
 @router.post("/expire-stale")
@@ -477,68 +566,9 @@ def expire_stale_demos(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
 ):
-    now = datetime.now(timezone.utc)
-    released = 0
-    expired = 0
-
-    # Pass 1: Reservation timeout (magic link never clicked)
-    timeout_cutoff = now - timedelta(minutes=DEMO_RESERVATION_TIMEOUT_MINUTES)
-    stale_reservations = (
-        db.query(Lab)
-        .filter(
-            Lab.is_demo.is_(True),
-            Lab.demo_status == "in_use",
-            Lab.demo_assigned_at < timeout_cutoff,
-        )
-        .all()
-    )
-    for lab in stale_reservations:
-        demo_user = (
-            db.query(User)
-            .filter(User.lab_id == lab.id, User.email.like("demo-%@demo.labaid.io"))
-            .first()
-        )
-        # Only release if magic link was never used (invite_token still set)
-        if demo_user and demo_user.invite_token is not None:
-            lab.demo_status = "available"
-            lab.demo_assigned_email = None
-            lab.demo_expires_at = None
-            lab.demo_assigned_at = None
-            demo_user.is_active = False
-            demo_user.invite_token = None
-            demo_user.invite_token_expires_at = None
-            released += 1
-
-    # Pass 2: Expired demos
-    expired_labs = (
-        db.query(Lab)
-        .filter(
-            Lab.is_demo.is_(True),
-            Lab.demo_status == "in_use",
-            Lab.demo_expires_at < now,
-        )
-        .all()
-    )
-    for lab in expired_labs:
-        lab.demo_status = "expired"
-        demo_user = (
-            db.query(User)
-            .filter(User.lab_id == lab.id, User.email.like("demo-%@demo.labaid.io"))
-            .first()
-        )
-        if demo_user:
-            demo_user.is_active = False
-        lead = (
-            db.query(DemoLead)
-            .filter(DemoLead.demo_lab_id == lab.id, DemoLead.status.in_(["notified", "active"]))
-            .first()
-        )
-        if lead:
-            lead.status = "completed"
-        expired += 1
-
+    result = _run_expire_stale(db)
     db.commit()
-    return {"released": released, "expired": expired}
+    return result
 
 
 @router.post("/leads/{lead_id}/resend", response_model=DemoResendResponse)

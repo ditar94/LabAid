@@ -12,14 +12,23 @@ from app.middleware.auth import require_role
 from app.models.models import (
     Antibody,
     AuditLog,
+    DemoLead,
+    Lab,
     Lot,
     LotDocument,
     User,
     UserRole,
     Vial,
 )
+from app.schemas.schemas import (
+    AdminDashboardStats,
+    AdminSubscriptionSummary,
+    AdminTrialSummary,
+    DemoLeadOut,
+)
 from app.services.audit import log_audit
 from app.services.object_storage import object_storage
+from app.services.stripe_service import get_subscription_details
 
 logger = logging.getLogger(__name__)
 
@@ -182,3 +191,204 @@ def purge_deleted_documents(
     if errors:
         result["errors"] = errors
     return result
+
+
+@router.get("/dashboard", response_model=AdminDashboardStats)
+def get_admin_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    now = datetime.now(timezone.utc)
+    soon_48h = now + timedelta(hours=48)
+    soon_7d = now + timedelta(days=7)
+    week_ago = now - timedelta(days=7)
+
+    # Demo metrics
+    active_demos = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(True), Lab.demo_status == "in_use", Lab.demo_expires_at > now,
+    ).scalar()
+    demos_ending_soon = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(True), Lab.demo_status == "in_use",
+        Lab.demo_expires_at > now, Lab.demo_expires_at <= soon_48h,
+    ).scalar()
+    available_demo_labs = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(True), Lab.demo_status == "available",
+    ).scalar()
+    total_leads = db.query(func.count(DemoLead.id)).scalar()
+    recent_leads = db.query(func.count(DemoLead.id)).filter(
+        DemoLead.created_at >= week_ago,
+    ).scalar()
+
+    # Trial metrics (non-demo, non-suspended labs only)
+    active_trials = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(False), Lab.is_active.is_(True),
+        Lab.billing_status == "trial", Lab.trial_ends_at > now,
+    ).scalar()
+    trials_ending_soon_count = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(False), Lab.is_active.is_(True),
+        Lab.billing_status == "trial",
+        Lab.trial_ends_at > now, Lab.trial_ends_at <= soon_7d,
+    ).scalar()
+    expired_unconverted_count = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(False), Lab.is_active.is_(True),
+        Lab.billing_status == "trial",
+        Lab.trial_ends_at <= now, Lab.stripe_subscription_id.is_(None),
+    ).scalar()
+
+    # Subscription metrics (non-suspended)
+    active_subs = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(False), Lab.is_active.is_(True),
+        Lab.billing_status == "active",
+    ).scalar()
+    past_due_subs = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(False), Lab.is_active.is_(True),
+        Lab.billing_status == "past_due",
+    ).scalar()
+    cancelled_subs = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(False), Lab.is_active.is_(True),
+        Lab.billing_status == "cancelled",
+    ).scalar()
+
+    # Suspended labs count
+    suspended_count = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(False), Lab.is_active.is_(False),
+    ).scalar()
+
+    # Renewal metrics (active subs with period ending within 30 days)
+    soon_30d = now + timedelta(days=30)
+    renewals_soon_count = db.query(func.count(Lab.id)).filter(
+        Lab.is_demo.is_(False), Lab.is_active.is_(True),
+        Lab.billing_status == "active",
+        Lab.current_period_end.isnot(None),
+        Lab.current_period_end <= soon_30d,
+        Lab.current_period_end > now,
+    ).scalar()
+
+    # Actionable: rerequested leads
+    rerequested = (
+        db.query(DemoLead)
+        .filter(DemoLead.status == "rerequested")
+        .order_by(DemoLead.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    # Actionable: trials expiring soon (non-suspended)
+    expiring_trial_labs = (
+        db.query(Lab)
+        .filter(
+            Lab.is_demo.is_(False), Lab.is_active.is_(True),
+            Lab.billing_status == "trial",
+            Lab.trial_ends_at > now, Lab.trial_ends_at <= soon_7d,
+        )
+        .order_by(Lab.trial_ends_at)
+        .limit(20)
+        .all()
+    )
+
+    # Actionable: expired trials not converted (non-suspended)
+    expired_trial_labs = (
+        db.query(Lab)
+        .filter(
+            Lab.is_demo.is_(False), Lab.is_active.is_(True),
+            Lab.billing_status == "trial",
+            Lab.trial_ends_at <= now, Lab.stripe_subscription_id.is_(None),
+        )
+        .order_by(Lab.trial_ends_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    # Actionable: active subscribers (for expand list)
+    active_sub_labs = (
+        db.query(Lab)
+        .filter(
+            Lab.is_demo.is_(False), Lab.is_active.is_(True),
+            Lab.billing_status == "active",
+        )
+        .order_by(Lab.name)
+        .limit(20)
+        .all()
+    )
+
+    # Actionable: renewals coming up (period end within 30 days)
+    renewing_labs = (
+        db.query(Lab)
+        .filter(
+            Lab.is_demo.is_(False), Lab.is_active.is_(True),
+            Lab.billing_status == "active",
+            Lab.current_period_end.isnot(None),
+            Lab.current_period_end <= soon_30d,
+            Lab.current_period_end > now,
+        )
+        .order_by(Lab.current_period_end)
+        .limit(20)
+        .all()
+    )
+
+    return AdminDashboardStats(
+        active_demos=active_demos,
+        demos_ending_soon=demos_ending_soon,
+        available_demo_labs=available_demo_labs,
+        total_leads=total_leads,
+        recent_leads=recent_leads,
+        active_trials=active_trials,
+        trials_ending_soon=trials_ending_soon_count,
+        expired_trials_not_converted=expired_unconverted_count,
+        active_subscriptions=active_subs,
+        past_due_subscriptions=past_due_subs,
+        cancelled_subscriptions=cancelled_subs,
+        suspended_labs=suspended_count,
+        rerequested_leads=rerequested,
+        expiring_trials=[
+            AdminTrialSummary(
+                lab_id=l.id, lab_name=l.name, billing_status=l.billing_status,
+                trial_ends_at=l.trial_ends_at, created_at=l.created_at,
+                billing_email=l.billing_email,
+            ) for l in expiring_trial_labs
+        ],
+        expired_unconverted=[
+            AdminTrialSummary(
+                lab_id=l.id, lab_name=l.name, billing_status=l.billing_status,
+                trial_ends_at=l.trial_ends_at, created_at=l.created_at,
+                billing_email=l.billing_email,
+            ) for l in expired_trial_labs
+        ],
+        renewals_soon=renewals_soon_count,
+        active_subscribers_list=[
+            AdminSubscriptionSummary(
+                lab_id=l.id, lab_name=l.name, billing_status=l.billing_status,
+                billing_email=l.billing_email, current_period_end=l.current_period_end,
+                created_at=l.created_at,
+            ) for l in active_sub_labs
+        ],
+        renewals_coming_up=[
+            AdminSubscriptionSummary(
+                lab_id=l.id, lab_name=l.name, billing_status=l.billing_status,
+                billing_email=l.billing_email, current_period_end=l.current_period_end,
+                created_at=l.created_at,
+            ) for l in renewing_labs
+        ],
+    )
+
+
+@router.post("/backfill-period-end")
+def backfill_period_end(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
+):
+    labs = db.query(Lab).filter(
+        Lab.stripe_subscription_id.isnot(None),
+        Lab.current_period_end.is_(None),
+    ).all()
+
+    updated = 0
+    for lab in labs:
+        details = get_subscription_details(lab)
+        if details and details.get("current_period_end"):
+            lab.current_period_end = datetime.fromtimestamp(
+                details["current_period_end"], tz=timezone.utc
+            )
+            updated += 1
+    db.commit()
+    return {"updated": updated}

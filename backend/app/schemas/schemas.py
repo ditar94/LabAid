@@ -143,6 +143,7 @@ class Lab(BaseModel):
     stripe_customer_id: str | None = None
     stripe_subscription_id: str | None = None
     billing_email: str | None = None
+    current_period_end: datetime | None = None
     settings: dict = {}
     created_at: datetime
     is_demo: bool = False
@@ -1052,6 +1053,48 @@ class DemoResendResponse(BaseModel):
 
 class DemoGetLinkResponse(BaseModel):
     login_link: str
+
+
+# ── Admin Dashboard ──────────────────────────────────────────────────────
+
+
+class AdminTrialSummary(BaseModel):
+    lab_id: UUID
+    lab_name: str
+    billing_status: str
+    trial_ends_at: datetime | None
+    created_at: datetime
+    billing_email: str | None = None
+
+
+class AdminSubscriptionSummary(BaseModel):
+    lab_id: UUID
+    lab_name: str
+    billing_status: str
+    billing_email: str | None = None
+    current_period_end: datetime | None = None
+    created_at: datetime
+
+
+class AdminDashboardStats(BaseModel):
+    active_demos: int = 0
+    demos_ending_soon: int = 0
+    available_demo_labs: int = 0
+    total_leads: int = 0
+    recent_leads: int = 0
+    active_trials: int = 0
+    trials_ending_soon: int = 0
+    expired_trials_not_converted: int = 0
+    active_subscriptions: int = 0
+    past_due_subscriptions: int = 0
+    cancelled_subscriptions: int = 0
+    suspended_labs: int = 0
+    renewals_soon: int = 0
+    rerequested_leads: list[DemoLeadOut] = []
+    expiring_trials: list[AdminTrialSummary] = []
+    expired_unconverted: list[AdminTrialSummary] = []
+    active_subscribers_list: list[AdminSubscriptionSummary] = []
+    renewals_coming_up: list[AdminSubscriptionSummary] = []
 
 
 # Rebuild forward references now that all classes are defined

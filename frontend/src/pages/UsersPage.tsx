@@ -7,6 +7,7 @@ import { useSharedData } from "../context/SharedDataContext";
 import { Users as UsersIcon, ChevronDown, ChevronRight } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import { Modal } from "../components/Modal";
+import SearchableSelect from "../components/SearchableSelect";
 import TableSkeleton from "../components/TableSkeleton";
 import { useToast } from "../context/ToastContext";
 
@@ -198,17 +199,13 @@ export default function UsersPage() {
         <h1>Users</h1>
         <div className="filters">
           {currentUser?.role === "super_admin" && labs.length > 0 && (
-            <select
-              aria-label="Select lab"
+            <SearchableSelect
+              options={labs.map((lab) => ({ value: lab.id, label: lab.name }))}
               value={effectiveLab}
-              onChange={(e) => handleLabChange(e.target.value)}
-            >
-              {labs.map((lab) => (
-                <option key={lab.id} value={lab.id}>
-                  {lab.name}
-                </option>
-              ))}
-            </select>
+              onChange={handleLabChange}
+              placeholder="Search labs..."
+              ariaLabel="Select lab"
+            />
           )}
           {canManage && (
             <button className="btn-chip btn-chip-primary" onClick={() => setShowForm(!showForm)}>

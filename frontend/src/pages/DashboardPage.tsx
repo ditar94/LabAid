@@ -7,6 +7,7 @@ import type {
   StorageGrid as StorageGridData,
   LotRequest,
   CocktailLot,
+  AdminDashboardStats,
 } from "../api/types";
 import { StorageView } from "../components/storage";
 import type { StorageViewHandle } from "../components/storage";
@@ -20,7 +21,11 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronDown,
+  CreditCard,
   PackagePlus,
+  Users,
+  FlaskConical,
+  ArrowRight,
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
@@ -41,6 +46,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selectedCard, setSelectedCard] = useState<"requests" | "pending" | "low" | "expiring" | "temp" | null>(null);
+  const [adminCard, setAdminCard] = useState<"rerequested" | "trials" | "expiring" | "unconverted" | "subscribers" | "renewals" | null>(null);
   const [reviewingRequest, setReviewingRequest] = useState<LotRequest | null>(null);
 
   // Temp storage drill-down + move (local UI state only)
@@ -88,6 +94,16 @@ export default function DashboardPage() {
     queryKey: ["lot-requests", selectedLab],
     queryFn: () => api.get<LotRequest[]>("/lot-requests/").then(r => r.data),
     enabled: !!selectedLab && !!isSupervisorPlus,
+  });
+
+  // ── Admin dashboard (super admin, no lab impersonated) ──
+
+  const isAdminDashboard = user?.role === "super_admin" && !selectedLab;
+
+  const { data: adminStats, isLoading: adminLoading } = useQuery({
+    queryKey: ["admin-dashboard"],
+    queryFn: () => api.get<AdminDashboardStats>("/admin/dashboard").then(r => r.data),
+    enabled: isAdminDashboard,
   });
 
   const cocktailsEnabled = labSettings.cocktails_enabled === true;
@@ -408,6 +424,237 @@ export default function DashboardPage() {
 
   const allClear = dataLoaded && cards.every((c) => c.count === 0);
 
+  // ── Super Admin Business Dashboard ──
+  if (isAdminDashboard) {
+    const loaded = !adminLoading && !!adminStats;
+    const s = adminStats;
+
+    const adminCards = [
+      { key: "rerequested" as const, label: "Re-requested", count: s?.rerequested_leads.length ?? 0, cls: "warn", Icon: Users },
+      { key: "trials" as const, label: "Active Trials", count: s?.active_trials ?? 0, cls: "info", Icon: FlaskConical, nav: "/labs" },
+      { key: "expiring" as const, label: "Expiring Trials", count: s?.trials_ending_soon ?? 0, cls: "warn", Icon: CalendarClock },
+      { key: "unconverted" as const, label: "Unconverted", count: s?.expired_trials_not_converted ?? 0, cls: "danger", Icon: AlertTriangle },
+      { key: "subscribers" as const, label: "Active Subs", count: s?.active_subscriptions ?? 0, cls: "info", Icon: CreditCard, nav: "/labs" },
+      { key: "renewals" as const, label: "Renewals Soon", count: s?.renewals_soon ?? 0, cls: "warn", Icon: CalendarClock },
+    ];
+
+    const adminAllClear = loaded && adminCards.every(c => c.count === 0) && (s?.past_due_subscriptions ?? 0) === 0;
+
+    return (
+      <div>
+        <div className="page-header">
+          <h1>Dashboard</h1>
+        </div>
+
+        {loaded && s && (
+          <div className="admin-overview">
+            <span><strong>{s.active_demos}</strong> active demo{s.active_demos !== 1 ? "s" : ""}</span>
+            <span className="admin-overview-sep">&middot;</span>
+            <span><strong>{s.available_demo_labs}</strong> available lab{s.available_demo_labs !== 1 ? "s" : ""}</span>
+            <span className="admin-overview-sep">&middot;</span>
+            <span><strong>{s.recent_leads}</strong> lead{s.recent_leads !== 1 ? "s" : ""} this week</span>
+            <span className="admin-overview-sep">&middot;</span>
+            <span><strong>{s.active_trials}</strong> active trial{s.active_trials !== 1 ? "s" : ""}</span>
+            <span className="admin-overview-sep">&middot;</span>
+            <span><strong>{s.active_subscriptions}</strong> active sub{s.active_subscriptions !== 1 ? "s" : ""}</span>
+            {(s.past_due_subscriptions ?? 0) > 0 && (
+              <>
+                <span className="admin-overview-sep">&middot;</span>
+                <span className="text-danger"><strong>{s.past_due_subscriptions}</strong> past due</span>
+              </>
+            )}
+            {(s.suspended_labs ?? 0) > 0 && (
+              <>
+                <span className="admin-overview-sep">&middot;</span>
+                <span className="text-danger"><strong>{s.suspended_labs}</strong> suspended</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {adminAllClear && (
+          <div className="dashboard-all-clear">
+            <CheckCircle2 size={32} />
+            <div>
+              <div className="all-clear-title">All clear</div>
+              <div className="all-clear-desc">No actionable items right now.</div>
+            </div>
+          </div>
+        )}
+
+        <div className="stats-grid stagger-reveal">
+          {adminCards.map((card) => {
+            const Icon = card.Icon;
+            return (
+              <button
+                key={card.key}
+                type="button"
+                className={`stat-card priority-card ${card.cls} ${
+                  adminCard === card.key ? "selected" : ""
+                }${loaded && card.count === 0 ? " clear" : ""}`}
+                onClick={() => "nav" in card && card.nav ? navigate(card.nav) : setAdminCard(adminCard === card.key ? null : card.key)}
+                aria-expanded={!("nav" in card) && adminCard === card.key}
+                aria-controls={!("nav" in card) ? `dashboard-section-${card.key}` : undefined}
+              >
+                <div className="stat-icon-wrap">
+                  {loaded && card.count === 0 ? <CheckCircle2 size={20} /> : <Icon size={20} />}
+                </div>
+                <div className="stat-value">{loaded ? card.count : <span className="shimmer shimmer-text" />}</div>
+                <div className="stat-label">{card.label}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className={`dashboard-section-wrapper${adminCard === "rerequested" ? " open" : ""}`}>
+          <div className="dashboard-section-inner">
+          <div className="dashboard-section" id="dashboard-section-rerequested">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h2 style={{ margin: 0 }}>Re-requested Demos</h2>
+              <button className="btn-sm btn-secondary" onClick={() => navigate("/demos")}>
+                Go to Demos <ArrowRight size={14} style={{ marginLeft: 4, verticalAlign: "middle" }} />
+              </button>
+            </div>
+            {!s?.rerequested_leads.length ? (
+              <p className="page-desc">No re-requested leads.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Source</th>
+                    <th>Submitted</th>
+                    <th>Logins</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.rerequested_leads.map((lead) => (
+                    <tr key={lead.id}>
+                      <td>{lead.email}</td>
+                      <td>{lead.source || "—"}</td>
+                      <td>{formatDate(lead.created_at)}</td>
+                      <td>{lead.login_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          </div>
+        </div>
+
+        <div className={`dashboard-section-wrapper${adminCard === "expiring" ? " open" : ""}`}>
+          <div className="dashboard-section-inner">
+          <div className="dashboard-section" id="dashboard-section-expiring">
+            <h2>Expiring Trials</h2>
+            {!s?.expiring_trials.length ? (
+              <p className="page-desc">No trials expiring soon.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Lab</th>
+                    <th>Billing Email</th>
+                    <th>Time Left</th>
+                    <th>Trial Ends</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.expiring_trials.map((trial) => (
+                    <tr key={trial.lab_id}>
+                      <td>{trial.lab_name}</td>
+                      <td>{trial.billing_email || "—"}</td>
+                      <td>
+                        <span className="badge badge-yellow">
+                          {trial.trial_ends_at ? daysUntil(trial.trial_ends_at) : "—"}
+                        </span>
+                      </td>
+                      <td>{trial.trial_ends_at ? formatDate(trial.trial_ends_at) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          </div>
+        </div>
+
+        <div className={`dashboard-section-wrapper${adminCard === "unconverted" ? " open" : ""}`}>
+          <div className="dashboard-section-inner">
+          <div className="dashboard-section" id="dashboard-section-unconverted">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h2 style={{ margin: 0 }}>Expired — Not Converted</h2>
+              <button className="btn-sm btn-secondary" onClick={() => navigate("/labs")}>
+                Go to Labs <ArrowRight size={14} style={{ marginLeft: 4, verticalAlign: "middle" }} />
+              </button>
+            </div>
+            {!s?.expired_unconverted.length ? (
+              <p className="page-desc">No expired unconverted trials.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Lab</th>
+                    <th>Billing Email</th>
+                    <th>Trial Ended</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.expired_unconverted.map((trial) => (
+                    <tr key={trial.lab_id}>
+                      <td>{trial.lab_name}</td>
+                      <td>{trial.billing_email || "—"}</td>
+                      <td>{trial.trial_ends_at ? formatDate(trial.trial_ends_at) : "—"}</td>
+                      <td>{formatDate(trial.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          </div>
+        </div>
+
+        <div className={`dashboard-section-wrapper${adminCard === "renewals" ? " open" : ""}`}>
+          <div className="dashboard-section-inner">
+          <div className="dashboard-section" id="dashboard-section-renewals">
+            <h2>Renewals Coming Up (30 days)</h2>
+            {!s?.renewals_coming_up.length ? (
+              <p className="page-desc">No renewals coming up.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Lab</th>
+                    <th>Billing Email</th>
+                    <th>Renews</th>
+                    <th>Time Left</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.renewals_coming_up.map((sub) => (
+                    <tr key={sub.lab_id}>
+                      <td>{sub.lab_name}</td>
+                      <td>{sub.billing_email || "—"}</td>
+                      <td>{sub.current_period_end ? formatDate(sub.current_period_end) : "—"}</td>
+                      <td>
+                        <span className="badge badge-yellow">
+                          {sub.current_period_end ? daysUntil(sub.current_period_end) : "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={ptr.containerRef}>
       <PullToRefresh
@@ -438,12 +685,6 @@ export default function DashboardPage() {
           ) : null;
         })()}
       </div>
-
-      {user?.role === "super_admin" && !selectedLab && labs.length > 0 && (
-        <div className="empty-state" style={{ marginTop: 32 }}>
-          <p>No labs have support access enabled. Labs must enable support access from their settings before you can view their data.</p>
-        </div>
-      )}
 
       {allClear && (
         <div className="dashboard-all-clear">

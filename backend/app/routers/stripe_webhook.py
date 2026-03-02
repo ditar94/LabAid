@@ -106,15 +106,17 @@ def _handle_checkout_completed(db: Session, session: dict) -> None:
 
     # Fetch actual subscription status instead of hardcoding "active"
     status = "active"
+    period_end = None
     if subscription_id and settings.STRIPE_SECRET_KEY:
         try:
             client = get_stripe_client()
             sub = client.subscriptions.retrieve(subscription_id)
             status = sub.status or "active"
+            period_end = sub.current_period_end
         except Exception:
             logger.warning("Could not fetch subscription %s, defaulting to active", subscription_id)
 
-    apply_subscription_status(db, lab, status, subscription_id=subscription_id)
+    apply_subscription_status(db, lab, status, subscription_id=subscription_id, current_period_end=period_end)
 
 
 def _handle_invoice_paid(db: Session, invoice: dict) -> None:
@@ -146,7 +148,8 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
     if not lab:
         return
     apply_subscription_status(
-        db, lab, subscription["status"], subscription_id=subscription["id"]
+        db, lab, subscription["status"], subscription_id=subscription["id"],
+        current_period_end=subscription.get("current_period_end"),
     )
 
 
@@ -157,7 +160,10 @@ def _handle_subscription_deleted(db: Session, subscription: dict) -> None:
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
         return
-    apply_subscription_status(db, lab, "canceled", subscription_id=subscription["id"])
+    apply_subscription_status(
+        db, lab, "canceled", subscription_id=subscription["id"],
+        current_period_end=subscription.get("current_period_end"),
+    )
 
 
 def _handle_trial_will_end(db: Session, subscription: dict) -> None:

@@ -154,6 +154,7 @@ def apply_subscription_status(
     stripe_status: str,
     subscription_id: str | None = None,
     user_id: UUID | None = None,
+    current_period_end: int | None = None,
 ) -> None:
     mapping = _STATUS_MAP.get(stripe_status)
     if not mapping:
@@ -167,6 +168,8 @@ def apply_subscription_status(
     lab.billing_status = new_billing
     lab.billing_updated_at = datetime.now(timezone.utc)
     lab.is_active = new_active
+    if current_period_end:
+        lab.current_period_end = datetime.fromtimestamp(current_period_end, tz=timezone.utc)
     if subscription_id:
         lab.stripe_subscription_id = subscription_id
 

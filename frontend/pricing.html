@@ -305,6 +305,12 @@
       color: var(--slate-400);
       margin-bottom: 2rem;
     }
+    .pricing-includes {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--navy-700);
+      margin-bottom: 1rem;
+    }
     .pricing-features {
       list-style: none;
       display: flex;
@@ -467,13 +473,7 @@
     .footer-brand-icon {
       width: 32px;
       height: 32px;
-      background: linear-gradient(135deg, var(--indigo-500), var(--indigo-700));
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
-    .footer-brand-icon svg { width: 17px; height: 17px; }
     .footer-brand-text {
       font-weight: 700;
       font-size: 1.1rem;
@@ -501,6 +501,33 @@
       padding-top: 1.5rem;
       font-size: 0.8rem;
       color: rgba(148, 163, 184, 0.5);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .contact-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 0.75rem 1.1rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .contact-card-label {
+      font-size: 0.8rem;
+      color: var(--slate-400);
+    }
+    .contact-card a {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--slate-200);
+      text-decoration: none;
+    }
+    .contact-card a:hover {
+      color: white;
+      text-decoration: underline;
+      text-underline-offset: 2px;
     }
 
     /* ===== REDUCED MOTION ===== */
@@ -610,39 +637,29 @@
 
       <!-- Enterprise Plan -->
       <div class="pricing-card">
+        <div class="pricing-popular" style="visibility:hidden" aria-hidden="true">&nbsp;</div>
         <h3>Enterprise</h3>
         <p class="pricing-desc">For large hospital labs and multi-site institutions with advanced requirements.</p>
         <div class="pricing-amount">
-          <span class="price" style="font-size: 2rem;">Custom</span>
+          <span class="price">Custom</span>
         </div>
         <p class="pricing-billed">Tailored to your organization's needs.</p>
+        <p class="pricing-includes">Everything in Standard, plus:</p>
         <ul class="pricing-features">
           <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
-            Everything in Standard, plus:
-          </li>
-          <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
             SSO / SAML authentication
           </li>
           <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
-            Custom LIS integrations
-          </li>
-          <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
-            Multi-site / multi-lab management
-          </li>
-          <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
             Dedicated onboarding &amp; training
           </li>
           <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
             Priority support
           </li>
           <li>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-slate"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-indigo"><path d="M20 6 9 17l-5-5"/></svg>
             Custom SLA
           </li>
         </ul>
@@ -704,12 +721,7 @@
       <div class="footer-top">
         <div>
           <div class="footer-brand">
-            <div class="footer-brand-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/>
-                <path d="M8.5 2h7"/><path d="M7 16.5h10"/>
-              </svg>
-            </div>
+            <img src="/labaid-icon.svg" alt="" class="footer-brand-icon" />
             <div>
               <div class="footer-brand-text">LabAid</div>
               <div class="footer-brand-sub">Laboratory Inventory Management</div>
@@ -718,13 +730,17 @@
         </div>
         <div class="footer-links">
           <a href="/">Home</a>
+          <a href="/#demo">Try Demo</a>
           <a href="/#terms">Terms</a>
           <a href="/login">Log In</a>
-          <a href="mailto:sales@labaid.io">Contact</a>
         </div>
       </div>
       <div class="footer-bottom">
-        &copy; 2026 LabAid. All rights reserved.
+        <span>&copy; 2026 LabAid. All rights reserved.</span>
+        <div class="contact-card">
+          <span class="contact-card-label">Sales inquiries:</span>
+          <a href="mailto:sales@labaid.io">sales@labaid.io</a>
+        </div>
       </div>
     </div>
   </footer>

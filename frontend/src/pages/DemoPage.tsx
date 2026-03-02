@@ -22,7 +22,8 @@ export default function DemoPage() {
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [extendLabId, setExtendLabId] = useState<string | null>(null);
   const [extendHours, setExtendHours] = useState(24);
-  const [showLeads, setShowLeads] = useState(false);
+  const [showLeads, setShowLeads] = useState(true);
+  const [leadStatusFilter, setLeadStatusFilter] = useState<string | null>(null);
   const [resendLoading, setResendLoading] = useState<string | null>(null);
   const [assignLoading, setAssignLoading] = useState<string | null>(null);
   const [labLinkResult, setLabLinkResult] = useState<{ labId: string; link: string } | null>(null);
@@ -36,10 +37,18 @@ export default function DemoPage() {
   const { data: leads = [], isLoading: leadsLoading } = useQuery<DemoLead[]>({
     queryKey: ["demo-leads"],
     queryFn: () => api.get("/demo/leads").then((r) => r.data),
-    enabled: showLeads,
   });
 
   const hasAvailableLabs = demoLabs.some((l) => l.demo_status === "available");
+
+  const filteredLeads = leadStatusFilter
+    ? leads.filter((l) => l.status === leadStatusFilter)
+    : leads;
+
+  const leadStatusCounts = leads.reduce((acc, l) => {
+    acc[l.status] = (acc[l.status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["demo-labs"] });
@@ -211,6 +220,8 @@ export default function DemoPage() {
         return <span className="badge badge-green">Active</span>;
       case "completed":
         return <span className="badge badge-muted">Completed</span>;
+      case "claimed":
+        return <span className="badge badge-muted">Claimed</span>;
       case "rerequested":
         return <span className="badge badge-purple">Rerequested</span>;
       default:
@@ -336,6 +347,27 @@ export default function DemoPage() {
       {showLeads && (
         <>
           <h2 style={{ marginTop: "var(--space-xl)" }}>Demo Leads</h2>
+          {!leadsLoading && leads.length > 0 && (
+            <div className="action-btns" style={{ marginBottom: "var(--space-sm)", flexWrap: "wrap" }}>
+              <button
+                className={`btn-chip ${!leadStatusFilter ? "btn-chip-primary" : "btn-chip-secondary"}`}
+                onClick={() => setLeadStatusFilter(null)}
+              >
+                All ({leads.length})
+              </button>
+              {["active", "notified", "waitlisted", "rerequested", "completed", "claimed"].map((s) =>
+                (leadStatusCounts[s] || 0) > 0 ? (
+                  <button
+                    key={s}
+                    className={`btn-chip ${leadStatusFilter === s ? "btn-chip-primary" : "btn-chip-secondary"}`}
+                    onClick={() => setLeadStatusFilter(leadStatusFilter === s ? null : s)}
+                  >
+                    {s.charAt(0).toUpperCase() + s.slice(1)} ({leadStatusCounts[s]})
+                  </button>
+                ) : null
+              )}
+            </div>
+          )}
           {leadsLoading ? (
             <p className="text-muted">Loading...</p>
           ) : (
@@ -353,7 +385,7 @@ export default function DemoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {leads.map((lead) => (
+                  {filteredLeads.map((lead) => (
                     <tr key={lead.id}>
                       <td>{lead.email}</td>
                       <td>{leadStatusBadge(lead)}</td>
@@ -373,7 +405,7 @@ export default function DemoPage() {
                             {resendLoading === lead.id ? "Sending..." : "Email Link"}
                           </button>
                         )}
-                        {(lead.status === "waitlisted" || lead.status === "completed" || lead.status === "rerequested") && (
+                        {(lead.status === "waitlisted" || lead.status === "completed" || lead.status === "rerequested" || lead.status === "claimed") && (
                           <button
                             className="btn-sm"
                             onClick={() => handleAssign(lead.id)}
@@ -387,7 +419,7 @@ export default function DemoPage() {
                       </td>
                     </tr>
                   ))}
-                  {leads.length === 0 && (
+                  {filteredLeads.length === 0 && (
                     <tr>
                       <td colSpan={7} className="text-muted" style={{ textAlign: "center", padding: "var(--space-xl)" }}>
                         No leads yet.

@@ -407,8 +407,11 @@
     }
     .features-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 1.5rem;
+    }
+    @media (max-width: 1024px) {
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 768px) {
       .features-grid { grid-template-columns: 1fr; }
@@ -452,6 +455,8 @@
     .feature-icon-scan { background: rgba(99, 102, 241, 0.08); color: var(--indigo-500); }
     .feature-icon-inventory { background: rgba(16, 185, 129, 0.08); color: #10b981; }
     .feature-icon-storage { background: rgba(59, 130, 246, 0.08); color: #3b82f6; }
+    .feature-icon-cocktail { background: rgba(168, 85, 247, 0.08); color: #a855f7; }
+    .feature-icon-qc { background: rgba(236, 72, 153, 0.08); color: #ec4899; }
     .feature-icon-audit { background: rgba(245, 158, 11, 0.08); color: #f59e0b; }
     .feature-card h3 {
       font-size: 1.15rem;
@@ -651,13 +656,7 @@
     .footer-brand-icon {
       width: 32px;
       height: 32px;
-      background: linear-gradient(135deg, var(--indigo-500), var(--indigo-700));
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
-    .footer-brand-icon svg { width: 17px; height: 17px; }
     .footer-brand-text {
       font-weight: 700;
       font-size: 1.1rem;
@@ -685,6 +684,35 @@
       padding-top: 1.5rem;
       font-size: 0.8rem;
       color: var(--slate-400);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* ===== CONTACT CARD ===== */
+    .contact-card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 0.75rem 1.1rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .contact-card-label {
+      font-size: 0.8rem;
+      color: var(--slate-400);
+    }
+    .contact-card a {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--slate-200);
+      text-decoration: none;
+    }
+    .contact-card a:hover {
+      color: white;
+      text-decoration: underline;
+      text-underline-offset: 2px;
     }
 
     /* ===== SCROLL REVEAL ===== */
@@ -920,7 +948,7 @@
     <div class="section-container">
       <div class="section-header reveal">
         <span class="section-label">Features</span>
-        <h2>Everything your lab needs,<br>nothing it doesn't</h2>
+        <h2>Everything you've ever wanted</h2>
         <p>Purpose-built for flow cytometry workflows. No bloat, no workarounds.</p>
       </div>
 
@@ -961,15 +989,39 @@
           <p>Map your freezers, refrigerators, and racks with visual grid layouts. See exactly where every vial is stored at a glance.</p>
         </div>
 
-        <!-- Audit & Compliance -->
+        <!-- Cocktail Preparation -->
         <div class="feature-card reveal reveal-d4">
+          <div class="feature-icon feature-icon-cocktail">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/>
+              <path d="M8.5 2h7"/><path d="M7 16.5h10"/>
+            </svg>
+          </div>
+          <h3>Cocktail Preparation</h3>
+          <p>Create antibody cocktails and track the lot numbers for every antibody used, along with preparation, renewal, and expiration dates. QC document upload included.</p>
+        </div>
+
+        <!-- QC Documentation -->
+        <div class="feature-card reveal reveal-d5">
+          <div class="feature-icon feature-icon-qc">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+              <path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/>
+            </svg>
+          </div>
+          <h3>QC Documentation</h3>
+          <p>Attach QC documents to any lot, require approval before use, and keep a complete paper trail for every reagent in your inventory.</p>
+        </div>
+
+        <!-- Audit & Compliance -->
+        <div class="feature-card reveal reveal-d6">
           <div class="feature-icon feature-icon-audit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/>
             </svg>
           </div>
-          <h3>Audit &amp; Compliance</h3>
-          <p>Every action is logged in an immutable audit trail. Generate compliance reports and maintain full traceability for inspections.</p>
+          <h3>Audit, Compliance, &amp; Analytics</h3>
+          <p>Every action is logged in an immutable audit trail. View usage analytics reports, generate compliance exports, and maintain full traceability for inspections.</p>
         </div>
       </div>
     </div>
@@ -980,7 +1032,7 @@
     <div class="slideshow-wrapper reveal">
       <div class="section-header" style="margin-bottom: 2.5rem;">
         <span class="section-label">See it in action</span>
-        <h2>Built for the way labs work</h2>
+        <h2>Your lab workflow, but easier</h2>
       </div>
       <div class="slideshow-viewport" id="slideshow">
         <div class="slide active" data-slide="0">
@@ -1089,7 +1141,7 @@
   <section class="cta">
     <div class="cta-inner reveal">
       <h2>Ready to streamline your lab?</h2>
-      <p class="cta-sub">Start your free trial. No credit card required.</p>
+      <p class="cta-sub">Explore the demo with realistic data, or start a free trial with your own lab — no credit card required.</p>
       <div class="cta-actions">
         <a href="/signup" class="btn-white">
           Start Free Trial
@@ -1108,12 +1160,7 @@
       <div class="footer-top">
         <div>
           <div class="footer-brand">
-            <div class="footer-brand-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/>
-                <path d="M8.5 2h7"/><path d="M7 16.5h10"/>
-              </svg>
-            </div>
+            <img src="/labaid-icon.svg" alt="" class="footer-brand-icon" />
             <div>
               <div class="footer-brand-text">LabAid</div>
               <div class="footer-brand-sub">Laboratory Inventory Management</div>
@@ -1125,11 +1172,14 @@
           <button onclick="openDemoModal()" style="font-size:0.88rem;font-weight:500;color:var(--slate-400);transition:color 0.25s" onmouseover="this.style.color='white'" onmouseout="this.style.color='var(--slate-400)'">Try Demo</button>
           <button onclick="openTermsModal()" style="font-size:0.88rem;font-weight:500;color:var(--slate-400);transition:color 0.25s" onmouseover="this.style.color='white'" onmouseout="this.style.color='var(--slate-400)'">Terms</button>
           <a href="/login">Log In</a>
-          <a href="mailto:sales@labaid.io">Contact</a>
         </div>
       </div>
       <div class="footer-bottom">
-        &copy; 2026 LabAid. All rights reserved.
+        <span>&copy; 2026 LabAid. All rights reserved.</span>
+        <div class="contact-card">
+          <span class="contact-card-label">Sales inquiries:</span>
+          <a href="mailto:sales@labaid.io">sales@labaid.io</a>
+        </div>
       </div>
     </div>
   </footer>
@@ -1168,25 +1218,27 @@
         <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">2. Service Description</h3>
         <p>LabAid is a cloud-based laboratory inventory management platform designed for flow cytometry laboratories. LabAid is an inventory management tool and does not provide medical advice, diagnostic services, or laboratory testing services.</p>
         <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">3. Accounts and Access</h3>
-        <p>You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your credentials and for all activities under your account.</p>
-        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">4. Data and Privacy</h3>
-        <p>Your laboratory data remains yours. We act as a data processor on your behalf. We will not sell, share, or use your data for purposes other than providing the Service. The Service is not intended to store Protected Health Information (PHI).</p>
-        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">5. Regulatory Compliance</h3>
-        <p>LabAid provides tools to assist with inventory management and audit trails. However, <strong style="color:#f1f5f9">each laboratory is solely responsible for its own regulatory compliance</strong>, including CLIA, HIPAA, CAP accreditation, state/local regulations, and IRB requirements.</p>
+        <p>You must provide accurate information when creating an account. You are responsible for maintaining the confidentiality of your credentials and for all activities under your account. We reserve the right to suspend access immediately if necessary to protect system integrity, security, or to prevent unauthorized access.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">4. Data, Privacy, and PHI Prohibition</h3>
+        <p>Your laboratory data remains yours. We act as a data processor on your behalf. We will not sell, share, or use your data for purposes other than providing the Service. <strong style="color:#f1f5f9">Strict PHI Prohibition:</strong> The Service is not designed or intended to store Protected Health Information (PHI). Customer affirmatively agrees not to upload, store, or transmit PHI into the Service.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">5. Regulatory Compliance and Indemnification</h3>
+        <p>LabAid provides tools to assist with inventory management and audit trails. However, <strong style="color:#f1f5f9">each laboratory is solely responsible for its own regulatory compliance</strong>, including CLIA, HIPAA, CAP accreditation, state/local regulations, and IRB requirements. Customer agrees to indemnify, defend, and hold LabAid harmless from and against any claims, liabilities, damages, and costs arising from Customer's misuse of the Service, upload of restricted data (including PHI), or regulatory violations.</p>
         <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">6. Intellectual Property</h3>
-        <p>The Service is the intellectual property of LabAid. You are granted a limited, non-exclusive, non-transferable license to use the Service for your internal laboratory operations.</p>
-        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">7. Availability and Support</h3>
-        <p>We strive to maintain high availability but do not guarantee uninterrupted access. Support is available through the in-app ticketing system.</p>
-        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">8. Limitation of Liability</h3>
-        <p>To the maximum extent permitted by law, LabAid shall not be liable for any indirect, incidental, special, consequential, or punitive damages. Our total liability shall not exceed the amount you paid in the twelve months preceding the claim.</p>
-        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">9. Payment and Billing</h3>
-        <p>Paid plans are billed on a recurring basis. Failure to pay may result in suspension of write access or transition to read-only mode.</p>
-        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">10. Termination</h3>
-        <p>Either party may terminate the agreement at any time. Upon request, you may export your data within 30 days.</p>
-        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">11. Changes to Terms</h3>
-        <p>We may update these Terms of Use from time to time. Material changes will be communicated via the Service or email.</p>
-        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">12. Contact</h3>
-        <p>For questions about these terms, please reach out through the in-app support system or contact your laboratory administrator.</p>
+        <p>The Service is the intellectual property of LabAid. You are granted a limited, non-exclusive, non-transferable license to use the Service for your internal laboratory operations. You may not reverse engineer, decompile, disassemble, or otherwise attempt to derive the source code, underlying ideas, or algorithms of the Service.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">7. Availability, Support, and Force Majeure</h3>
+        <p>We strive to maintain high availability but do not guarantee uninterrupted access. Support is available through the in-app ticketing system. LabAid shall not be liable for delays or failures resulting from causes beyond its reasonable control, including but not limited to acts of God, internet outages, cyberattacks, government actions, or third-party service disruptions.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">8. Warranty Disclaimer</h3>
+        <p>THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">9. Limitation of Liability</h3>
+        <p>To the maximum extent permitted by law, LabAid shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of data, loss of revenue, ruined reagents, or interruption of laboratory operations. Our total liability shall not exceed the amount you paid in the twelve months preceding the claim.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">10. Payment and Billing</h3>
+        <p>Paid plans are billed in advance on a recurring annual or monthly basis, or as otherwise agreed upon via Purchase Order or custom invoice terms. Invoices are due within 30 days of receipt unless otherwise specified. Failure to pay may result in suspension of write access or transition to read-only mode.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">11. Termination</h3>
+        <p>Either party may terminate the agreement at any time. Upon request, you may export your laboratory's data in a standard, machine-readable format (e.g., CSV) within 30 days prior to account deletion.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">12. Governing Law and Jurisdiction</h3>
+        <p>These Terms shall be governed by and construed in accordance with the laws of the Commonwealth of Massachusetts, without regard to its conflict of law provisions. Any legal action or proceeding arising under these Terms will be brought exclusively in the federal or state courts located in Massachusetts.</p>
+        <h3 style="color:#f1f5f9;font-size:0.95rem;margin:1.25rem 0 0.4rem">13. Changes and Contact</h3>
+        <p>We may update these Terms of Use from time to time. Material changes will be communicated via the Service or email. For questions about these terms, please contact us at <a href="mailto:support@labaid.io" style="color:var(--blue-400)">support@labaid.io</a>.</p>
       </div>
     </div>
   </div>
@@ -1281,9 +1333,6 @@
 
         if (!res.ok) {
           var detail = data.detail || 'Something went wrong.';
-          if (detail === 'DEMO_ALREADY_USED') {
-            detail = 'A demo was already started with this email. Each email can only be used once.';
-          }
           if (res.status === 429) {
             detail = 'Too many requests. Please wait a moment and try again.';
           }
@@ -1311,7 +1360,7 @@
           rv.innerHTML =
             '<div class="demo-result-icon">&#9993;</div>' +
             '<h3>Check your email</h3>' +
-            '<p>We sent a login link to <strong>' + email + '</strong>. Click it to access your demo.</p>' +
+            '<p>' + (data.message || ('We sent a login link to <strong>' + email + '</strong>. Click it to access your demo.')) + '</p>' +
             expires;
         } else if (data.status === 'waitlisted') {
           rv.innerHTML =

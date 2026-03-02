@@ -63,6 +63,7 @@ export interface Lab {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   billing_email?: string | null;
+  current_period_end?: string | null;
   settings: LabSettings;
   created_at: string;
   is_demo?: boolean;
@@ -105,6 +106,45 @@ export interface DemoLead {
   created_at: string;
   login_count: number;
   last_login_at: string | null;
+}
+
+export interface AdminTrialSummary {
+  lab_id: string;
+  lab_name: string;
+  billing_status: string;
+  trial_ends_at: string | null;
+  created_at: string;
+  billing_email: string | null;
+}
+
+export interface AdminSubscriptionSummary {
+  lab_id: string;
+  lab_name: string;
+  billing_status: string;
+  billing_email: string | null;
+  current_period_end: string | null;
+  created_at: string;
+}
+
+export interface AdminDashboardStats {
+  active_demos: number;
+  demos_ending_soon: number;
+  available_demo_labs: number;
+  total_leads: number;
+  recent_leads: number;
+  active_trials: number;
+  trials_ending_soon: number;
+  expired_trials_not_converted: number;
+  active_subscriptions: number;
+  past_due_subscriptions: number;
+  cancelled_subscriptions: number;
+  suspended_labs: number;
+  renewals_soon: number;
+  rerequested_leads: DemoLead[];
+  expiring_trials: AdminTrialSummary[];
+  expired_unconverted: AdminTrialSummary[];
+  active_subscribers_list: AdminSubscriptionSummary[];
+  renewals_coming_up: AdminSubscriptionSummary[];
 }
 
 export interface Fluorochrome {

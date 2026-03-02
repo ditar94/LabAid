@@ -64,6 +64,7 @@ export default function LabsPage() {
   const [ssoLab, setSsoLab] = useState<{ id: string; name: string } | null>(null);
   const [linkingStripeId, setLinkingStripeId] = useState<string | null>(null);
   const [expandedSubId, setExpandedSubId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const { addToast } = useToast();
   const { startImpersonation } = useAuth();
   const navigate = useNavigate();
@@ -167,9 +168,19 @@ export default function LabsPage() {
     <div>
       <div className="page-header">
         <h1>Labs</h1>
-        <button className="btn-chip btn-chip-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? "Cancel" : "+ New Lab"}
-        </button>
+        <div className="filters">
+          <input
+            type="search"
+            placeholder="Search labs..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search labs"
+            style={{ minWidth: 200 }}
+          />
+          <button className="btn-chip btn-chip-primary" onClick={() => setShowForm(!showForm)}>
+            {showForm ? "Cancel" : "+ New Lab"}
+          </button>
+        </div>
       </div>
 
       {error && <p className="error">{error}</p>}
@@ -195,24 +206,21 @@ export default function LabsPage() {
           title="No labs yet"
           description="Create your first lab to get started."
         />
-      ) : (
-        <div className="table-scroll">
-        <table className="labs-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Billing</th>
-              <th>Trial Ends</th>
-              <th>Subscription</th>
-              <th>SSO</th>
-              <th>Support Access</th>
-              <th>Created At</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {labs.map((l) => (
+      ) : (() => {
+        const q = searchQuery.toLowerCase();
+        const realLabs = labs.filter(l => !l.is_demo && (!q ||
+          l.name.toLowerCase().includes(q) ||
+          (l.billing_email && l.billing_email.toLowerCase().includes(q))
+        ));
+        const sections = [
+          { key: "active", title: "Active Subscribers", labs: realLabs.filter(l => l.is_active && l.billing_status === "active") },
+          { key: "trial", title: "Trial", labs: realLabs.filter(l => l.is_active && l.billing_status === "trial") },
+          { key: "past_due", title: "Past Due", labs: realLabs.filter(l => l.is_active && l.billing_status === "past_due") },
+          { key: "cancelled", title: "Cancelled", labs: realLabs.filter(l => l.is_active && l.billing_status === "cancelled") },
+          { key: "suspended", title: "Suspended", labs: realLabs.filter(l => !l.is_active) },
+        ].filter(s => s.labs.length > 0);
+
+        const renderLabRow = (l: Lab, sectionKey: string) => (
               <tr key={l.id}>
                 <td>{l.name}</td>
                 <td>
@@ -249,10 +257,10 @@ export default function LabsPage() {
                   )}
                 </td>
                 <td>
-                  {l.stripe_subscription_id ? (
-                    <span className="text-muted">-</span>
-                  ) : l.billing_status === "trial" ? (
-                    editingTrialId === l.id ? (
+                  {sectionKey === "trial" ? (
+                    l.stripe_subscription_id ? (
+                      <span className="text-muted">-</span>
+                    ) : editingTrialId === l.id ? (
                       <span className="inline-edit">
                         <input
                           type="date"
@@ -280,6 +288,8 @@ export default function LabsPage() {
                         {l.trial_ends_at ? new Date(l.trial_ends_at).toLocaleDateString() : "Not set"}
                       </button>
                     )
+                  ) : l.current_period_end ? (
+                    new Date(l.current_period_end).toLocaleDateString()
                   ) : (
                     <span className="text-muted">-</span>
                   )}
@@ -351,11 +361,37 @@ export default function LabsPage() {
                   )}
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      )}
+        );
+
+        return sections.map(section => (
+          <div key={section.key} style={{ marginBottom: "var(--space-xl)" }}>
+            <h2 style={{ fontSize: "var(--text-base)", marginBottom: "var(--space-sm)" }}>
+              {section.title}
+              <span className="text-muted" style={{ fontWeight: 400, marginLeft: 8 }}>{section.labs.length}</span>
+            </h2>
+            <div className="table-scroll">
+            <table className="labs-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Billing</th>
+                  <th>{section.key === "trial" ? "Trial Ends" : "Period Ends"}</th>
+                  <th>Subscription</th>
+                  <th>SSO</th>
+                  <th>Support Access</th>
+                  <th>Created At</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {section.labs.map(l => renderLabRow(l, section.key))}
+              </tbody>
+            </table>
+            </div>
+          </div>
+        ));
+      })()}
 
       {ssoLab && (
         <Suspense fallback={null}>
