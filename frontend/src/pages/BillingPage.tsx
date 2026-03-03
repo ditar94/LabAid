@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { CreditCard, Calendar, Mail, Clock, Check } from "lucide-react";
+import { CreditCard, Calendar, Mail, Clock, Check, ShieldCheck, ExternalLink, AlertTriangle } from "lucide-react";
 import api from "../api/client";
 import { useToast } from "../context/ToastContext";
 
@@ -22,7 +22,7 @@ interface BillingStatus {
 
 function formatDate(ts: number | null | undefined): string {
   if (!ts) return "-";
-  return new Date(ts * 1000).toLocaleDateString();
+  return new Date(ts * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function paymentMethodLabel(method: string | null | undefined): string {
@@ -44,6 +44,11 @@ function statusBadgeClass(status: string): string {
   if (status === "past_due") return "badge-warning";
   if (status === "cancelled") return "badge-danger";
   return "badge-info";
+}
+
+function daysUntil(ts: number | null | undefined): number | null {
+  if (!ts) return null;
+  return Math.max(0, Math.ceil((ts * 1000 - Date.now()) / (1000 * 60 * 60 * 24)));
 }
 
 export default function BillingPage() {
@@ -122,6 +127,8 @@ export default function BillingPage() {
     ? Math.max(0, Math.ceil((new Date(billing.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : null;
 
+  const renewalDays = daysUntil(billing.current_period_end);
+
   const features = [
     "Barcode scanning on any device",
     "Full vial lifecycle tracking",
@@ -150,7 +157,7 @@ export default function BillingPage() {
       <div className="billing-layout">
         {/* Trial / Cancelled — pricing card */}
         {(isTrial || isCancelled) && (
-          <div className="card billing-plan-card">
+          <div className="billing-plan-card">
             <div className="billing-plan-header">
               <div>
                 <div className="billing-plan-name">
@@ -203,81 +210,109 @@ export default function BillingPage() {
           </div>
         )}
 
-        {/* Active / Past Due — details card */}
-        {(isActive || isPastDue) && (
-          <div className="card billing-plan-card">
+        {/* Active / Past Due — redesigned */}
+        {(isActive || isPastDue) && (<>
+          {/* Status banner for past due or cancelling */}
+          {isPastDue && (
+            <div className="billing-message billing-message--warning">
+              <AlertTriangle size={16} />
+              <span>Your payment is past due. Please update your payment method to avoid service interruption.</span>
+            </div>
+          )}
+          {isActive && billing.cancel_at_period_end && (
+            <div className="billing-message billing-message--warning">
+              <Clock size={16} />
+              <span>Your subscription is set to cancel on {formatDate(billing.current_period_end)}. To keep your subscription, click Manage Billing.</span>
+            </div>
+          )}
+
+          {/* Plan overview card */}
+          <div className="billing-plan-card">
             <div className="billing-plan-header">
-              <div>
-                <div className="billing-plan-name">
-                  {billing.plan_name}
-                  <span className={`badge ${statusBadgeClass(billing.billing_status)}`}>
-                    {statusLabel(billing.billing_status)}
-                  </span>
+              <div className="billing-active-plan">
+                <div className="billing-active-icon">
+                  <ShieldCheck size={22} />
+                </div>
+                <div>
+                  <div className="billing-plan-name">
+                    {billing.plan_name}
+                    <span className={`badge ${statusBadgeClass(billing.billing_status)}`}>
+                      {statusLabel(billing.billing_status)}
+                    </span>
+                  </div>
+                  <div className="billing-plan-billed">$4,200/year &middot; Unlimited users</div>
                 </div>
               </div>
-              <button className="btn-primary" onClick={handlePortal}>
+              <button className="btn-primary billing-portal-btn" onClick={handlePortal}>
                 {isPastDue ? "Update Payment" : "Manage Billing"}
+                <ExternalLink size={14} />
               </button>
             </div>
 
-            {isPastDue && (
-              <div className="billing-message billing-message--warning">
-                <Clock size={16} />
-                <span>Your payment is past due. Please update your payment method to avoid service interruption.</span>
+            {/* Renewal / next payment info */}
+            {isActive && !billing.cancel_at_period_end && renewalDays !== null && (
+              <div className="billing-renewal">
+                <Clock size={14} />
+                {renewalDays === 0
+                  ? "Renews today"
+                  : `Renews in ${renewalDays} day${renewalDays !== 1 ? "s" : ""}`}
+                {billing.current_period_end && (
+                  <span className="billing-renewal-date"> &middot; {formatDate(billing.current_period_end)}</span>
+                )}
               </div>
             )}
-            {isActive && billing.cancel_at_period_end && (
-              <div className="billing-message billing-message--warning">
-                <Clock size={16} />
-                <span>Your subscription is set to cancel at the end of the current period ({formatDate(billing.current_period_end)}). To keep your subscription, click Manage Billing above.</span>
-              </div>
-            )}
-
-            <div className="billing-details-grid" style={{ marginTop: 20 }}>
-              {billing.subscribed_at && (
-                <div className="billing-detail">
-                  <Calendar size={16} className="billing-detail-icon" />
-                  <div>
-                    <div className="billing-detail-label">Subscribed Since</div>
-                    <div className="billing-detail-value">{formatDate(billing.subscribed_at)}</div>
-                  </div>
-                </div>
-              )}
-              <div className="billing-detail">
-                <Calendar size={16} className="billing-detail-icon" />
-                <div>
-                  <div className="billing-detail-label">Current Period</div>
-                  <div className="billing-detail-value">{formatDate(billing.current_period_start)} &ndash; {formatDate(billing.current_period_end)}</div>
-                </div>
-              </div>
-              {billing.current_period_end && (
-                <div className="billing-detail">
-                  <Clock size={16} className="billing-detail-icon" />
-                  <div>
-                    <div className="billing-detail-label">Next Payment</div>
-                    <div className="billing-detail-value">{formatDate(billing.current_period_end)}</div>
-                  </div>
-                </div>
-              )}
-              <div className="billing-detail">
-                <CreditCard size={16} className="billing-detail-icon" />
-                <div>
-                  <div className="billing-detail-label">Payment Method</div>
-                  <div className="billing-detail-value">{paymentMethodLabel(billing.collection_method)}</div>
-                </div>
-              </div>
-              {billing.billing_email && (
-                <div className="billing-detail">
-                  <Mail size={16} className="billing-detail-icon" />
-                  <div>
-                    <div className="billing-detail-label">Billing Email</div>
-                    <div className="billing-detail-value">{billing.billing_email}</div>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
-        )}
+
+          {/* Details cards */}
+          <div className="billing-cards-grid">
+            {billing.current_period_start && billing.current_period_end && (
+              <div className="billing-info-card">
+                <div className="billing-info-icon"><Calendar size={18} /></div>
+                <div className="billing-info-label">Current Period</div>
+                <div className="billing-info-value">{formatDate(billing.current_period_start)} &ndash; {formatDate(billing.current_period_end)}</div>
+              </div>
+            )}
+            {billing.current_period_end && (
+              <div className="billing-info-card">
+                <div className="billing-info-icon"><Clock size={18} /></div>
+                <div className="billing-info-label">Next Payment</div>
+                <div className="billing-info-value">{formatDate(billing.current_period_end)}</div>
+              </div>
+            )}
+            <div className="billing-info-card">
+              <div className="billing-info-icon"><CreditCard size={18} /></div>
+              <div className="billing-info-label">Payment Method</div>
+              <div className="billing-info-value">{paymentMethodLabel(billing.collection_method)}</div>
+            </div>
+            {billing.billing_email && (
+              <div className="billing-info-card">
+                <div className="billing-info-icon"><Mail size={18} /></div>
+                <div className="billing-info-label">Billing Email</div>
+                <div className="billing-info-value">{billing.billing_email}</div>
+              </div>
+            )}
+            {billing.subscribed_at && (
+              <div className="billing-info-card">
+                <div className="billing-info-icon"><Calendar size={18} /></div>
+                <div className="billing-info-label">Customer Since</div>
+                <div className="billing-info-value">{formatDate(billing.subscribed_at)}</div>
+              </div>
+            )}
+          </div>
+
+          {/* What's included */}
+          <div className="billing-plan-card">
+            <div className="billing-section-title">What's included</div>
+            <ul className="billing-plan-features">
+              {features.map((f) => (
+                <li key={f}>
+                  <Check size={16} className="billing-plan-check" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>)}
       </div>
 
       {showModal && (

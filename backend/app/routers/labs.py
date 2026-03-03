@@ -386,6 +386,13 @@ def billing_status(
             result["subscribed_at"] = details["created"]
             result["collection_method"] = details["collection_method"]
             result["cancel_at_period_end"] = details.get("cancel_at_period_end", False)
+    elif lab.stripe_subscription_id and not app_settings.STRIPE_SECRET_KEY:
+        # Fallback when Stripe isn't configured (local dev)
+        if lab.current_period_end:
+            result["current_period_end"] = int(lab.current_period_end.timestamp())
+        if lab.billing_updated_at:
+            result["subscribed_at"] = int(lab.billing_updated_at.timestamp())
+        result["cancel_at_period_end"] = lab.cancel_at_period_end
     return result
 
 

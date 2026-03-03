@@ -174,22 +174,20 @@ export default function SignupPage() {
                 minLength={10}
                 autoFocus
               />
-              {password.length > 0 && (
-                <div className="password-rules">
-                  <span className={`field-hint ${hasLength ? "hint-success" : "hint-warn"}`}>
-                    {hasLength ? "Length OK" : `${10 - password.length} more character${10 - password.length === 1 ? "" : "s"}`}
-                  </span>
-                  <span className={`field-hint ${hasUpper ? "hint-success" : "hint-warn"}`}>
-                    {hasUpper ? "Uppercase OK" : "Need uppercase"}
-                  </span>
-                  <span className={`field-hint ${hasLower ? "hint-success" : "hint-warn"}`}>
-                    {hasLower ? "Lowercase OK" : "Need lowercase"}
-                  </span>
-                  <span className={`field-hint ${hasDigit ? "hint-success" : "hint-warn"}`}>
-                    {hasDigit ? "Digit OK" : "Need a digit"}
-                  </span>
-                </div>
-              )}
+              <div className="password-rules">
+                <span className={`field-hint ${password.length === 0 ? "" : hasLength ? "hint-success" : "hint-warn"}`}>
+                  {hasLength ? "Length OK" : "10+ characters"}
+                </span>
+                <span className={`field-hint ${password.length === 0 ? "" : hasUpper ? "hint-success" : "hint-warn"}`}>
+                  {hasUpper ? "Uppercase OK" : "Uppercase letter"}
+                </span>
+                <span className={`field-hint ${password.length === 0 ? "" : hasLower ? "hint-success" : "hint-warn"}`}>
+                  {hasLower ? "Lowercase OK" : "Lowercase letter"}
+                </span>
+                <span className={`field-hint ${password.length === 0 ? "" : hasDigit ? "hint-success" : "hint-warn"}`}>
+                  {hasDigit ? "Digit OK" : "A number"}
+                </span>
+              </div>
             </div>
             <div className="form-group">
               <label htmlFor="signup-confirm">Confirm password</label>

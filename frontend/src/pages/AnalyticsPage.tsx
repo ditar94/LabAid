@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Users, UserCheck, CreditCard, TrendingUp, Calendar, ArrowRight } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import MonthPicker, { type DateRange } from "../components/MonthPicker";
 
 interface PeriodStats {
   period: string;
@@ -57,9 +58,41 @@ function statusBadge(status: string | null) {
   return <span className="badge">{status}</span>;
 }
 
+function monthKeyInRange(period: string, fromKey: string, toKey: string): boolean {
+  return period >= fromKey && period <= toKey;
+}
+
+function weekKeyInRange(period: string, fromKey: string, toKey: string): boolean {
+  const [yearStr, weekPart] = period.split("-W");
+  const year = parseInt(yearStr);
+  const week = parseInt(weekPart);
+  const approxMonth = Math.min(11, Math.floor((week - 1) / 4.345));
+  const monthKey = `${year}-${String(approxMonth + 1).padStart(2, "0")}`;
+  return monthKey >= fromKey && monthKey <= toKey;
+}
+
+function barCell(value: number, max: number, color: string) {
+  const pct = max > 0 ? (value / max) * 100 : 0;
+  return (
+    <td style={{ textAlign: "right" }}>
+      <span className="analytics-bar-cell">
+        <span
+          className="analytics-bar"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+        <span className="analytics-bar-value">{value}</span>
+      </span>
+    </td>
+  );
+}
+
+const LEADS_PAGE_SIZE = 50;
+
 export default function AnalyticsPage() {
   const { user } = useAuth();
   const [periodView, setPeriodView] = useState<"monthly" | "weekly">("monthly");
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
+  const [leadsShown, setLeadsShown] = useState(LEADS_PAGE_SIZE);
 
   const isSuperAdmin = user?.role === "super_admin";
 
@@ -68,6 +101,50 @@ export default function AnalyticsPage() {
     queryFn: () => api.get("/admin/conversion-funnel").then((r) => r.data),
     enabled: isSuperAdmin,
   });
+
+  useEffect(() => {
+    setLeadsShown(LEADS_PAGE_SIZE);
+  }, [dateRange]);
+
+  const filtered = useMemo(() => {
+    if (!funnel) return null;
+    if (!dateRange) return funnel;
+
+    const fromKey = `${dateRange.fromYear}-${String(dateRange.fromMonth + 1).padStart(2, "0")}`;
+    const toKey = `${dateRange.toYear}-${String(dateRange.toMonth + 1).padStart(2, "0")}`;
+
+    const filteredMonthly = funnel.monthly.filter((p) => monthKeyInRange(p.period, fromKey, toKey));
+    const filteredWeekly = funnel.weekly.filter((p) => weekKeyInRange(p.period, fromKey, toKey));
+
+    const fromDate = new Date(dateRange.fromYear, dateRange.fromMonth, 1);
+    const toDate = new Date(
+      dateRange.toMonth === 11 ? dateRange.toYear + 1 : dateRange.toYear,
+      dateRange.toMonth === 11 ? 0 : dateRange.toMonth + 1,
+      1,
+    );
+
+    const filteredRows = funnel.rows.filter((row) => {
+      if (!row.demo_date) return false;
+      const d = new Date(row.demo_date);
+      return d >= fromDate && d < toDate;
+    });
+
+    const total_demos = filteredRows.length;
+    const converted_to_trial = filteredRows.filter((r) => r.lab_name).length;
+    const converted_to_paid = filteredRows.filter((r) => r.billing_status === "active").length;
+
+    return {
+      ...funnel,
+      total_demos,
+      converted_to_trial,
+      converted_to_paid,
+      demo_to_trial_rate: total_demos > 0 ? (converted_to_trial / total_demos) * 100 : 0,
+      trial_to_paid_rate: converted_to_trial > 0 ? (converted_to_paid / converted_to_trial) * 100 : 0,
+      monthly: filteredMonthly,
+      weekly: filteredWeekly,
+      rows: filteredRows,
+    };
+  }, [funnel, dateRange]);
 
   if (!isSuperAdmin) {
     return (
@@ -87,7 +164,7 @@ export default function AnalyticsPage() {
     );
   }
 
-  if (!funnel) {
+  if (!filtered) {
     return (
       <div>
         <div className="page-header"><h1>Analytics</h1></div>
@@ -96,59 +173,71 @@ export default function AnalyticsPage() {
     );
   }
 
-  const periods = periodView === "monthly" ? funnel.monthly : funnel.weekly;
-  const overallRate = funnel.total_demos > 0
-    ? ((funnel.converted_to_paid / funnel.total_demos) * 100).toFixed(1)
+  const periods = periodView === "monthly" ? filtered.monthly : filtered.weekly;
+  const overallRate = filtered.total_demos > 0
+    ? ((filtered.converted_to_paid / filtered.total_demos) * 100).toFixed(1)
     : "0";
+
+  const maxDemos = Math.max(1, ...periods.map((p) => p.demos));
+  const maxTrials = Math.max(1, ...periods.map((p) => p.trials));
+  const maxPaid = Math.max(1, ...periods.map((p) => p.paid));
+
+  const visibleRows = filtered.rows.slice(0, leadsShown);
+  const hasMoreLeads = leadsShown < filtered.rows.length;
 
   return (
     <div>
       <div className="page-header">
         <h1>Analytics</h1>
+        <MonthPicker
+          value={dateRange}
+          onChange={setDateRange}
+          onClear={() => setDateRange(null)}
+        />
       </div>
 
       {/* Funnel summary */}
       <div className="analytics-funnel-bar">
         <div className="analytics-funnel-step">
-          <div className="analytics-funnel-count">{funnel.total_demos}</div>
+          <div className="analytics-funnel-count">{filtered.total_demos}</div>
           <div className="analytics-funnel-label">Demos</div>
         </div>
         <div className="analytics-funnel-arrow">
           <ArrowRight size={16} />
-          <span className="analytics-funnel-rate">{funnel.demo_to_trial_rate.toFixed(0)}%</span>
+          <span className="analytics-funnel-rate">{filtered.demo_to_trial_rate.toFixed(0)}%</span>
         </div>
         <div className="analytics-funnel-step">
-          <div className="analytics-funnel-count">{funnel.converted_to_trial}</div>
+          <div className="analytics-funnel-count">{filtered.converted_to_trial}</div>
           <div className="analytics-funnel-label">Trials</div>
         </div>
         <div className="analytics-funnel-arrow">
           <ArrowRight size={16} />
-          <span className="analytics-funnel-rate">{funnel.trial_to_paid_rate.toFixed(0)}%</span>
+          <span className="analytics-funnel-rate">{filtered.trial_to_paid_rate.toFixed(0)}%</span>
         </div>
         <div className="analytics-funnel-step">
-          <div className="analytics-funnel-count">{funnel.converted_to_paid}</div>
+          <div className="analytics-funnel-count">{filtered.converted_to_paid}</div>
           <div className="analytics-funnel-label">Paid</div>
         </div>
       </div>
 
       {/* Stat cards */}
       <div className="stats-grid" style={{ marginBottom: 24 }}>
-        <div className="stat-card priority-card info">
+        <div className="stat-card info">
           <div className="stat-icon-wrap"><Users size={20} /></div>
-          <div className="stat-value">{funnel.total_demos}</div>
+          <div className="stat-value">{filtered.total_demos}</div>
           <div className="stat-label">Total Demos</div>
         </div>
-        <div className="stat-card priority-card info">
+        <div className="stat-card info">
           <div className="stat-icon-wrap"><UserCheck size={20} /></div>
-          <div className="stat-value">{funnel.converted_to_trial}</div>
+          <div className="stat-value">{filtered.converted_to_trial}</div>
           <div className="stat-label">Converted to Trial</div>
         </div>
-        <div className="stat-card priority-card info">
+        <div className="stat-card info">
           <div className="stat-icon-wrap"><CreditCard size={20} /></div>
-          <div className="stat-value">{funnel.converted_to_paid}</div>
+          <div className="stat-value">{filtered.converted_to_paid}</div>
           <div className="stat-label">Converted to Paid</div>
         </div>
-        <div className="stat-card priority-card info">
+        <div className="stat-card info">
           <div className="stat-icon-wrap"><TrendingUp size={20} /></div>
           <div className="stat-value">{overallRate}%</div>
           <div className="stat-label">Overall Conversion</div>
@@ -162,15 +251,15 @@ export default function AnalyticsPage() {
             <Calendar size={18} style={{ marginRight: 8, verticalAlign: "text-bottom" }} />
             Conversions by {periodView === "monthly" ? "Month" : "Week"}
           </h2>
-          <div className="filters">
+          <div className="view-toggle">
             <button
-              className={`btn-secondary${periodView === "monthly" ? " active" : ""}`}
+              className={`view-toggle-btn${periodView === "monthly" ? " active" : ""}`}
               onClick={() => setPeriodView("monthly")}
             >
               Month
             </button>
             <button
-              className={`btn-secondary${periodView === "weekly" ? " active" : ""}`}
+              className={`view-toggle-btn${periodView === "weekly" ? " active" : ""}`}
               onClick={() => setPeriodView("weekly")}
             >
               Week
@@ -179,7 +268,7 @@ export default function AnalyticsPage() {
         </div>
 
         {periods.length === 0 ? (
-          <p className="text-muted">No data yet.</p>
+          <p className="text-muted">No data for this period.</p>
         ) : (
           <div className="table-responsive">
             <table>
@@ -197,9 +286,9 @@ export default function AnalyticsPage() {
                 {periods.map((p) => (
                   <tr key={p.period}>
                     <td>{formatPeriodLabel(p.period)}</td>
-                    <td style={{ textAlign: "right" }}>{p.demos}</td>
-                    <td style={{ textAlign: "right" }}>{p.trials}</td>
-                    <td style={{ textAlign: "right" }}>{p.paid}</td>
+                    {barCell(p.demos, maxDemos, "var(--primary-500)")}
+                    {barCell(p.trials, maxTrials, "var(--warning-500)")}
+                    {barCell(p.paid, maxPaid, "var(--success-500)")}
                     <td style={{ textAlign: "right" }}>
                       {p.demos > 0 ? `${((p.trials / p.demos) * 100).toFixed(0)}%` : "-"}
                     </td>
@@ -216,7 +305,12 @@ export default function AnalyticsPage() {
 
       {/* Lead detail table */}
       <div className="card">
-        <h2 style={{ marginBottom: 16 }}>All Leads</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h2 style={{ margin: 0 }}>All Leads</h2>
+          <span className="text-muted" style={{ fontSize: "var(--text-sm)" }}>
+            {filtered.rows.length} total
+          </span>
+        </div>
         <div className="table-responsive">
           <table>
             <thead>
@@ -231,7 +325,7 @@ export default function AnalyticsPage() {
               </tr>
             </thead>
             <tbody>
-              {funnel.rows.map((row, i) => (
+              {visibleRows.map((row, i) => (
                 <tr key={`${row.email}-${i}`}>
                   <td>{row.email}</td>
                   <td>{row.demo_source || <span className="text-muted">-</span>}</td>
@@ -245,6 +339,16 @@ export default function AnalyticsPage() {
             </tbody>
           </table>
         </div>
+        {hasMoreLeads && (
+          <div style={{ textAlign: "center", padding: "1rem" }}>
+            <button
+              className="btn-secondary"
+              onClick={() => setLeadsShown((n) => n + LEADS_PAGE_SIZE)}
+            >
+              Load more ({filtered.rows.length - leadsShown} remaining)
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

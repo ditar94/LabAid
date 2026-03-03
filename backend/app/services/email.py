@@ -130,7 +130,7 @@ def send_invite_email(to: str, full_name: str, token: str) -> tuple[bool, str]:
 
 
 def send_reset_email(to: str, full_name: str, token: str) -> tuple[bool, str]:
-    link = _build_link(token)
+    link = _build_link(token) + "&mode=reset"
     html = _reset_html(full_name, link)
     success = _send_invite_or_reset(to, "LabAid — Reset Your Password", html)
     return success, link
@@ -152,7 +152,7 @@ def _forgot_password_html(full_name: str, link: str) -> str:
 
 
 def send_forgot_password_email(to: str, full_name: str, token: str) -> tuple[bool, str]:
-    link = _build_link(token)
+    link = _build_link(token) + "&mode=reset"
     html = _forgot_password_html(full_name, link)
     success = _send_invite_or_reset(to, "LabAid — Reset Your Password", html)
     if settings.EMAIL_BACKEND == "console":

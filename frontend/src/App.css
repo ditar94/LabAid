@@ -936,9 +936,10 @@ input.input-error {
 .onboarding-steps {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  justify-content: center;
+  gap: 4px;
   margin-bottom: var(--space-xl);
-  padding: var(--space-md) var(--space-lg);
+  padding: var(--space-sm) var(--space-sm);
   background: rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-md);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -947,8 +948,8 @@ input.input-error {
 .onboarding-step {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  font-size: var(--text-xs);
+  gap: 4px;
+  font-size: 11px;
   color: var(--neutral-500);
   white-space: nowrap;
 }
@@ -956,10 +957,12 @@ input.input-error {
 .onboarding-step + .onboarding-step::before {
   content: '';
   display: inline-block;
-  width: 20px;
+  width: 12px;
+  min-width: 8px;
   height: 1px;
   background: var(--neutral-600);
-  margin-right: var(--space-xs);
+  margin-right: 4px;
+  flex-shrink: 1;
 }
 
 .step-dot {
@@ -996,6 +999,7 @@ input.input-error {
   display: block;
   font-size: var(--text-xs);
   margin-top: var(--space-xs);
+  color: var(--text-muted);
   transition: color var(--duration-fast) ease;
 }
 
@@ -1003,6 +1007,7 @@ input.input-error {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-xs) var(--space-sm);
+  margin-top: var(--space-xs);
 }
 
 .password-rules .field-hint {
@@ -3779,7 +3784,7 @@ h2 .temp-badge {
 .month-picker-dropdown {
   position: absolute;
   top: 100%;
-  left: 0;
+  right: 0;
   z-index: 50;
   width: 240px;
   background: var(--card-bg);
@@ -6632,6 +6637,11 @@ tr.lot-separator-row td {
   color: #fff;
 }
 
+.badge-success { background: var(--surface-success); color: var(--on-surface-success); }
+.badge-info { background: var(--surface-primary); color: var(--on-surface-primary); }
+.badge-warning { background: var(--surface-warning); color: var(--on-surface-warning); }
+.badge-danger { background: var(--surface-danger); color: var(--on-surface-danger); }
+
 /* ── Document List ───────────────────────────────────────────────────── */
 
 .document-list {
@@ -8590,7 +8600,7 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 640px;
+  max-width: 720px;
 }
 
 
@@ -8648,6 +8658,10 @@ textarea:focus-visible {
 
 .billing-plan-card {
   padding: 28px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.06));
 }
 
 .billing-plan-header {
@@ -8772,6 +8786,93 @@ textarea:focus-visible {
   font-weight: 500;
 }
 
+/* Active plan extras */
+
+.billing-active-plan {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.billing-active-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--success-500), var(--primary-500));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.billing-portal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.billing-renewal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.billing-renewal-date {
+  color: var(--text-muted);
+}
+
+.billing-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.billing-info-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.06));
+}
+
+.billing-info-icon {
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.billing-info-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.billing-info-value {
+  font-size: var(--text-sm);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.billing-section-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
 /* ── Payment Choice Modal ──────────────────────────────────────────────── */
 
 .payment-options {
@@ -8842,4 +8943,92 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+/* ── Analytics Funnel ──────────────────────────────────────────────── */
+
+.analytics-funnel-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xl);
+  padding: var(--space-xl) var(--space-lg);
+  margin-bottom: var(--space-xl);
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+}
+
+.analytics-funnel-step {
+  text-align: center;
+  min-width: 80px;
+}
+
+.analytics-funnel-count {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.analytics-funnel-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: var(--space-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
+
+.analytics-funnel-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--neutral-300);
+}
+
+.analytics-funnel-rate {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--primary);
+}
+
+@media (max-width: 480px) {
+  .analytics-funnel-bar {
+    gap: var(--space-md);
+    padding: var(--space-lg) var(--space-md);
+  }
+  .analytics-funnel-count { font-size: 1.5rem; }
+  .analytics-funnel-step { min-width: 56px; }
+}
+
+/* ── Analytics Bar Chart Cells ─────────────────────────────────────── */
+
+.analytics-bar-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  position: relative;
+  width: 100%;
+  min-width: 48px;
+}
+
+.analytics-bar {
+  position: absolute;
+  left: 0;
+  top: -2px;
+  bottom: -2px;
+  border-radius: var(--radius-sm);
+  opacity: 0.15;
+  transition: width var(--duration-normal) var(--ease-out);
+}
+
+.analytics-bar-value {
+  position: relative;
+  z-index: 1;
+  font-variant-numeric: tabular-nums;
 }

@@ -2,13 +2,14 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, KeyRound } from "lucide-react";
 
 export default function SetPasswordPage() {
   const { refreshUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
+  const isReset = searchParams.get("mode") === "reset";
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -78,29 +79,33 @@ export default function SetPasswordPage() {
 
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-icon login-icon-welcome">
-            <ShieldCheck size={26} />
+          <div className={`login-icon${isReset ? "" : " login-icon-welcome"}`}>
+            {isReset ? <KeyRound size={26} /> : <ShieldCheck size={26} />}
           </div>
           <div>
-            <h1>Welcome to LabAid</h1>
-            <p className="subtitle">Set your password to get started</p>
+            <h1>{isReset ? "Reset Password" : "Welcome to LabAid"}</h1>
+            <p className="subtitle">
+              {isReset ? "Enter a new password for your account" : "Set your password to get started"}
+            </p>
           </div>
         </div>
 
-        <div className="onboarding-steps">
-          <div className="onboarding-step completed">
-            <div className="step-dot" />
-            <span>Account created</span>
+        {!isReset && (
+          <div className="onboarding-steps">
+            <div className="onboarding-step completed">
+              <div className="step-dot" />
+              <span>Account created</span>
+            </div>
+            <div className="onboarding-step active">
+              <div className="step-dot" />
+              <span>Set password</span>
+            </div>
+            <div className="onboarding-step">
+              <div className="step-dot" />
+              <span>Start using LabAid</span>
+            </div>
           </div>
-          <div className="onboarding-step active">
-            <div className="step-dot" />
-            <span>Set password</span>
-          </div>
-          <div className="onboarding-step">
-            <div className="step-dot" />
-            <span>Start using LabAid</span>
-          </div>
-        </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -115,22 +120,20 @@ export default function SetPasswordPage() {
               minLength={10}
               autoFocus
             />
-            {password.length > 0 && (
-              <div className="password-rules">
-                <span className={`field-hint ${hasLength ? "hint-success" : "hint-warn"}`}>
-                  {hasLength ? "Length OK" : `${10 - password.length} more character${10 - password.length === 1 ? "" : "s"}`}
-                </span>
-                <span className={`field-hint ${hasUpper ? "hint-success" : "hint-warn"}`}>
-                  {hasUpper ? "Uppercase OK" : "Need uppercase"}
-                </span>
-                <span className={`field-hint ${hasLower ? "hint-success" : "hint-warn"}`}>
-                  {hasLower ? "Lowercase OK" : "Need lowercase"}
-                </span>
-                <span className={`field-hint ${hasDigit ? "hint-success" : "hint-warn"}`}>
-                  {hasDigit ? "Digit OK" : "Need a digit"}
-                </span>
-              </div>
-            )}
+            <div className="password-rules">
+              <span className={`field-hint ${password.length === 0 ? "" : hasLength ? "hint-success" : "hint-warn"}`}>
+                {hasLength ? "Length OK" : "10+ characters"}
+              </span>
+              <span className={`field-hint ${password.length === 0 ? "" : hasUpper ? "hint-success" : "hint-warn"}`}>
+                {hasUpper ? "Uppercase OK" : "Uppercase letter"}
+              </span>
+              <span className={`field-hint ${password.length === 0 ? "" : hasLower ? "hint-success" : "hint-warn"}`}>
+                {hasLower ? "Lowercase OK" : "Lowercase letter"}
+              </span>
+              <span className={`field-hint ${password.length === 0 ? "" : hasDigit ? "hint-success" : "hint-warn"}`}>
+                {hasDigit ? "Digit OK" : "A number"}
+              </span>
+            </div>
           </div>
           <div className="form-group">
             <label htmlFor="confirm-set-password">Confirm Password</label>
@@ -157,7 +160,7 @@ export default function SetPasswordPage() {
             className="login-submit"
             disabled={!passwordValid || !passwordsMatch || loading}
           >
-            {loading ? "Setting password..." : "Set Password & Continue"}
+            {loading ? "Setting password..." : isReset ? "Reset Password" : "Set Password & Continue"}
           </button>
         </form>
       </div>
