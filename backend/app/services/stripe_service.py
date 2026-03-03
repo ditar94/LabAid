@@ -56,6 +56,21 @@ def get_stripe_client() -> StripeClient:
     return _client
 
 
+def _finalize_latest_invoice(client: StripeClient, latest_invoice, lab_id) -> None:
+    if not latest_invoice:
+        return
+    if isinstance(latest_invoice, str):
+        invoice_id = latest_invoice
+    else:
+        if latest_invoice.status != "draft":
+            return
+        invoice_id = latest_invoice.id
+    try:
+        client.invoices.finalize_invoice(invoice_id)
+    except Exception:
+        logger.warning("Could not auto-finalize invoice %s for lab %s", invoice_id, lab_id)
+
+
 def get_or_create_customer(db: Session, lab: Lab) -> str:
     if lab.stripe_customer_id:
         return lab.stripe_customer_id
@@ -130,6 +145,9 @@ def create_invoice_subscription(db: Session, lab: Lab) -> str:
         },
         options={"idempotency_key": f"invsub_{lab.id}_{int(time.time() // 300)}"},
     )
+
+    _finalize_latest_invoice(client, subscription.latest_invoice, lab.id)
+
     return subscription.id
 
 
@@ -138,7 +156,13 @@ def get_subscription_details(lab: Lab) -> dict | None:
         return None
     client = get_stripe_client()
     try:
-        sub = client.subscriptions.retrieve(lab.stripe_subscription_id)
+        sub = client.subscriptions.retrieve(
+            lab.stripe_subscription_id,
+            params={"expand": ["latest_invoice"]},
+        )
+        latest_invoice_status = None
+        if sub.latest_invoice and not isinstance(sub.latest_invoice, str):
+            latest_invoice_status = sub.latest_invoice.status
         return {
             "status": sub.status,
             "current_period_start": sub.current_period_start,
@@ -146,6 +170,7 @@ def get_subscription_details(lab: Lab) -> dict | None:
             "created": sub.created,
             "collection_method": sub.collection_method,
             "cancel_at_period_end": sub.cancel_at_period_end,
+            "latest_invoice_status": latest_invoice_status,
         }
     except Exception as e:
         logger.warning("Could not fetch subscription %s: %s", lab.stripe_subscription_id, type(e).__name__)
@@ -208,7 +233,7 @@ def convert_trial_to_invoice(db: Session, lab: Lab) -> str:
     description = "LabAid Annual Subscription"
     if settings.STRIPE_CHECK_ADDRESS:
         description += f"\n\nTo pay by check, please mail to:\n{settings.STRIPE_CHECK_ADDRESS}"
-    client.subscriptions.update(
+    updated_sub = client.subscriptions.update(
         lab.stripe_subscription_id,
         params={
             "collection_method": "send_invoice",
@@ -222,6 +247,9 @@ def convert_trial_to_invoice(db: Session, lab: Lab) -> str:
         },
         options={"idempotency_key": f"trial_to_inv_{lab.id}_{int(time.time() // 300)}"},
     )
+
+    _finalize_latest_invoice(client, updated_sub.latest_invoice, lab.id)
+
     return lab.stripe_subscription_id
 
 

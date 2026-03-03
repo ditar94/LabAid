@@ -523,6 +523,13 @@ def signup(
         except Exception:
             logger.warning("Failed to create Stripe trial for lab %s", lab.id)
 
+    try:
+        from app.services.email import send_trial_welcome_email
+        trial_end = lab.trial_ends_at.strftime("%B %d, %Y") if lab.trial_ends_at else "7 days from now"
+        send_trial_welcome_email(body.email.lower(), full_name, trial_end)
+    except Exception:
+        logger.warning("Failed to send trial welcome email to %s", body.email)
+
     token = create_access_token(
         {"sub": str(user.id), "lab_id": str(lab.id), "role": user.role.value}
     )

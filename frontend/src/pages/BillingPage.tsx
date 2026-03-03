@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { CreditCard, Calendar, Mail, Clock, Check, ShieldCheck, ExternalLink, AlertTriangle } from "lucide-react";
+import { CreditCard, Calendar, Mail, Clock, Check, ShieldCheck, ExternalLink, AlertTriangle, FileText } from "lucide-react";
 import api from "../api/client";
 import { useToast } from "../context/ToastContext";
 
@@ -18,6 +18,7 @@ interface BillingStatus {
   subscribed_at: number | null;
   collection_method: string | null;
   cancel_at_period_end?: boolean;
+  latest_invoice_status: string | null;
 }
 
 function formatDate(ts: number | null | undefined): string {
@@ -223,6 +224,24 @@ export default function BillingPage() {
             <div className="billing-message billing-message--warning">
               <Clock size={16} />
               <span>Your subscription is set to cancel on {formatDate(billing.current_period_end)}. To keep your subscription, click Manage Billing.</span>
+            </div>
+          )}
+          {isActive && billing.collection_method === "send_invoice" && billing.latest_invoice_status && billing.latest_invoice_status !== "paid" && (
+            <div className="billing-message billing-message--info">
+              <FileText size={16} />
+              <span>
+                {billing.latest_invoice_status === "open"
+                  ? "Your invoice has been sent and is awaiting payment."
+                  : billing.latest_invoice_status === "draft"
+                    ? "Your invoice is being prepared and will be sent shortly."
+                    : `Invoice status: ${billing.latest_invoice_status}`}
+              </span>
+            </div>
+          )}
+          {isActive && billing.collection_method === "send_invoice" && billing.latest_invoice_status === "paid" && (
+            <div className="billing-message billing-message--success">
+              <Check size={16} />
+              <span>Your invoice has been paid. Thank you!</span>
             </div>
           )}
 

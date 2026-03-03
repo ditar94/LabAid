@@ -8638,6 +8638,12 @@ textarea:focus-visible {
   border: 1px solid #fecaca;
 }
 
+.billing-message--success {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
 :root[data-theme="dark"] .billing-message--info {
   background: rgba(99, 102, 241, 0.1);
   color: var(--primary-300);
@@ -8654,6 +8660,12 @@ textarea:focus-visible {
   background: rgba(239, 68, 68, 0.1);
   color: #f87171;
   border-color: rgba(239, 68, 68, 0.2);
+}
+
+:root[data-theme="dark"] .billing-message--success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.2);
 }
 
 .billing-plan-card {

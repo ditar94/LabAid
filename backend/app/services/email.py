@@ -176,6 +176,36 @@ def _demo_ready_html(login_link: str) -> str:
     )
 
 
+def _trial_welcome_html(full_name: str, trial_end_date: str) -> str:
+    return (
+        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">'
+        f"<h2>Welcome to LabAid, {full_name}!</h2>"
+        "<p>Your 7-day free trial is now active. You have full access to everything LabAid offers:</p>"
+        '<ul style="color:#374151;line-height:1.8">'
+        "<li>Barcode scanning on any device</li>"
+        "<li>Full vial lifecycle tracking</li>"
+        "<li>Expiration tracking &amp; alerts</li>"
+        "<li>Visual storage grid mapping</li>"
+        "<li>Immutable audit trail</li>"
+        "<li>Role-based access control</li>"
+        "</ul>"
+        f'<p style="margin:24px 0;padding:16px;background:#f0fdf4;border-radius:8px;'
+        f'border:1px solid #bbf7d0;color:#15803d;font-weight:600">'
+        f"Your trial ends on {trial_end_date}.</p>"
+        f'<p style="text-align:center;margin:32px 0">'
+        f'<a href="{settings.APP_URL}" style="background:#2563eb;color:#fff;padding:12px 28px;'
+        'border-radius:6px;text-decoration:none;font-weight:600">Go to LabAid</a></p>'
+        '<p style="color:#666;font-size:13px">Questions? Reply to this email or open a '
+        "support ticket from within the app.</p>"
+        "</div>"
+    )
+
+
+def send_trial_welcome_email(to: str, full_name: str, trial_end_date: str) -> bool:
+    html = _trial_welcome_html(full_name, trial_end_date)
+    return _send_invite_or_reset(to, "Welcome to LabAid — Your 7-Day Trial Starts Now", html)
+
+
 def send_demo_ready_email(to: str, login_link: str) -> bool:
     html = _demo_ready_html(login_link)
     return _send_invite_or_reset(to, "Your LabAid Demo Is Ready", html)

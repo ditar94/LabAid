@@ -386,6 +386,7 @@ def billing_status(
             result["subscribed_at"] = details["created"]
             result["collection_method"] = details["collection_method"]
             result["cancel_at_period_end"] = details.get("cancel_at_period_end", False)
+            result["latest_invoice_status"] = details.get("latest_invoice_status")
     elif lab.stripe_subscription_id and not app_settings.STRIPE_SECRET_KEY:
         # Fallback when Stripe isn't configured (local dev)
         if lab.current_period_end:
@@ -443,6 +444,9 @@ def billing_invoice(
     if not lab.billing_email:
         raise HTTPException(status_code=400, detail="Billing email is required for invoice subscriptions")
 
+    if lab.stripe_subscription_id and lab.billing_status != "trial":
+        raise HTTPException(status_code=409, detail="Lab already has an active subscription")
+
     from app.services.stripe_service import create_invoice_subscription, apply_subscription_status, convert_trial_to_invoice, get_stripe_client
     from stripe._error import StripeError
     try:
@@ -453,12 +457,17 @@ def billing_invoice(
             )
         if lab.stripe_subscription_id and lab.billing_status == "trial":
             subscription_id = convert_trial_to_invoice(db, lab)
-            apply_subscription_status(db, lab, "active", subscription_id, current_user.id)
-        elif not lab.stripe_subscription_id:
-            subscription_id = create_invoice_subscription(db, lab)
-            apply_subscription_status(db, lab, "active", subscription_id, current_user.id)
         else:
-            raise HTTPException(status_code=409, detail="Lab already has an active subscription")
+            subscription_id = create_invoice_subscription(db, lab)
+
+        client = get_stripe_client()
+        sub = client.subscriptions.retrieve(subscription_id)
+        apply_subscription_status(
+            db, lab, sub.status, subscription_id=subscription_id,
+            current_period_end=sub.current_period_end,
+            cancel_at_period_end=sub.cancel_at_period_end,
+            user_id=current_user.id,
+        )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except StripeError:
