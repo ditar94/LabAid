@@ -54,13 +54,17 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         elif event_type == "checkout.session.async_payment_succeeded":
             _handle_checkout_completed(db, data)
         elif event_type == "checkout.session.async_payment_failed":
-            logger.warning("Async payment failed for session %s", data.get("id"))
+            _handle_async_payment_failed(db, data)
         elif event_type == "invoice.paid":
             _handle_invoice_paid(db, data)
         elif event_type == "invoice.payment_failed":
             _handle_invoice_payment_failed(db, data)
-        elif event_type in ("invoice.marked_uncollectible", "invoice.overdue"):
+        elif event_type == "invoice.overdue":
             _handle_invoice_payment_failed(db, data)
+        elif event_type == "invoice.marked_uncollectible":
+            _handle_invoice_uncollectible(db, data)
+        elif event_type == "invoice.upcoming":
+            _handle_invoice_upcoming(db, data)
         elif event_type == "customer.subscription.created":
             _handle_subscription_created(db, data)
         elif event_type == "customer.subscription.updated":
@@ -194,6 +198,72 @@ def _handle_invoice_payment_failed(db: Session, invoice: dict) -> None:
         except Exception:
             logger.warning("Could not fetch subscription %s in invoice.payment_failed handler", subscription_id)
     apply_subscription_status(db, lab, status, subscription_id=subscription_id)
+
+
+def _handle_async_payment_failed(db: Session, session: dict) -> None:
+    """F1: Fetch subscription status on async payment failure (e.g. ACH) for faster sync."""
+    subscription_id = session.get("subscription")
+    customer_id = session.get("customer")
+    if not subscription_id or not customer_id:
+        logger.warning("Async payment failed for session %s", session.get("id"))
+        return
+    lab = _find_lab_by_customer(db, customer_id)
+    if not lab:
+        return
+    status = "past_due"
+    if settings.STRIPE_SECRET_KEY:
+        try:
+            client = get_stripe_client()
+            sub = client.subscriptions.retrieve(subscription_id)
+            status = sub.status or "past_due"
+        except Exception:
+            logger.warning("Could not fetch subscription %s in async_payment_failed handler", subscription_id)
+    apply_subscription_status(db, lab, status, subscription_id=subscription_id)
+
+
+def _handle_invoice_uncollectible(db: Session, invoice: dict) -> None:
+    """F2: Uncollectible = terminal state. Fall back to 'canceled' if Stripe API unreachable."""
+    customer_id = invoice.get("customer")
+    if not customer_id:
+        return
+    lab = _find_lab_by_customer(db, customer_id)
+    if not lab:
+        return
+    subscription_id = invoice.get("subscription")
+    status = "canceled"
+    if subscription_id and settings.STRIPE_SECRET_KEY:
+        try:
+            client = get_stripe_client()
+            sub = client.subscriptions.retrieve(subscription_id)
+            status = sub.status or "canceled"
+        except Exception:
+            logger.warning("Could not fetch subscription %s in invoice.marked_uncollectible handler", subscription_id)
+    apply_subscription_status(db, lab, status, subscription_id=subscription_id)
+
+
+def _handle_invoice_upcoming(db: Session, invoice: dict) -> None:
+    """F4: Log upcoming renewal for audit trail."""
+    customer_id = invoice.get("customer")
+    if not customer_id:
+        return
+    lab = _find_lab_by_customer(db, customer_id)
+    if not lab:
+        return
+    lab_admin = db.query(User).filter(
+        User.lab_id == lab.id,
+        User.role.in_([UserRole.LAB_ADMIN, UserRole.SUPER_ADMIN]),
+    ).first()
+    if lab_admin:
+        log_audit(
+            db,
+            lab_id=lab.id,
+            user_id=lab_admin.id,
+            action="lab.subscription_renewing",
+            entity_type="lab",
+            entity_id=lab.id,
+            note="Subscription renews in ~3 days",
+        )
+    logger.info("Subscription renewing soon for lab %s", lab.id)
 
 
 def _handle_subscription_created(db: Session, subscription: dict) -> None:

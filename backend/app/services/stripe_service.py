@@ -87,6 +87,7 @@ def create_checkout_session(db: Session, lab: Lab, success_url: str, cancel_url:
             "customer": customer_id,
             "client_reference_id": str(lab.id),
             "mode": "subscription",
+            "currency": "usd",
             "line_items": [{"price": settings.STRIPE_PRICE_ID, "quantity": 1}],
             "success_url": success_url,
             "cancel_url": cancel_url,
@@ -215,6 +216,9 @@ def convert_trial_to_invoice(db: Session, lab: Lab) -> str:
             "trial_end": "now",
             "description": description,
             "default_payment_method": "",
+            "trial_settings": {
+                "end_behavior": {"missing_payment_method": "create_invoice"},
+            },
         },
         options={"idempotency_key": f"trial_to_inv_{lab.id}_{int(time.time() // 300)}"},
     )
