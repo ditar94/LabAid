@@ -23,7 +23,7 @@ resource "google_storage_bucket" "documents" {
   lifecycle_rule {
     condition {
       num_newer_versions = 3
-      with_state         = "NONCURRENT"
+      with_state         = "ARCHIVED"
     }
     action {
       type = "Delete"

@@ -1,6 +1,7 @@
 project_id              = "labaid-prod"
 region                  = "us-central1"
 cloud_run_service_name  = "labaid-backend"
+min_instances           = 1
 max_instances           = 3
 email_backend           = "resend"
 app_url                 = "https://labaid.io"

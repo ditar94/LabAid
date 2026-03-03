@@ -29,7 +29,7 @@ resource "google_sql_database_instance" "nonprod" {
 
     ip_configuration {
       ipv4_enabled = true
-      require_ssl  = true
+      ssl_mode    = "ENCRYPTED_ONLY"
 
       dynamic "authorized_networks" {
         for_each = var.authorized_networks
@@ -120,7 +120,7 @@ resource "google_sql_database_instance" "prod" {
 
     ip_configuration {
       ipv4_enabled = true
-      require_ssl  = true
+      ssl_mode    = "ENCRYPTED_ONLY"
 
       dynamic "authorized_networks" {
         for_each = var.authorized_networks

@@ -31,7 +31,7 @@ resource "google_monitoring_alert_policy" "uptime_failure" {
     display_name = "Uptime check failing"
 
     condition_threshold {
-      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.labels.check_id = \"${google_monitoring_uptime_check_config.api_health.uptime_check_id}\""
+      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.api_health.uptime_check_id}\""
       comparison      = "COMPARISON_GT"
       threshold_value = 1
       duration        = "300s"

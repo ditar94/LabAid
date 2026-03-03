@@ -198,6 +198,10 @@ jobs:
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Terraform init
+        # NOTE: -backend=false means plan has no remote state, so ALL resources
+        # appear as "create". The destructive action check below only catches
+        # syntax/structural issues, not real destroy plans. Real protection
+        # comes from tf-apply.sh running locally with state access.
         run: terraform init -backend=false
 
       - name: Terraform validate
@@ -215,7 +219,7 @@ jobs:
 
       - name: Check for destructive actions on stateful resources
         run: |
-          PROTECTED_TYPES='["google_sql_database_instance", "google_sql_database", "google_sql_user", "google_storage_bucket"]'
+          PROTECTED_TYPES='["google_sql_database_instance", "google_sql_database", "google_sql_user", "google_storage_bucket", "google_cloud_run_v2_service"]'
 
           DESTROYS=$(python3 -c "
           import json

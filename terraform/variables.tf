@@ -14,6 +14,12 @@ variable "cloud_run_service_name" {
   type        = string
 }
 
+variable "min_instances" {
+  description = "Minimum Cloud Run instances (1 = always warm, 0 = scale to zero)"
+  type        = number
+  default     = 0
+}
+
 variable "max_instances" {
   description = "Maximum Cloud Run instances"
   type        = number

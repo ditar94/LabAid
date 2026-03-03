@@ -335,6 +335,7 @@ jobs:
         run: |
           gcloud run services update labaid-backend \
             --image ${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${REPO_NAME}/backend:${GITHUB_SHA} \
+            --min-instances=1 \
             --region ${GCP_REGION} \
             --project ${GCP_PROJECT}
 

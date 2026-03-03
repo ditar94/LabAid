@@ -35,6 +35,7 @@ PROTECTED_TYPES=(
   "google_sql_database"
   "google_sql_user"
   "google_storage_bucket"
+  "google_cloud_run_v2_service"
 )
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
@@ -63,6 +64,32 @@ done
 if [[ ! "$TFVARS_FILE" == /* ]]; then
   if [[ -f "${TF_DIR}/environments/${TFVARS_FILE}" ]]; then
     TFVARS_FILE="environments/${TFVARS_FILE}"
+  fi
+fi
+
+# ── Guard against applying the wrong tfvars ───────────────────────────────────
+# Tracks which tfvars was last applied to prevent cross-env state corruption.
+# e.g. applying staging.tfvars after prod.tfvars would try to destroy prod resources.
+LAST_APPLIED_FILE="${TF_DIR}/.last-applied-tfvars"
+
+if [[ -f "$LAST_APPLIED_FILE" ]]; then
+  LAST_APPLIED=$(cat "$LAST_APPLIED_FILE")
+  if [[ "$LAST_APPLIED" != "$TFVARS_FILE" ]]; then
+    echo -e "${RED}╔══════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║  WARNING: Different tfvars than last apply!                     ║${NC}"
+    echo -e "${RED}╚══════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  Last applied: ${YELLOW}${LAST_APPLIED}${NC}"
+    echo -e "  This apply:   ${YELLOW}${TFVARS_FILE}${NC}"
+    echo ""
+    echo -e "${RED}Applying a different tfvars against the same state can DESTROY${NC}"
+    echo -e "${RED}resources from the previous environment.${NC}"
+    echo ""
+    read -p "Are you SURE you want to continue? (yes/no): " SWITCH_CONFIRM
+    if [[ "$SWITCH_CONFIRM" != "yes" ]]; then
+      echo "Aborted."
+      exit 0
+    fi
   fi
 fi
 
@@ -148,5 +175,6 @@ if [[ "$CONFIRM" != "yes" ]]; then
 fi
 
 terraform apply "$PLAN_FILE"
+echo "$TFVARS_FILE" > "$LAST_APPLIED_FILE"
 echo ""
 echo -e "${GREEN}Apply complete.${NC}"

@@ -8,7 +8,7 @@ resource "google_cloud_run_v2_service" "backend" {
     timeout                          = "60s"
 
     scaling {
-      min_instance_count = 0
+      min_instance_count = var.min_instances
       max_instance_count = var.max_instances
     }
 
