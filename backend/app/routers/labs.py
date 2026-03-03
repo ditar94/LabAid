@@ -447,7 +447,8 @@ def billing_invoice(
     if lab.stripe_subscription_id and lab.billing_status != "trial":
         raise HTTPException(status_code=409, detail="Lab already has an active subscription")
 
-    from app.services.stripe_service import create_invoice_subscription, apply_subscription_status, convert_trial_to_invoice, get_stripe_client
+    from app.services.stripe_service import create_invoice_subscription, convert_trial_to_invoice, get_stripe_client
+    from app.core.cache import suspension_cache
     from stripe._error import StripeError
     try:
         if body.billing_email and lab.stripe_customer_id:
@@ -462,12 +463,24 @@ def billing_invoice(
 
         client = get_stripe_client()
         sub = client.subscriptions.retrieve(subscription_id)
-        apply_subscription_status(
-            db, lab, sub.status, subscription_id=subscription_id,
-            current_period_end=sub.current_period_end,
-            cancel_at_period_end=sub.cancel_at_period_end,
-            user_id=current_user.id,
+
+        before = snapshot_lab(lab)
+        lab.stripe_subscription_id = subscription_id
+        lab.billing_status = BillingStatus.INVOICE_PENDING.value
+        lab.billing_updated_at = datetime.now(timezone.utc)
+        lab.is_active = True
+        lab.trial_ends_at = None
+        if sub.current_period_end:
+            lab.current_period_end = datetime.fromtimestamp(sub.current_period_end, tz=timezone.utc)
+        if sub.cancel_at_period_end is not None:
+            lab.cancel_at_period_end = sub.cancel_at_period_end
+        log_audit(
+            db, lab_id=lab.id, user_id=current_user.id,
+            action="lab.billing_updated", entity_type="lab", entity_id=lab.id,
+            before_state=before, after_state=snapshot_lab(lab),
+            note="Invoice subscription created: trial → invoice_pending",
         )
+        suspension_cache.pop(str(lab.id), None)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except StripeError:

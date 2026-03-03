@@ -214,6 +214,7 @@ export default function LabsPage() {
         ));
         const sections = [
           { key: "active", title: "Active Subscribers", labs: realLabs.filter(l => l.is_active && l.billing_status === "active") },
+          { key: "invoice_pending", title: "Invoice Pending", labs: realLabs.filter(l => l.is_active && l.billing_status === "invoice_pending") },
           { key: "trial", title: "Trial", labs: realLabs.filter(l => l.is_active && l.billing_status === "trial") },
           { key: "past_due", title: "Past Due", labs: realLabs.filter(l => l.is_active && l.billing_status === "past_due") },
           { key: "cancelled", title: "Cancelled", labs: realLabs.filter(l => l.is_active && l.billing_status === "cancelled") },
@@ -239,7 +240,7 @@ export default function LabsPage() {
                 <td>
                   {l.stripe_subscription_id ? (
                     <span className="badge badge-info" title="Managed by Stripe — change status in Stripe Dashboard">
-                      {l.billing_status === "active" ? "Active" : l.billing_status === "past_due" ? "Past Due" : l.billing_status === "cancelled" ? "Cancelled" : l.billing_status === "trial" ? "Trial" : l.billing_status}
+                      {l.billing_status === "active" ? "Active" : l.billing_status === "invoice_pending" ? "Invoice Pending" : l.billing_status === "past_due" ? "Past Due" : l.billing_status === "cancelled" ? "Cancelled" : l.billing_status === "trial" ? "Trial" : l.billing_status}
                     </span>
                   ) : (
                     <select
@@ -251,6 +252,7 @@ export default function LabsPage() {
                     >
                       <option value="trial">Trial</option>
                       <option value="active">Active</option>
+                      <option value="invoice_pending">Invoice Pending</option>
                       <option value="past_due">Past Due</option>
                       <option value="cancelled">Cancelled</option>
                     </select>

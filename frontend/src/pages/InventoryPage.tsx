@@ -663,7 +663,11 @@ export default function InventoryPage() {
 
   const updateQC = async (lotId: string, status: "approved") => {
     try {
-      await api.patch(`/lots/${lotId}/qc`, { qc_status: status });
+      const { data: updatedLot } = await api.patch<Lot>(`/lots/${lotId}/qc`, { qc_status: status });
+      queryClient.setQueryData<Lot[]>(
+        ["lots", selectedLab, { includeArchived: true }],
+        (old) => old?.map((l) => (l.id === lotId ? updatedLot : l)),
+      );
       invalidateInventory();
       setQcConfirmLot(null);
     } catch (err: any) {
@@ -1402,14 +1406,20 @@ export default function InventoryPage() {
           }}
           onUploadAndApprove={docModalApproveAfter ? async () => {
             const lotId = modalLot.id;
+            let updatedLot: Lot;
             try {
-              await api.patch(`/lots/${lotId}/qc`, { qc_status: "approved" });
+              const { data } = await api.patch<Lot>(`/lots/${lotId}/qc`, { qc_status: "approved" });
+              updatedLot = data;
             } catch (err: any) {
               throw new Error(
                 err?.response?.data?.detail ||
                 "Upload succeeded, but lot approval failed.",
               );
             }
+            queryClient.setQueryData<Lot[]>(
+              ["lots", selectedLab, { includeArchived: true }],
+              (old) => old?.map((l) => (l.id === lotId ? updatedLot : l)),
+            );
             invalidateInventory();
             setModalLot(null);
             setDocModalApproveAfter(false);

@@ -39,7 +39,7 @@ export interface LabSettings {
   password_enabled?: boolean;
 }
 
-export type BillingStatus = "trial" | "active" | "past_due" | "cancelled";
+export type BillingStatus = "trial" | "active" | "past_due" | "cancelled" | "invoice_pending";
 
 export type AuthProviderType = "password" | "oidc_microsoft" | "oidc_google" | "saml";
 

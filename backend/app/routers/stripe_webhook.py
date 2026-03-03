@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.middleware.auth import require_role
-from app.models.models import Lab, StripeEvent, User, UserRole
+from app.core.cache import suspension_cache
+from app.models.models import BillingStatus, Lab, StripeEvent, User, UserRole
 from app.services.audit import log_audit
 from app.services.stripe_service import apply_subscription_status, get_stripe_client
 
@@ -63,6 +64,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             _handle_invoice_payment_failed(db, data)
         elif event_type == "invoice.marked_uncollectible":
             _handle_invoice_uncollectible(db, data)
+        elif event_type == "invoice.sent":
+            _handle_invoice_sent(db, data)
         elif event_type == "invoice.upcoming":
             _handle_invoice_upcoming(db, data)
         elif event_type == "customer.subscription.created":
@@ -266,12 +269,28 @@ def _handle_invoice_upcoming(db: Session, invoice: dict) -> None:
     logger.info("Subscription renewing soon for lab %s", lab.id)
 
 
+def _handle_invoice_sent(db: Session, invoice: dict) -> None:
+    customer_id = invoice.get("customer")
+    if not customer_id:
+        return
+    lab = _find_lab_by_customer(db, customer_id)
+    if not lab:
+        return
+    if lab.billing_status != BillingStatus.ACTIVE.value:
+        lab.billing_status = BillingStatus.INVOICE_PENDING.value
+        lab.billing_updated_at = datetime.now(timezone.utc)
+        lab.is_active = True
+        suspension_cache.pop(str(lab.id), None)
+
+
 def _handle_subscription_created(db: Session, subscription: dict) -> None:
     customer_id = subscription.get("customer")
     if not customer_id:
         return
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
+        return
+    if lab.billing_status == BillingStatus.INVOICE_PENDING.value and subscription["status"] == "active":
         return
     apply_subscription_status(
         db, lab, subscription["status"], subscription_id=subscription["id"],
@@ -287,6 +306,8 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
         return
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
+        return
+    if lab.billing_status == BillingStatus.INVOICE_PENDING.value and subscription["status"] == "active":
         return
     apply_subscription_status(
         db, lab, subscription["status"], subscription_id=subscription["id"],

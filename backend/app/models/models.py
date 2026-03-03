@@ -72,6 +72,7 @@ class BillingStatus(str, enum.Enum):
     ACTIVE = "active"
     PAST_DUE = "past_due"
     CANCELLED = "cancelled"
+    INVOICE_PENDING = "invoice_pending"
 
 
 class AuthProviderType(str, enum.Enum):

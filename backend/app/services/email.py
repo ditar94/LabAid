@@ -195,7 +195,7 @@ def _trial_welcome_html(full_name: str, trial_end_date: str) -> str:
         f'<p style="text-align:center;margin:32px 0">'
         f'<a href="{settings.APP_URL}" style="background:#2563eb;color:#fff;padding:12px 28px;'
         'border-radius:6px;text-decoration:none;font-weight:600">Go to LabAid</a></p>'
-        '<p style="color:#666;font-size:13px">Questions? Reply to this email or open a '
+        '<p style="color:#666;font-size:13px">Questions? Open a '
         "support ticket from within the app.</p>"
         "</div>"
     )

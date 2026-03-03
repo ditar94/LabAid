@@ -69,6 +69,11 @@ def _finalize_latest_invoice(client: StripeClient, latest_invoice, lab_id) -> No
         client.invoices.finalize_invoice(invoice_id)
     except Exception:
         logger.warning("Could not auto-finalize invoice %s for lab %s", invoice_id, lab_id)
+        return
+    try:
+        client.invoices.send_invoice(invoice_id)
+    except Exception:
+        logger.warning("Could not send invoice %s for lab %s", invoice_id, lab_id)
 
 
 def get_or_create_customer(db: Session, lab: Lab) -> str:

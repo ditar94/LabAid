@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { CreditCard, Calendar, Mail, Clock, Check, ShieldCheck, ExternalLink, AlertTriangle, FileText } from "lucide-react";
 import api from "../api/client";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 
 const PaymentChoiceModal = lazy(() => import("../components/PaymentChoiceModal"));
 
@@ -35,6 +36,7 @@ function paymentMethodLabel(method: string | null | undefined): string {
 function statusLabel(status: string): string {
   if (status === "trial") return "Trial";
   if (status === "active") return "Active";
+  if (status === "invoice_pending") return "Invoice Pending";
   if (status === "past_due") return "Past Due";
   if (status === "cancelled") return "Cancelled";
   return status;
@@ -42,6 +44,7 @@ function statusLabel(status: string): string {
 
 function statusBadgeClass(status: string): string {
   if (status === "active") return "badge-success";
+  if (status === "invoice_pending") return "badge-warning";
   if (status === "past_due") return "badge-warning";
   if (status === "cancelled") return "badge-danger";
   return "badge-info";
@@ -54,6 +57,7 @@ function daysUntil(ts: number | null | undefined): number | null {
 
 export default function BillingPage() {
   const { addToast } = useToast();
+  const { refreshUser } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
@@ -98,6 +102,7 @@ export default function BillingPage() {
   const handleSubscribeSuccess = () => {
     addToast("Invoice subscription created! An invoice will be sent to your billing email.", "success");
     queryClient.invalidateQueries({ queryKey: ["billing-status"] });
+    refreshUser();
   };
 
   if (isLoading) {
@@ -119,7 +124,8 @@ export default function BillingPage() {
   }
 
   const isTrial = billing.billing_status === "trial";
-  const isActive = billing.billing_status === "active";
+  const isActive = billing.billing_status === "active" || billing.billing_status === "invoice_pending";
+  const isInvoicePending = billing.billing_status === "invoice_pending";
   const isPastDue = billing.billing_status === "past_due";
   const isCancelled = billing.billing_status === "cancelled";
 
@@ -226,7 +232,7 @@ export default function BillingPage() {
               <span>Your subscription is set to cancel on {formatDate(billing.current_period_end)}. To keep your subscription, click Manage Billing.</span>
             </div>
           )}
-          {isActive && billing.collection_method === "send_invoice" && billing.latest_invoice_status && billing.latest_invoice_status !== "paid" && (
+          {isInvoicePending && (
             <div className="billing-message billing-message--info">
               <FileText size={16} />
               <span>
@@ -234,11 +240,11 @@ export default function BillingPage() {
                   ? "Your invoice has been sent and is awaiting payment."
                   : billing.latest_invoice_status === "draft"
                     ? "Your invoice is being prepared and will be sent shortly."
-                    : `Invoice status: ${billing.latest_invoice_status}`}
+                    : "Your invoice has been created and is awaiting payment."}
               </span>
             </div>
           )}
-          {isActive && billing.collection_method === "send_invoice" && billing.latest_invoice_status === "paid" && (
+          {!isInvoicePending && isActive && billing.collection_method === "send_invoice" && billing.latest_invoice_status === "paid" && (
             <div className="billing-message billing-message--success">
               <Check size={16} />
               <span>Your invoice has been paid. Thank you!</span>
