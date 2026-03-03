@@ -283,6 +283,29 @@ def _handle_invoice_sent(db: Session, invoice: dict) -> None:
         suspension_cache.pop(str(lab.id), None)
 
 
+def _fetch_current_subscription(subscription: dict) -> dict:
+    """Fetch live subscription status from Stripe to avoid stale retried event data."""
+    if not settings.STRIPE_SECRET_KEY:
+        return subscription
+    try:
+        client = get_stripe_client()
+        sub = client.subscriptions.retrieve(subscription["id"])
+        return {
+            "id": sub.id,
+            "status": sub.status,
+            "customer": sub.customer if isinstance(sub.customer, str) else sub.customer.id,
+            "current_period_end": sub.current_period_end,
+            "trial_end": sub.trial_end,
+            "cancel_at_period_end": sub.cancel_at_period_end,
+            "cancellation_details": {
+                "reason": getattr(sub.cancellation_details, "reason", None),
+            } if sub.cancellation_details else None,
+        }
+    except Exception:
+        logger.warning("Could not fetch subscription %s, using event data", subscription.get("id"))
+        return subscription
+
+
 def _handle_subscription_created(db: Session, subscription: dict) -> None:
     customer_id = subscription.get("customer")
     if not customer_id:
@@ -290,6 +313,7 @@ def _handle_subscription_created(db: Session, subscription: dict) -> None:
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
         return
+    subscription = _fetch_current_subscription(subscription)
     if lab.billing_status == BillingStatus.INVOICE_PENDING.value and subscription["status"] == "active":
         return
     apply_subscription_status(
@@ -297,6 +321,7 @@ def _handle_subscription_created(db: Session, subscription: dict) -> None:
         current_period_end=subscription.get("current_period_end"),
         trial_end=subscription.get("trial_end"),
         cancel_at_period_end=subscription.get("cancel_at_period_end", False),
+        cancellation_reason=_extract_cancellation_reason(subscription),
     )
 
 
@@ -307,6 +332,7 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
         return
+    subscription = _fetch_current_subscription(subscription)
     if lab.billing_status == BillingStatus.INVOICE_PENDING.value and subscription["status"] == "active":
         return
     apply_subscription_status(
