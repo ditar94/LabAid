@@ -37,6 +37,7 @@ export interface LabSettings {
   billing_email?: string;
   is_demo?: boolean;
   password_enabled?: boolean;
+  cancellation_reason?: string | null;
 }
 
 export type BillingStatus = "trial" | "active" | "past_due" | "cancelled" | "invoice_pending";
@@ -64,6 +65,7 @@ export interface Lab {
   stripe_subscription_id?: string | null;
   billing_email?: string | null;
   current_period_end?: string | null;
+  cancellation_reason?: string | null;
   settings: LabSettings;
   created_at: string;
   is_demo?: boolean;

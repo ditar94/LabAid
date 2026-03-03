@@ -122,10 +122,17 @@ export default function Layout() {
       return { variant: "suspended", icon: XCircle, message: "Your lab is suspended. You have read-only access." };
     }
     if (billing === "cancelled") {
+      const reason = labSettings.cancellation_reason;
+      const reasonMessages: Record<string, string> = {
+        payment_failed: "Your account was cancelled due to a failed payment.",
+        customer_requested: "Your account was cancelled at your request.",
+        invoice_uncollectible: "Your account was cancelled due to an unpaid invoice.",
+        admin_manual: "Your account was cancelled by an administrator.",
+      };
       return {
         variant: "cancelled",
         icon: XCircle,
-        message: "Your account has been cancelled.",
+        message: (reason && reasonMessages[reason]) || "Your account has been cancelled.",
         action: isAdmin ? { text: "Reactivate", type: "checkout" as const } : undefined,
       };
     }

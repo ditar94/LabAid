@@ -20,7 +20,15 @@ interface BillingStatus {
   collection_method: string | null;
   cancel_at_period_end?: boolean;
   latest_invoice_status: string | null;
+  cancellation_reason?: string | null;
 }
+
+const CANCELLATION_MESSAGES: Record<string, string> = {
+  payment_failed: "Your subscription was cancelled due to a failed payment. Reactivate to restore full access.",
+  customer_requested: "Your subscription was cancelled at your request. You can reactivate anytime.",
+  invoice_uncollectible: "Your subscription was cancelled because the invoice was not paid. Reactivate to restore full access.",
+  admin_manual: "Your subscription was cancelled by an administrator. Contact support for details.",
+};
 
 function formatDate(ts: number | null | undefined): string {
   if (!ts) return "-";
@@ -211,7 +219,7 @@ export default function BillingPage() {
             {isCancelled && (
               <div className="billing-message billing-message--danger" style={{ marginTop: 16 }}>
                 <Clock size={16} />
-                <span>Your subscription has been cancelled. Reactivate to restore full access.</span>
+                <span>{(billing.cancellation_reason && CANCELLATION_MESSAGES[billing.cancellation_reason]) || "Your subscription has been cancelled. Reactivate to restore full access."}</span>
               </div>
             )}
           </div>

@@ -241,7 +241,7 @@ def _handle_invoice_uncollectible(db: Session, invoice: dict) -> None:
             status = sub.status or "canceled"
         except Exception:
             logger.warning("Could not fetch subscription %s in invoice.marked_uncollectible handler", subscription_id)
-    apply_subscription_status(db, lab, status, subscription_id=subscription_id)
+    apply_subscription_status(db, lab, status, subscription_id=subscription_id, cancellation_reason="invoice_uncollectible")
 
 
 def _handle_invoice_upcoming(db: Session, invoice: dict) -> None:
@@ -314,7 +314,17 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
         current_period_end=subscription.get("current_period_end"),
         trial_end=subscription.get("trial_end"),
         cancel_at_period_end=subscription.get("cancel_at_period_end", False),
+        cancellation_reason=_extract_cancellation_reason(subscription),
     )
+
+
+def _extract_cancellation_reason(subscription: dict) -> str | None:
+    details = subscription.get("cancellation_details")
+    if not details:
+        return None
+    raw = details.get("reason")
+    reason_map = {"payment_failed": "payment_failed", "cancellation_requested": "customer_requested"}
+    return reason_map.get(raw, raw)
 
 
 def _handle_subscription_deleted(db: Session, subscription: dict) -> None:
@@ -331,6 +341,7 @@ def _handle_subscription_deleted(db: Session, subscription: dict) -> None:
         db, lab, "canceled", subscription_id=subscription["id"],
         current_period_end=subscription.get("current_period_end"),
         cancel_at_period_end=False,
+        cancellation_reason=_extract_cancellation_reason(subscription),
     )
 
 

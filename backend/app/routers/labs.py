@@ -229,9 +229,12 @@ def update_billing_status(
     if body.billing_status in (BillingStatus.PAST_DUE.value, BillingStatus.CANCELLED.value):
         if lab.is_active:
             lab.is_active = False
+        if body.billing_status == BillingStatus.CANCELLED.value:
+            lab.cancellation_reason = "admin_manual"
     elif body.billing_status in (BillingStatus.ACTIVE.value, BillingStatus.TRIAL.value):
         if not lab.is_active:
             lab.is_active = True
+        lab.cancellation_reason = None
 
     log_audit(
         db,
@@ -394,6 +397,7 @@ def billing_status(
         if lab.billing_updated_at:
             result["subscribed_at"] = int(lab.billing_updated_at.timestamp())
         result["cancel_at_period_end"] = lab.cancel_at_period_end
+    result["cancellation_reason"] = lab.cancellation_reason
     return result
 
 

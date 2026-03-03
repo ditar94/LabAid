@@ -240,7 +240,12 @@ export default function LabsPage() {
                 <td>
                   {l.stripe_subscription_id ? (
                     <span className="badge badge-info" title="Managed by Stripe — change status in Stripe Dashboard">
-                      {l.billing_status === "active" ? "Active" : l.billing_status === "invoice_pending" ? "Invoice Pending" : l.billing_status === "past_due" ? "Past Due" : l.billing_status === "cancelled" ? "Cancelled" : l.billing_status === "trial" ? "Trial" : l.billing_status}
+                      {l.billing_status === "active" ? "Active" : l.billing_status === "invoice_pending" ? "Invoice Pending" : l.billing_status === "past_due" ? "Past Due" : l.billing_status === "cancelled" ? (
+                        l.cancellation_reason === "payment_failed" ? "Cancelled (payment failed)" :
+                        l.cancellation_reason === "customer_requested" ? "Cancelled (requested)" :
+                        l.cancellation_reason === "invoice_uncollectible" ? "Cancelled (invoice unpaid)" :
+                        l.cancellation_reason === "admin_manual" ? "Cancelled (by admin)" : "Cancelled"
+                      ) : l.billing_status === "trial" ? "Trial" : l.billing_status}
                     </span>
                   ) : (
                     <select

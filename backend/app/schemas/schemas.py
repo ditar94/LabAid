@@ -144,6 +144,7 @@ class Lab(BaseModel):
     stripe_subscription_id: str | None = None
     billing_email: str | None = None
     current_period_end: datetime | None = None
+    cancellation_reason: str | None = None
     settings: dict = {}
     created_at: datetime
     is_demo: bool = False
@@ -983,6 +984,7 @@ class BillingStatusResponse(BaseModel):
     collection_method: str | None = None
     cancel_at_period_end: bool = False
     latest_invoice_status: str | None = None
+    cancellation_reason: str | None = None
 
 
 class InvoiceSubscriptionRequest(BaseModel):

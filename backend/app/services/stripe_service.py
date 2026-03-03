@@ -279,6 +279,7 @@ def apply_subscription_status(
     current_period_end: int | None = None,
     trial_end: int | None = None,
     cancel_at_period_end: bool | None = None,
+    cancellation_reason: str | None = None,
 ) -> None:
     mapping = _STATUS_MAP.get(stripe_status)
     if not mapping:
@@ -299,6 +300,12 @@ def apply_subscription_status(
 
     if cancel_at_period_end is not None:
         lab.cancel_at_period_end = cancel_at_period_end
+
+    if new_billing == BillingStatus.CANCELLED.value:
+        if cancellation_reason:
+            lab.cancellation_reason = cancellation_reason
+    else:
+        lab.cancellation_reason = None
 
     if new_billing == BillingStatus.ACTIVE.value:
         lab.trial_ends_at = None

@@ -49,6 +49,7 @@ def bootstrap(
                 "is_active": lab.is_active,
                 "trial_ends_at": lab.trial_ends_at.isoformat() if lab.trial_ends_at else None,
                 "is_demo": lab.is_demo,
+                "cancellation_reason": lab.cancellation_reason,
             }
 
     if current_user.lab_id:

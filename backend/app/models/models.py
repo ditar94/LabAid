@@ -108,6 +108,7 @@ class Lab(Base):
     billing_email = Column(String(255), nullable=True)
     current_period_end = Column(DateTime(timezone=True), nullable=True)
     cancel_at_period_end = Column(Boolean, nullable=False, default=False, server_default="false")
+    cancellation_reason = Column(String(50), nullable=True)
     settings = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
