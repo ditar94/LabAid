@@ -6,6 +6,7 @@ import stripe
 from stripe._error import SignatureVerificationError
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -46,6 +47,11 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             return {"status": "already_processed"}
 
         db.add(StripeEvent(stripe_event_id=event["id"], event_type=event["type"]))
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            return {"status": "already_processed"}
 
         event_type = event["type"]
         data = event["data"]["object"]
@@ -86,7 +92,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         db.commit()
     except Exception:
         db.rollback()
-        logger.exception("Error processing Stripe webhook: %s", event["type"])
+        logger.exception("Error processing Stripe webhook: %s (event: %s)", event["type"], event["id"])
         return JSONResponse(status_code=500, content={"status": "error"})
 
     return {"status": "ok"}
@@ -277,10 +283,21 @@ def _handle_invoice_sent(db: Session, invoice: dict) -> None:
     if not lab:
         return
     if lab.billing_status != BillingStatus.ACTIVE.value:
+        old_status = lab.billing_status
         lab.billing_status = BillingStatus.INVOICE_PENDING.value
         lab.billing_updated_at = datetime.now(timezone.utc)
         lab.is_active = True
         suspension_cache.pop(str(lab.id), None)
+        lab_admin = db.query(User).filter(
+            User.lab_id == lab.id,
+            User.role.in_([UserRole.LAB_ADMIN, UserRole.SUPER_ADMIN]),
+        ).first()
+        if lab_admin:
+            log_audit(
+                db, lab_id=lab.id, user_id=lab_admin.id,
+                action="lab.billing_updated", entity_type="lab", entity_id=lab.id,
+                note=f"Stripe: {old_status} → {BillingStatus.INVOICE_PENDING.value}",
+            )
 
 
 def _fetch_current_subscription(subscription: dict) -> dict:
@@ -314,8 +331,10 @@ def _handle_subscription_created(db: Session, subscription: dict) -> None:
     if not lab:
         return
     subscription = _fetch_current_subscription(subscription)
-    if lab.billing_status == BillingStatus.INVOICE_PENDING.value and subscription["status"] == "active":
-        return
+    preserve_invoice_pending = (
+        lab.billing_status == BillingStatus.INVOICE_PENDING.value
+        and subscription["status"] == "active"
+    )
     apply_subscription_status(
         db, lab, subscription["status"], subscription_id=subscription["id"],
         current_period_end=subscription.get("current_period_end"),
@@ -323,6 +342,8 @@ def _handle_subscription_created(db: Session, subscription: dict) -> None:
         cancel_at_period_end=subscription.get("cancel_at_period_end", False),
         cancellation_reason=_extract_cancellation_reason(subscription),
     )
+    if preserve_invoice_pending:
+        lab.billing_status = BillingStatus.INVOICE_PENDING.value
 
 
 def _handle_subscription_updated(db: Session, subscription: dict) -> None:
@@ -333,8 +354,10 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
     if not lab:
         return
     subscription = _fetch_current_subscription(subscription)
-    if lab.billing_status == BillingStatus.INVOICE_PENDING.value and subscription["status"] == "active":
-        return
+    preserve_invoice_pending = (
+        lab.billing_status == BillingStatus.INVOICE_PENDING.value
+        and subscription["status"] == "active"
+    )
     apply_subscription_status(
         db, lab, subscription["status"], subscription_id=subscription["id"],
         current_period_end=subscription.get("current_period_end"),
@@ -342,6 +365,8 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
         cancel_at_period_end=subscription.get("cancel_at_period_end", False),
         cancellation_reason=_extract_cancellation_reason(subscription),
     )
+    if preserve_invoice_pending:
+        lab.billing_status = BillingStatus.INVOICE_PENDING.value
 
 
 def _extract_cancellation_reason(subscription: dict) -> str | None:

@@ -46,7 +46,7 @@ const PaymentChoiceModal = lazy(() => import("./PaymentChoiceModal"));
 const CURRENT_YEAR = new Date().getFullYear();
 
 export default function Layout() {
-  const { user, logout, impersonatingLab, endImpersonation, labSettings, labName } = useAuth();
+  const { user, logout, impersonatingLab, endImpersonation, labSettings, labName, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -167,7 +167,7 @@ export default function Layout() {
       };
     }
     return null;
-  }, [hasLabContext, labSettings.is_demo, labSettings.billing_status, labSettings.is_active, labSettings.trial_ends_at, isAdmin]);
+  }, [hasLabContext, labSettings.is_demo, labSettings.billing_status, labSettings.is_active, labSettings.trial_ends_at, labSettings.cancellation_reason, isAdmin]);
 
   const { selectedLab } = useSharedData();
   const queryClient = useQueryClient();
@@ -344,7 +344,7 @@ export default function Layout() {
               {hasLabContext && isAdmin && !labSettings.is_demo && (
                 <NavLink to="/billing" onClick={handleNavClick}>
                   <CreditCard className="nav-icon" />
-                  {labSettings.billing_status === "active" ? "Billing" : "Subscribe"}
+                  {labSettings.billing_status === "active" || labSettings.billing_status === "invoice_pending" ? "Billing" : "Subscribe"}
                 </NavLink>
               )}
               {hasLabContext && isAdmin && (
@@ -460,7 +460,7 @@ export default function Layout() {
       )}
       {showPaymentModal && (
         <Suspense fallback={null}>
-          <PaymentChoiceModal onClose={() => setShowPaymentModal(false)} />
+          <PaymentChoiceModal onClose={() => setShowPaymentModal(false)} onSuccess={() => { setShowPaymentModal(false); refreshUser(); }} />
         </Suspense>
       )}
     </div>

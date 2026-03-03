@@ -51,7 +51,7 @@ def get_stripe_client() -> StripeClient:
     if _client is None:
         _client = StripeClient(
             api_key=settings.STRIPE_SECRET_KEY,
-            stripe_version="2024-12-18.acacia",
+            stripe_version="2026-02-25.clover",
         )
     return _client
 
