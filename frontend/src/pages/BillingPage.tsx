@@ -79,12 +79,13 @@ export default function BillingPage() {
 
   useEffect(() => {
     if (!paymentProcessing || !billing) return;
-    if (billing.billing_status !== "trial") {
+    if (billing.billing_status === "active" || billing.billing_status === "invoice_pending") {
       setPaymentProcessing(false);
       setSearchParams({}, { replace: true });
       addToast("Payment confirmed! Your subscription is now active.", "success");
+      refreshUser();
     }
-  }, [billing, paymentProcessing, addToast, setSearchParams]);
+  }, [billing, paymentProcessing, addToast, setSearchParams, refreshUser]);
 
   useEffect(() => {
     if (!paymentProcessing) return;

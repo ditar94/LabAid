@@ -25,9 +25,15 @@ interface SubDetailsData {
 }
 
 function SubDetails({ labId }: { labId: string }) {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<SubDetailsData | null>({
     queryKey: ["lab-subscription", labId],
-    queryFn: () => api.get(`/labs/${labId}/subscription`).then((r) => r.data),
+    queryFn: async () => {
+      const r = await api.get(`/labs/${labId}/subscription`);
+      // Backend may have auto-corrected billing status via read-through — refresh labs list
+      queryClient.invalidateQueries({ queryKey: ["labs"] });
+      return r.data;
+    },
   });
 
   if (isLoading) return <div className="text-muted" style={{ marginTop: 6 }}>Loading...</div>;

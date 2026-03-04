@@ -38,7 +38,7 @@ _STATUS_MAP = {
     "past_due": (BillingStatus.PAST_DUE.value, True),
     "canceled": (BillingStatus.CANCELLED.value, False),
     "unpaid": (BillingStatus.CANCELLED.value, False),
-    "incomplete": (BillingStatus.PAST_DUE.value, False),
+    "incomplete": (BillingStatus.CANCELLED.value, False),
     "incomplete_expired": (BillingStatus.CANCELLED.value, False),
     "paused": (BillingStatus.CANCELLED.value, False),
 }
@@ -168,6 +168,11 @@ def get_subscription_details(lab: Lab) -> dict | None:
         latest_invoice_status = None
         if sub.latest_invoice and not isinstance(sub.latest_invoice, str):
             latest_invoice_status = sub.latest_invoice.status
+        cancellation_reason = None
+        if sub.cancellation_details:
+            raw = getattr(sub.cancellation_details, "reason", None)
+            reason_map = {"payment_failed": "payment_failed", "cancellation_requested": "customer_requested"}
+            cancellation_reason = reason_map.get(raw, raw) if raw else None
         return {
             "status": sub.status,
             "current_period_start": sub.current_period_start,
@@ -176,6 +181,8 @@ def get_subscription_details(lab: Lab) -> dict | None:
             "collection_method": sub.collection_method,
             "cancel_at_period_end": sub.cancel_at_period_end,
             "latest_invoice_status": latest_invoice_status,
+            "trial_end": sub.trial_end,
+            "cancellation_reason": cancellation_reason,
         }
     except Exception as e:
         logger.warning("Could not fetch subscription %s: %s", lab.stripe_subscription_id, type(e).__name__)
@@ -268,6 +275,38 @@ def extend_trial(db: Session, lab: Lab, new_trial_end: datetime) -> None:
         params={"trial_end": timestamp},
         options={"idempotency_key": f"extend_trial_{lab.id}_{timestamp}"},
     )
+
+
+def sync_subscription_status(db: Session, lab: Lab, details: dict) -> bool:
+    """Read-through correction: compare live Stripe status against local DB and fix mismatches.
+
+    Returns True if a correction was made.
+    """
+    stripe_status = details.get("status")
+    if not stripe_status:
+        return False
+    mapping = _STATUS_MAP.get(stripe_status)
+    if not mapping:
+        return False
+    expected_local, _ = mapping
+    if lab.billing_status == expected_local:
+        return False
+    # Preserve invoice_pending when Stripe says active (invoice sent, awaiting payment)
+    if lab.billing_status == BillingStatus.INVOICE_PENDING.value and stripe_status == "active":
+        return False
+    logger.warning(
+        "Read-through correction: lab %s local=%s stripe=%s, fixing",
+        lab.id, lab.billing_status, stripe_status,
+    )
+    apply_subscription_status(
+        db, lab, stripe_status,
+        subscription_id=lab.stripe_subscription_id,
+        current_period_end=details.get("current_period_end"),
+        cancel_at_period_end=details.get("cancel_at_period_end", False),
+        trial_end=details.get("trial_end"),
+        cancellation_reason=details.get("cancellation_reason"),
+    )
+    return True
 
 
 def apply_subscription_status(

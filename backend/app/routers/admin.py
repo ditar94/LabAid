@@ -569,7 +569,9 @@ def reconcile_subscriptions(
             }.get(sub.status)
 
             needs_fix = False
-            if expected_status and lab.billing_status != expected_status:
+            # Preserve invoice_pending when Stripe says active (invoice sent, awaiting payment)
+            is_invoice_pending = lab.billing_status == "invoice_pending" and sub.status == "active"
+            if expected_status and lab.billing_status != expected_status and not is_invoice_pending:
                 needs_fix = True
             elif sub.current_period_end:
                 from datetime import datetime as dt
@@ -596,6 +598,8 @@ def reconcile_subscriptions(
                         cancel_at_period_end=cap,
                         user_id=current_user.id,
                     )
+                    if is_invoice_pending:
+                        lab.billing_status = "invoice_pending"
                 fixed += 1
         except Exception as e:
             errors.append({"lab_id": str(lab.id), "error": type(e).__name__})

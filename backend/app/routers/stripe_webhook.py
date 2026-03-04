@@ -206,7 +206,13 @@ def _handle_invoice_payment_failed(db: Session, invoice: dict) -> None:
             status = sub.status or "past_due"
         except Exception:
             logger.warning("Could not fetch subscription %s in invoice.payment_failed handler", subscription_id)
+    preserve_invoice_pending = (
+        lab.billing_status == BillingStatus.INVOICE_PENDING.value
+        and status == "active"
+    )
     apply_subscription_status(db, lab, status, subscription_id=subscription_id)
+    if preserve_invoice_pending:
+        lab.billing_status = BillingStatus.INVOICE_PENDING.value
 
 
 def _handle_async_payment_failed(db: Session, session: dict) -> None:

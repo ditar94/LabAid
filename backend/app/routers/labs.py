@@ -381,9 +381,13 @@ def billing_status(
         "plan_name": "LabAid Annual" if lab.stripe_subscription_id else "Free Trial",
     }
     if lab.stripe_subscription_id and app_settings.STRIPE_SECRET_KEY:
-        from app.services.stripe_service import get_subscription_details
+        from app.services.stripe_service import get_subscription_details, sync_subscription_status
         details = get_subscription_details(lab)
         if details:
+            if sync_subscription_status(db, lab, details):
+                db.commit()
+                result["billing_status"] = lab.billing_status
+                result["has_subscription"] = bool(lab.stripe_subscription_id)
             result["current_period_start"] = details["current_period_start"]
             result["current_period_end"] = details["current_period_end"]
             result["subscribed_at"] = details["created"]
@@ -505,5 +509,8 @@ def get_lab_subscription(
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
-    from app.services.stripe_service import get_subscription_details
-    return get_subscription_details(lab)
+    from app.services.stripe_service import get_subscription_details, sync_subscription_status
+    details = get_subscription_details(lab)
+    if details and sync_subscription_status(db, lab, details):
+        db.commit()
+    return details

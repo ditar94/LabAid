@@ -53,6 +53,7 @@ function statusBadge(status: string | null) {
   if (!status) return <span className="badge badge-info">Demo Only</span>;
   if (status === "active") return <span className="badge badge-success">Paid</span>;
   if (status === "trial") return <span className="badge badge-info">Trial</span>;
+  if (status === "invoice_pending") return <span className="badge badge-warning">Invoice Pending</span>;
   if (status === "past_due") return <span className="badge badge-warning">Past Due</span>;
   if (status === "cancelled") return <span className="badge badge-danger">Cancelled</span>;
   return <span className="badge">{status}</span>;

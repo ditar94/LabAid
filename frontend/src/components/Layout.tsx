@@ -37,6 +37,7 @@ import {
   Play,
   CreditCard,
   BarChart3,
+  FileText,
 } from "lucide-react";
 import { useTheme } from "../hooks/useTheme";
 import { version } from "../../package.json";
@@ -142,6 +143,14 @@ export default function Layout() {
         icon: AlertTriangle,
         message: "Your payment is past due. Update your payment method to avoid interruption.",
         action: isAdmin ? { text: "Update payment", type: "portal" as const } : undefined,
+      };
+    }
+    if (billing === "invoice_pending") {
+      return {
+        variant: "trial",
+        icon: FileText,
+        message: "Your invoice is awaiting payment.",
+        action: isAdmin ? { text: "View billing", type: "portal" as const } : undefined,
       };
     }
     if (billing === "trial") {
@@ -344,7 +353,7 @@ export default function Layout() {
               {hasLabContext && isAdmin && !labSettings.is_demo && (
                 <NavLink to="/billing" onClick={handleNavClick}>
                   <CreditCard className="nav-icon" />
-                  {labSettings.billing_status === "active" || labSettings.billing_status === "invoice_pending" ? "Billing" : "Subscribe"}
+                  {["active", "invoice_pending", "past_due"].includes(labSettings.billing_status ?? "") ? "Billing" : "Subscribe"}
                 </NavLink>
               )}
               {hasLabContext && isAdmin && (
