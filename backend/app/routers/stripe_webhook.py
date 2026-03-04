@@ -15,7 +15,7 @@ from app.middleware.auth import require_role
 from app.core.cache import suspension_cache
 from app.models.models import BillingStatus, Lab, StripeEvent, User, UserRole
 from app.services.audit import log_audit
-from app.services.stripe_service import apply_subscription_status, get_stripe_client
+from app.services.stripe_service import apply_subscription_status, get_stripe_client, _get_item_period
 
 logger = logging.getLogger("labaid")
 
@@ -145,9 +145,10 @@ def _handle_checkout_completed(db: Session, session: dict) -> None:
                 })
                 # M1+M2: Fetch actual subscription status instead of hardcoding "active"
                 sub = client.subscriptions.retrieve(sub_id)
+                _, period_end = _get_item_period(sub)
                 apply_subscription_status(
                     db, lab, sub.status, subscription_id=sub_id,
-                    current_period_end=sub.current_period_end,
+                    current_period_end=period_end,
                     cancel_at_period_end=getattr(sub, "cancel_at_period_end", False),
                 )
         return
@@ -160,7 +161,7 @@ def _handle_checkout_completed(db: Session, session: dict) -> None:
             client = get_stripe_client()
             sub = client.subscriptions.retrieve(subscription_id)
             status = sub.status or "active"
-            period_end = sub.current_period_end
+            _, period_end = _get_item_period(sub)
         except Exception:
             logger.warning("Could not fetch subscription %s, defaulting to active", subscription_id)
 
@@ -184,7 +185,7 @@ def _handle_invoice_paid(db: Session, invoice: dict) -> None:
             client = get_stripe_client()
             sub = client.subscriptions.retrieve(subscription_id)
             status = sub.status or "active"
-            period_end = sub.current_period_end
+            _, period_end = _get_item_period(sub)
         except Exception:
             logger.warning("Could not fetch subscription %s in invoice.paid handler", subscription_id)
     apply_subscription_status(db, lab, status, subscription_id=subscription_id, current_period_end=period_end)
@@ -313,11 +314,12 @@ def _fetch_current_subscription(subscription: dict) -> dict:
     try:
         client = get_stripe_client()
         sub = client.subscriptions.retrieve(subscription["id"])
+        _, period_end = _get_item_period(sub)
         return {
             "id": sub.id,
             "status": sub.status,
             "customer": sub.customer if isinstance(sub.customer, str) else sub.customer.id,
-            "current_period_end": sub.current_period_end,
+            "current_period_end": period_end,
             "trial_end": sub.trial_end,
             "cancel_at_period_end": sub.cancel_at_period_end,
             "cancellation_details": {

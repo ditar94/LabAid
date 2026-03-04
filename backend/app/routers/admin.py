@@ -547,7 +547,7 @@ def reconcile_subscriptions(
     current_user: User = Depends(require_role(UserRole.SUPER_ADMIN)),
 ):
     from app.core.config import settings
-    from app.services.stripe_service import apply_subscription_status, get_stripe_client
+    from app.services.stripe_service import apply_subscription_status, get_stripe_client, _get_item_period
     if not settings.STRIPE_SECRET_KEY:
         return {"error": "Stripe not configured", "fixed": 0}
 
@@ -564,7 +564,7 @@ def reconcile_subscriptions(
             expected_status = {
                 "active": "active", "trialing": "trial", "past_due": "past_due",
                 "canceled": "cancelled", "unpaid": "cancelled",
-                "incomplete": "past_due", "incomplete_expired": "cancelled",
+                "incomplete": "cancelled", "incomplete_expired": "cancelled",
                 "paused": "cancelled",
             }.get(sub.status)
 
@@ -573,9 +573,11 @@ def reconcile_subscriptions(
             is_invoice_pending = lab.billing_status == "invoice_pending" and sub.status == "active"
             if expected_status and lab.billing_status != expected_status and not is_invoice_pending:
                 needs_fix = True
-            elif sub.current_period_end:
-                from datetime import datetime as dt
-                period_end = dt.fromtimestamp(sub.current_period_end, tz=timezone.utc)
+            else:
+                _, item_period_end = _get_item_period(sub)
+                if item_period_end:
+                    from datetime import datetime as dt
+                    period_end = dt.fromtimestamp(item_period_end, tz=timezone.utc)
                 if lab.current_period_end != period_end:
                     needs_fix = True
             cap = getattr(sub, "cancel_at_period_end", False)
@@ -591,9 +593,10 @@ def reconcile_subscriptions(
                     "stripe_status": sub.status,
                 })
                 if not dry_run:
+                    _, reconcile_period_end = _get_item_period(sub)
                     apply_subscription_status(
                         db, lab, sub.status, subscription_id=sub.id,
-                        current_period_end=sub.current_period_end,
+                        current_period_end=reconcile_period_end,
                         trial_end=sub.trial_end,
                         cancel_at_period_end=cap,
                         user_id=current_user.id,
@@ -628,9 +631,10 @@ def reconcile_subscriptions(
                     "orphaned": True,
                 })
                 if not dry_run:
+                    _, orphan_period_end = _get_item_period(sub)
                     apply_subscription_status(
                         db, lab, sub.status, subscription_id=sub.id,
-                        current_period_end=sub.current_period_end,
+                        current_period_end=orphan_period_end,
                         trial_end=sub.trial_end,
                         cancel_at_period_end=getattr(sub, "cancel_at_period_end", False),
                         user_id=current_user.id,

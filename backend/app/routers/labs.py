@@ -455,7 +455,7 @@ def billing_invoice(
     if lab.stripe_subscription_id and lab.billing_status != "trial":
         raise HTTPException(status_code=409, detail="Lab already has an active subscription")
 
-    from app.services.stripe_service import create_invoice_subscription, convert_trial_to_invoice, get_stripe_client
+    from app.services.stripe_service import create_invoice_subscription, convert_trial_to_invoice, get_stripe_client, _get_item_period
     from app.core.cache import suspension_cache
     from stripe._error import StripeError
     try:
@@ -478,8 +478,9 @@ def billing_invoice(
         lab.billing_updated_at = datetime.now(timezone.utc)
         lab.is_active = True
         lab.trial_ends_at = None
-        if sub.current_period_end:
-            lab.current_period_end = datetime.fromtimestamp(sub.current_period_end, tz=timezone.utc)
+        _, period_end = _get_item_period(sub)
+        if period_end:
+            lab.current_period_end = datetime.fromtimestamp(period_end, tz=timezone.utc)
         if sub.cancel_at_period_end is not None:
             lab.cancel_at_period_end = sub.cancel_at_period_end
         log_audit(

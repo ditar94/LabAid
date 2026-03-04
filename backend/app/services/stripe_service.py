@@ -56,6 +56,26 @@ def get_stripe_client() -> StripeClient:
     return _client
 
 
+def _get_item_period(sub) -> tuple[int | None, int | None]:
+    """Extract current_period_start/end from the first subscription item.
+
+    Stripe API 2025-03-31+ moved these fields from subscription level to item level.
+    """
+    items = getattr(sub, "items", None)
+    if items:
+        data = getattr(items, "data", None) or items.get("data", []) if isinstance(items, dict) else items.data
+        if data and len(data) > 0:
+            item = data[0]
+            start = getattr(item, "current_period_start", None) if not isinstance(item, dict) else item.get("current_period_start")
+            end = getattr(item, "current_period_end", None) if not isinstance(item, dict) else item.get("current_period_end")
+            if start or end:
+                return start, end
+    # Fallback to subscription-level fields for older API versions
+    start = getattr(sub, "current_period_start", None) if not isinstance(sub, dict) else sub.get("current_period_start")
+    end = getattr(sub, "current_period_end", None) if not isinstance(sub, dict) else sub.get("current_period_end")
+    return start, end
+
+
 def _finalize_latest_invoice(client: StripeClient, latest_invoice, lab_id) -> None:
     if not latest_invoice:
         return
@@ -173,10 +193,11 @@ def get_subscription_details(lab: Lab) -> dict | None:
             raw = getattr(sub.cancellation_details, "reason", None)
             reason_map = {"payment_failed": "payment_failed", "cancellation_requested": "customer_requested"}
             cancellation_reason = reason_map.get(raw, raw) if raw else None
+        period_start, period_end = _get_item_period(sub)
         return {
             "status": sub.status,
-            "current_period_start": sub.current_period_start,
-            "current_period_end": sub.current_period_end,
+            "current_period_start": period_start,
+            "current_period_end": period_end,
             "created": sub.created,
             "collection_method": sub.collection_method,
             "cancel_at_period_end": sub.cancel_at_period_end,
