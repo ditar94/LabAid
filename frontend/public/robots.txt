@@ -4,5 +4,11 @@ Allow: /pricing
 
 Disallow: /app.html
 Disallow: /api/
+Disallow: /login
+Disallow: /signup
+Disallow: /set-password
+Disallow: /forgot-password
+Disallow: /setup
+Disallow: /auth/
 
 Sitemap: https://labaid.io/sitemap.xml
