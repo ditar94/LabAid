@@ -189,13 +189,11 @@ export default function PrivacyContent() {
         <ul>
           <li>
             <strong>__session</strong> — stores your authentication token (JWT) to keep you signed
-            in. This is an HttpOnly, Secure cookie that lasts for the duration of your session.
+            in. This cookie is HttpOnly (cannot be accessed by JavaScript, protecting against XSS
+            attacks), Secure (transmitted only over HTTPS), and SameSite=Lax (providing CSRF
+            protection).
           </li>
         </ul>
-        <p>
-          This cookie is an HttpOnly cookie, which means it cannot be accessed by JavaScript running
-          in your browser, providing protection against cross-site scripting (XSS) attacks.
-        </p>
         <p>
           <strong>We do not use</strong> tracking cookies, third-party cookies, advertising cookies,
           or analytics cookies.
@@ -244,9 +242,14 @@ export default function PrivacyContent() {
           All data is preserved and remains accessible in read-only mode.
         </p>
         <p>
-          Audit logs are immutable and are never deleted, even upon account deletion. This is
-          necessary to maintain data integrity and traceability for laboratory quality management
-          purposes.
+          If a lab account remains cancelled or inactive for more than one year, we reserve the right
+          to delete all associated account data, inventory records, and uploaded documents. We will
+          make reasonable efforts to notify the lab administrator via email before deletion.
+        </p>
+        <p>
+          Audit logs are immutable and are retained even after account deletion in anonymized form.
+          This is necessary to maintain data integrity and traceability for laboratory quality
+          management purposes.
         </p>
         <p>
           Uploaded documents are stored with versioning enabled. Deleted documents are retained in a
