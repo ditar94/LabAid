@@ -168,6 +168,10 @@ def create_checkout_session(db: Session, lab: Lab, success_url: str, cancel_url:
             "line_items": [{"price": price_id or settings.STRIPE_PRICE_ID, "quantity": 1}],
             "success_url": success_url,
             "cancel_url": cancel_url,
+            "billing_address_collection": "required",
+            "phone_number_collection": {"enabled": True},
+            "name_collection": {"business": {"enabled": True}},
+            "customer_update": {"address": "auto", "name": "auto"},
         },
         options={"idempotency_key": f"checkout_{lab.id}_{int(time.time() // 300)}"},
     )
@@ -300,6 +304,10 @@ def create_trial_conversion_checkout(db: Session, lab: Lab, success_url: str, ca
                 "lab_id": str(lab.id),
                 "convert_trial_subscription": lab.stripe_subscription_id,
             },
+            "billing_address_collection": "required",
+            "phone_number_collection": {"enabled": True},
+            "name_collection": {"business": {"enabled": True}},
+            "customer_update": {"address": "auto", "name": "auto"},
         },
         options={"idempotency_key": f"trial_convert_{lab.id}_{int(time.time() // 300)}"},
     )
