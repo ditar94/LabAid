@@ -408,7 +408,7 @@ export default function BillingPage() {
 
       {showModal && (
         <Suspense fallback={null}>
-          <PaymentChoiceModal onClose={() => setShowModal(false)} onSuccess={handleSubscribeSuccess} skipTierSelection={isTrial} />
+          <PaymentChoiceModal onClose={() => setShowModal(false)} onSuccess={handleSubscribeSuccess} />
         </Suspense>
       )}
 

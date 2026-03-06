@@ -95,7 +95,7 @@ export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelecti
           <>
             <h2>Choose Your Plan</h2>
             <p className="text-muted" style={{ margin: "8px 0 20px" }}>
-              Select a plan to reactivate your subscription.
+              Select the plan that's right for your lab.
             </p>
             <div className="plan-selector">
               {(["standard", "enterprise"] as PlanTier[]).map((tier) => {
