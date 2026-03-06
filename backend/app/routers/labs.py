@@ -480,11 +480,33 @@ def billing_invoice(
     from stripe._error import StripeError
     try:
         price_id = _resolve_price_id(body.plan_tier) if body.plan_tier else None
-        if body.billing_email and lab.stripe_customer_id:
-            get_stripe_client().customers.update(
-                lab.stripe_customer_id,
-                params={"email": body.billing_email},
-            )
+        if lab.stripe_customer_id:
+            customer_params: dict = {}
+            if body.billing_email:
+                customer_params["email"] = body.billing_email
+            if body.business_name:
+                customer_params["business_name"] = body.business_name
+            if body.phone:
+                customer_params["phone"] = body.phone
+            address: dict = {}
+            if body.address_line1:
+                address["line1"] = body.address_line1
+            if body.address_line2:
+                address["line2"] = body.address_line2
+            if body.city:
+                address["city"] = body.city
+            if body.state:
+                address["state"] = body.state
+            if body.postal_code:
+                address["postal_code"] = body.postal_code
+            if body.country:
+                address["country"] = body.country
+            if address:
+                customer_params["address"] = address
+            if customer_params:
+                get_stripe_client().customers.update(
+                    lab.stripe_customer_id, params=customer_params,
+                )
         if lab.stripe_subscription_id and lab.billing_status == "trial":
             subscription_id = convert_trial_to_invoice(db, lab)
         else:

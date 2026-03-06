@@ -1009,6 +1009,14 @@ class UpgradeConfirmResponse(BaseModel):
 class InvoiceSubscriptionRequest(BaseModel):
     billing_email: EmailStr | None = None
     plan_tier: str | None = None
+    business_name: str | None = None
+    phone: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
 
 
 class InvoiceSubscriptionResponse(BaseModel):

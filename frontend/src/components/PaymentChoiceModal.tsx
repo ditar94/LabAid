@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import api from "../api/client";
 
 type PlanTier = "standard" | "enterprise";
-type ModalStep = "tier" | "choice" | "invoice-email";
+type ModalStep = "tier" | "choice" | "invoice-details";
 
 interface PaymentChoiceModalProps {
   onClose: () => void;
@@ -44,7 +44,7 @@ const PLAN_INFO: Record<PlanTier, { name: string; price: string; annual: string;
 };
 
 export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelection }: PaymentChoiceModalProps) {
-  const { user, labSettings } = useAuth();
+  const { user, labSettings, labName } = useAuth();
   const isTrial = labSettings?.billing_status === "trial";
   const invoiceBlocked = labSettings?.cancellation_reason === "invoice_uncollectible";
   const [loading, setLoading] = useState<"card" | "invoice" | null>(null);
@@ -52,6 +52,14 @@ export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelecti
   const [step, setStep] = useState<ModalStep>(skipTierSelection ? "choice" : "tier");
   const [planTier, setPlanTier] = useState<PlanTier>("standard");
   const [invoiceEmail, setInvoiceEmail] = useState(user?.email || "");
+  const [businessName, setBusinessName] = useState(labName || "");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [country, setCountry] = useState("US");
+  const [phone, setPhone] = useState("");
 
   const handleCard = async () => {
     setLoading("card");
@@ -76,6 +84,14 @@ export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelecti
       await api.post("/labs/billing/invoice", {
         billing_email: invoiceEmail,
         plan_tier: skipTierSelection ? undefined : planTier,
+        business_name: businessName || undefined,
+        address_line1: addressLine1 || undefined,
+        address_line2: addressLine2 || undefined,
+        city: city || undefined,
+        state: state || undefined,
+        postal_code: postalCode || undefined,
+        country: country || undefined,
+        phone: phone || undefined,
       });
       onSuccess?.();
       onClose();
@@ -90,7 +106,7 @@ export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelecti
 
   return (
     <Modal onClose={onClose} ariaLabel="Choose payment method">
-      <div className="modal-content" style={{ maxWidth: step === "tier" ? 580 : 480 }}>
+      <div className="modal-content" style={{ maxWidth: step === "tier" ? 580 : step === "invoice-details" ? 540 : 480 }}>
         {step === "tier" && (
           <>
             <h2>Choose Your Plan</h2>
@@ -159,7 +175,7 @@ export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelecti
               </button>
               <button
                 className="payment-option"
-                onClick={() => { setStep("invoice-email"); setError(null); }}
+                onClick={() => { setStep("invoice-details"); setError(null); }}
                 disabled={loading !== null || invoiceBlocked}
               >
                 <FileText size={28} />
@@ -189,23 +205,76 @@ export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelecti
           </>
         )}
 
-        {step === "invoice-email" && (
+        {step === "invoice-details" && (
           <>
-            <h2>Confirm Billing Email</h2>
+            <h2>Billing Details</h2>
             <p className="text-muted" style={{ margin: "8px 0 16px" }}>
-              We'll send the invoice to this email address.
+              Enter your billing information. We'll send a net-30 invoice to the email below.
             </p>
-            <form onSubmit={(e) => { e.preventDefault(); handleInvoice(); }}>
-              <input
-                type="email"
-                className="form-input"
-                value={invoiceEmail}
-                onChange={(e) => setInvoiceEmail(e.target.value)}
-                required
-                autoFocus
-              />
-              {error && <div className="form-error" style={{ marginTop: 12 }}>{error}</div>}
-              <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <form onSubmit={(e) => { e.preventDefault(); handleInvoice(); }} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="form-group">
+                <label>Billing Email</label>
+                <input type="email" value={invoiceEmail} onChange={(e) => setInvoiceEmail(e.target.value)} required autoFocus />
+              </div>
+              <div className="form-group">
+                <label>Business Name</label>
+                <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label>Address Line 1</label>
+                <input type="text" value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label>Address Line 2 <span className="label-optional">(optional)</span></label>
+                <input type="text" value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>City</label>
+                  <input type="text" value={city} onChange={(e) => setCity(e.target.value)} required />
+                </div>
+                <div className="form-group">
+                  <label>State / Province</label>
+                  <input type="text" value={state} onChange={(e) => setState(e.target.value)} required />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>ZIP / Postal Code</label>
+                  <input type="text" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} required />
+                </div>
+                <div className="form-group">
+                  <label>Country</label>
+                  <select value={country} onChange={(e) => setCountry(e.target.value)} required>
+                    <option value="US">United States</option>
+                    <option value="CA">Canada</option>
+                    <option value="GB">United Kingdom</option>
+                    <option value="AU">Australia</option>
+                    <option value="DE">Germany</option>
+                    <option value="FR">France</option>
+                    <option value="JP">Japan</option>
+                    <option value="KR">South Korea</option>
+                    <option value="IN">India</option>
+                    <option value="BR">Brazil</option>
+                    <option value="MX">Mexico</option>
+                    <option value="IL">Israel</option>
+                    <option value="SG">Singapore</option>
+                    <option value="CH">Switzerland</option>
+                    <option value="NL">Netherlands</option>
+                    <option value="SE">Sweden</option>
+                    <option value="DK">Denmark</option>
+                    <option value="NO">Norway</option>
+                    <option value="NZ">New Zealand</option>
+                    <option value="IE">Ireland</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Phone <span className="label-optional">(optional)</span></label>
+                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </div>
+              {error && <div className="form-error">{error}</div>}
+              <div style={{ marginTop: 4, display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button
                   type="button"
                   className="btn-secondary"
@@ -214,7 +283,7 @@ export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelecti
                 >
                   <ArrowLeft size={16} /> Back
                 </button>
-                <button type="submit" className="btn-primary" disabled={loading !== null || !invoiceEmail}>
+                <button type="submit" className="btn-primary" disabled={loading !== null || !invoiceEmail || !businessName || !addressLine1 || !city || !state || !postalCode}>
                   Send Invoice {loading === "invoice" && <span className="spinner" />}
                 </button>
               </div>
