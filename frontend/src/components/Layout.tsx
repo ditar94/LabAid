@@ -43,6 +43,7 @@ import { useTheme } from "../hooks/useTheme";
 import { version } from "../../package.json";
 
 const TermsModal = lazy(() => import("./TermsModal"));
+const PrivacyModal = lazy(() => import("./PrivacyModal"));
 const PaymentChoiceModal = lazy(() => import("./PaymentChoiceModal"));
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -51,6 +52,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
@@ -420,7 +422,7 @@ export default function Layout() {
           </button>
         </div>
         <div className="sidebar-copyright">
-          <div>&copy; {CURRENT_YEAR} LabAid</div>
+          <div>&copy; {CURRENT_YEAR} LabAid&trade; &middot; LabWorx LLC</div>
           <div>
             v{version}
             {import.meta.env.VITE_APP_ENV && import.meta.env.VITE_APP_ENV !== "production" && (
@@ -430,7 +432,11 @@ export default function Layout() {
               <> &middot; {import.meta.env.VITE_GIT_SHA.slice(0, 7)}</>
             )}
           </div>
-          <button type="button" className="link-button" onClick={() => setShowTerms(true)}>Terms of Use</button>
+          <div>
+            <button type="button" className="link-button" onClick={() => setShowTerms(true)}>Terms</button>
+            {" · "}
+            <button type="button" className="link-button" onClick={() => setShowPrivacy(true)}>Privacy</button>
+          </div>
         </div>
       </nav>
       <main className="main-content">
@@ -466,6 +472,11 @@ export default function Layout() {
       {showTerms && (
         <Suspense fallback={null}>
           <TermsModal onClose={() => setShowTerms(false)} />
+        </Suspense>
+      )}
+      {showPrivacy && (
+        <Suspense fallback={null}>
+          <PrivacyModal onClose={() => setShowPrivacy(false)} />
         </Suspense>
       )}
       {showPaymentModal && (

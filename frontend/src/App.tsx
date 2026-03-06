@@ -54,6 +54,7 @@ const GlobalSearchPage = lazy(() => import("./pages/GlobalSearchPage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const CocktailsPage = lazy(() => import("./pages/CocktailsPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
 const DemoPage = lazy(() => import("./pages/DemoPage"));
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
 const SSOCallbackPage = lazy(() => import("./pages/SSOCallbackPage"));
@@ -88,6 +89,7 @@ function AppRoutes() {
         <Route path="/set-password" element={<SetPasswordPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/auth/callback" element={<SSOCallbackPage />} />
         <Route
           path="/change-password"

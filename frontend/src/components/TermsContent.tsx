@@ -4,19 +4,20 @@ export default function TermsContent() {
       <section>
         <h2>1. Acceptance of Terms</h2>
         <p>
-          By accessing or using LabAid ("the Service"), you agree to be bound by these Terms of
-          Use. If you do not agree, do not use the Service. Continued use after modifications to
-          these terms constitutes acceptance of the updated terms.
+          By accessing or using LabAid ("the Service"), a software platform owned and operated by
+          LabWorx LLC ("Company"), you agree to be bound by these Terms of Use. If you do not agree,
+          do not use the Service. Continued use after modifications to these terms constitutes
+          acceptance of the updated terms.
         </p>
       </section>
 
       <section>
         <h2>2. Service Description</h2>
         <p>
-          LabAid is a cloud-based laboratory inventory management platform designed for flow
-          cytometry laboratories. The Service provides antibody and reagent tracking, lot
-          management, storage management, barcode scanning, audit logging, and related
-          functionality.
+          LabAid is a cloud-based laboratory inventory management platform developed and operated
+          by LabWorx LLC, designed for flow cytometry laboratories. The Service provides antibody
+          and reagent tracking, lot management, storage management, barcode scanning, audit logging,
+          and related functionality.
         </p>
         <p>
           LabAid is an inventory management tool and does not provide medical advice, diagnostic
@@ -79,9 +80,10 @@ export default function TermsContent() {
           consult with your compliance officer to ensure the Service meets your requirements.
         </p>
         <p>
-          Customer agrees to indemnify, defend, and hold LabAid harmless from and against any
-          claims, liabilities, damages, and costs arising from Customer's misuse of the Service,
-          upload of restricted data (including PHI), or regulatory violations.
+          Customer agrees to indemnify, defend, and hold LabWorx LLC and its LabAid platform
+          harmless from and against any claims, liabilities, damages, and costs arising from
+          Customer's misuse of the Service, upload of restricted data (including PHI), or regulatory
+          violations.
         </p>
       </section>
 
@@ -89,8 +91,8 @@ export default function TermsContent() {
         <h2>6. Intellectual Property</h2>
         <p>
           The Service, including its design, code, and documentation, is the intellectual
-          property of LabAid. You are granted a limited, non-exclusive, non-transferable license
-          to use the Service for your internal laboratory operations.
+          property of LabWorx LLC. You are granted a limited, non-exclusive, non-transferable
+          license to use the Service for your internal laboratory operations.
         </p>
         <p>
           You may not reverse engineer, decompile, disassemble, or otherwise attempt to derive the
@@ -111,7 +113,7 @@ export default function TermsContent() {
           provided unless separately agreed in writing.
         </p>
         <p>
-          LabAid shall not be liable for delays or failures resulting from causes beyond its
+          LabWorx LLC shall not be liable for delays or failures resulting from causes beyond its
           reasonable control, including but not limited to acts of God, internet outages,
           cyberattacks, government actions, or third-party service disruptions.
         </p>
@@ -129,7 +131,7 @@ export default function TermsContent() {
       <section>
         <h2>9. Limitation of Liability</h2>
         <p>
-          To the maximum extent permitted by law, LabAid shall not be liable for any indirect,
+          To the maximum extent permitted by law, LabWorx LLC shall not be liable for any indirect,
           incidental, special, consequential, or punitive damages, including but not limited to
           loss of data, loss of revenue, ruined reagents, or interruption of laboratory
           operations.
@@ -144,11 +146,12 @@ export default function TermsContent() {
         <h2>10. Payment and Billing</h2>
         <p>
           Paid plans are billed in advance on a recurring annual or monthly basis, or as otherwise
-          agreed upon via Purchase Order or custom invoice terms. Invoices are due within 30 days
-          of receipt unless otherwise specified. You agree to pay all fees associated with your
-          selected plan. Failure to pay may result in suspension of write access or transition to
-          read-only mode after applicable grace periods. Free trial accounts are subject to the
-          limitations described at the time of signup.
+          agreed upon via Purchase Order or custom invoice terms. All billing and payment
+          obligations are between you and LabWorx LLC. Invoices are due within 30 days of receipt
+          unless otherwise specified. You agree to pay all fees associated with your selected plan.
+          Failure to pay may result in suspension of write access or transition to read-only mode
+          after applicable grace periods. Free trial accounts are subject to the limitations
+          described at the time of signup.
         </p>
       </section>
 

@@ -7,6 +7,7 @@ import { preloadAppChunks } from "../App";
 import api from "../api/client";
 
 const TermsModal = lazy(() => import("../components/TermsModal"));
+const PrivacyModal = lazy(() => import("../components/PrivacyModal"));
 
 const SSO_LABELS: Record<string, string> = {
   oidc_microsoft: "Sign in with Microsoft",
@@ -26,6 +27,7 @@ export default function LoginPage() {
   const [shaking, setShaking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
 
   if (user) return <Navigate to="/dashboard" replace />;
 
@@ -201,7 +203,7 @@ export default function LoginPage() {
           Don't have an account? <Link to="/signup">Sign up for free</Link>
         </p>
         <p className="login-footer">
-          Laboratory inventory management &middot; <button type="button" className="link-button" onClick={() => setShowTerms(true)}>Terms of Use</button>
+          Laboratory inventory management &middot; <button type="button" className="link-button" onClick={() => setShowTerms(true)}>Terms</button> &middot; <button type="button" className="link-button" onClick={() => setShowPrivacy(true)}>Privacy</button>
         </p>
         <p className="login-version">
           v{version}
@@ -216,6 +218,11 @@ export default function LoginPage() {
       {showTerms && (
         <Suspense fallback={null}>
           <TermsModal onClose={() => setShowTerms(false)} />
+        </Suspense>
+      )}
+      {showPrivacy && (
+        <Suspense fallback={null}>
+          <PrivacyModal onClose={() => setShowPrivacy(false)} />
         </Suspense>
       )}
     </div>

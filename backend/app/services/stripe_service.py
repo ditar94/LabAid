@@ -146,6 +146,9 @@ def get_or_create_customer(db: Session, lab: Lab) -> str:
             "name": lab.name,
             "email": lab.billing_email,
             "metadata": {"lab_id": str(lab.id)},
+            "invoice_settings": {
+                "footer": "LabAid is a product of LabWorx LLC. https://labaid.io",
+            },
         },
         options={"idempotency_key": f"cust_{lab.id}"},
     )
