@@ -1879,6 +1879,17 @@ button.btn-secondary:disabled {
   background: var(--danger-700);
 }
 
+.btn-danger-outline {
+  background: transparent;
+  color: var(--danger-600);
+  border: 1px solid var(--danger-300);
+}
+
+.btn-danger-outline:hover {
+  background: var(--danger-50);
+  border-color: var(--danger-600);
+}
+
 .btn-success {
   background: var(--success-600);
   color: #fff;

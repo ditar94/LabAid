@@ -209,3 +209,32 @@ def send_trial_welcome_email(to: str, full_name: str, trial_end_date: str) -> bo
 def send_demo_ready_email(to: str, login_link: str) -> bool:
     html = _demo_ready_html(login_link)
     return _send_invite_or_reset(to, "Your LabAid Demo Is Ready", html)
+
+
+def _deletion_confirmation_html(lab_name: str, deleted_date: str) -> str:
+    return (
+        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">'
+        f"<h2>Your LabAid Account Has Been Deleted</h2>"
+        f"<p>This confirms that all data associated with <strong>{lab_name}</strong> "
+        f"has been permanently deleted from LabAid as of {deleted_date}.</p>"
+        "<p><strong>The following data has been removed:</strong></p>"
+        '<ul style="color:#374151;line-height:1.8">'
+        "<li>All user accounts and credentials</li>"
+        "<li>Antibody catalog and inventory records</li>"
+        "<li>Lot tracking data and vial records</li>"
+        "<li>Uploaded QC documents and files</li>"
+        "<li>Storage configurations</li>"
+        "<li>Stripe billing customer and subscription data</li>"
+        "</ul>"
+        '<p style="color:#666;font-size:13px">Per our '
+        '<a href="https://labaid.io/privacy">Privacy Policy</a>, '
+        "anonymized audit log entries are retained for data integrity purposes.</p>"
+        '<p style="color:#666;font-size:13px">If you have any questions, contact us at '
+        '<a href="mailto:support@labaid.io">support@labaid.io</a>.</p>'
+        "</div>"
+    )
+
+
+def send_deletion_confirmation_email(to: str, lab_name: str, deleted_date: str) -> bool:
+    html = _deletion_confirmation_html(lab_name, deleted_date)
+    return _send_invite_or_reset(to, f"LabAid — Your account data for {lab_name} has been deleted", html)

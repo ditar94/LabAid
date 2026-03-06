@@ -4,6 +4,7 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -12,6 +13,7 @@ from app.models import models
 from app.models.models import BillingStatus
 from app.schemas import schemas
 from app.middleware.auth import get_current_user, require_role
+from app.core.cache import suspension_cache
 from app.core.config import settings as app_settings
 from app.services.audit import log_audit, snapshot_lab
 from app.services.object_storage import object_storage
@@ -793,3 +795,177 @@ def get_lab_subscription(
     if details and sync_subscription_status(db, lab, details):
         db.commit()
     return details
+
+
+# ── Lab Deletion ─────────────────────────────────────────────────────────
+
+
+def _delete_lab_data(db: Session, lab: models.Lab) -> None:
+    """Permanently delete all data for a lab. FK-safe ordering.
+
+    Based on wipe_demo_lab() but goes further: deletes users, auth providers,
+    external identities, and the lab row itself.
+    """
+    lab_id = str(lab.id)
+    p = {"id": lab_id}
+
+    # 1-2. Remove FK references before deleting storage
+    db.execute(text("UPDATE vials SET location_cell_id = NULL WHERE lab_id = :id"), p)
+    db.execute(text("UPDATE cocktail_lots SET location_cell_id = NULL WHERE lab_id = :id"), p)
+
+    # 3-4. Tickets
+    db.execute(text(
+        "DELETE FROM ticket_replies WHERE ticket_id IN "
+        "(SELECT id FROM support_tickets WHERE lab_id = :id)"
+    ), p)
+    db.execute(text("DELETE FROM support_tickets WHERE lab_id = :id"), p)
+
+    # 5. Lot requests
+    db.execute(text("DELETE FROM lot_requests WHERE lab_id = :id"), p)
+
+    # 6-7. Lot documents (delete blobs first)
+    lot_docs = db.query(models.LotDocument).filter(models.LotDocument.lab_id == lab.id).all()
+    if object_storage.enabled:
+        for doc in lot_docs:
+            try:
+                object_storage.delete(doc.file_path)
+            except Exception:
+                logger.warning("Failed to delete blob: %s", doc.file_path)
+    db.execute(text("DELETE FROM lot_documents WHERE lab_id = :id"), p)
+
+    # 8-9. Cocktail lot documents (delete blobs first)
+    cocktail_docs = db.query(models.CocktailLotDocument).filter(
+        models.CocktailLotDocument.lab_id == lab.id
+    ).all()
+    if object_storage.enabled:
+        for doc in cocktail_docs:
+            try:
+                object_storage.delete(doc.file_path)
+            except Exception:
+                logger.warning("Failed to delete blob: %s", doc.file_path)
+    db.execute(text("DELETE FROM cocktail_lot_documents WHERE lab_id = :id"), p)
+
+    # 10-13. Cocktails
+    db.execute(text(
+        "DELETE FROM cocktail_lot_sources WHERE cocktail_lot_id IN "
+        "(SELECT id FROM cocktail_lots WHERE lab_id = :id)"
+    ), p)
+    db.execute(text("DELETE FROM cocktail_lots WHERE lab_id = :id"), p)
+    db.execute(text(
+        "DELETE FROM cocktail_recipe_components WHERE recipe_id IN "
+        "(SELECT id FROM cocktail_recipes WHERE lab_id = :id)"
+    ), p)
+    db.execute(text("DELETE FROM cocktail_recipes WHERE lab_id = :id"), p)
+
+    # 14-15. Vials and lots
+    db.execute(text("DELETE FROM vials WHERE lab_id = :id"), p)
+    db.execute(text("DELETE FROM lots WHERE lab_id = :id"), p)
+
+    # 16-18. Antibodies, reagent components, fluorochromes
+    db.execute(text(
+        "DELETE FROM reagent_components WHERE antibody_id IN "
+        "(SELECT id FROM antibodies WHERE lab_id = :id)"
+    ), p)
+    db.execute(text("DELETE FROM antibodies WHERE lab_id = :id"), p)
+    db.execute(text("DELETE FROM fluorochromes WHERE lab_id = :id"), p)
+
+    # 19-20. Storage
+    db.execute(text(
+        "DELETE FROM storage_cells WHERE storage_unit_id IN "
+        "(SELECT id FROM storage_units WHERE lab_id = :id)"
+    ), p)
+    db.execute(text("DELETE FROM storage_units WHERE lab_id = :id"), p)
+
+    # 21. Audit logs
+    db.execute(text("DELETE FROM audit_log WHERE lab_id = :id"), p)
+
+    # 22. External identities (via users)
+    db.execute(text(
+        "DELETE FROM external_identities WHERE user_id IN "
+        "(SELECT id FROM users WHERE lab_id = :id)"
+    ), p)
+
+    # 23. Auth providers
+    db.execute(text("DELETE FROM lab_auth_providers WHERE lab_id = :id"), p)
+
+    # 24. Users
+    db.execute(text("DELETE FROM users WHERE lab_id = :id"), p)
+
+    # 25. Nullify shared references
+    db.execute(text("UPDATE demo_leads SET demo_lab_id = NULL WHERE demo_lab_id = :id"), p)
+    db.execute(text(
+        "UPDATE vendor_catalog SET created_by_lab_id = NULL WHERE created_by_lab_id = :id"
+    ), p)
+
+    # 26. Delete the lab row
+    db.execute(text("DELETE FROM labs WHERE id = :id"), p)
+
+    # 27. Clear cache
+    suspension_cache.pop(lab_id, None)
+
+    db.flush()
+
+
+@router.delete("/{lab_id}")
+def delete_lab(
+    lab_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    if lab.is_demo:
+        raise HTTPException(status_code=400, detail="Cannot delete demo labs")
+
+    if lab.billing_status != BillingStatus.CANCELLED.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Only cancelled labs can be deleted. Cancel the subscription first.",
+        )
+
+    lab_name = lab.name
+
+    # Collect admin emails before deletion (for confirmation email)
+    admin_emails = [
+        u.email for u in db.query(models.User).filter(
+            models.User.lab_id == lab.id,
+            models.User.role == models.UserRole.LAB_ADMIN,
+            models.User.is_active == True,
+        ).all()
+    ]
+
+    # Cancel Stripe subscription and delete customer
+    if lab.stripe_subscription_id or lab.stripe_customer_id:
+        try:
+            from app.services.stripe_service import get_stripe_client
+            client = get_stripe_client()
+            if lab.stripe_subscription_id:
+                try:
+                    client.subscriptions.cancel(lab.stripe_subscription_id)
+                except Exception:
+                    logger.warning("Could not cancel subscription %s", lab.stripe_subscription_id)
+            if lab.stripe_customer_id:
+                try:
+                    client.customers.delete(lab.stripe_customer_id)
+                except Exception:
+                    logger.warning("Could not delete Stripe customer %s", lab.stripe_customer_id)
+        except RuntimeError:
+            logger.warning("Stripe not configured, skipping Stripe cleanup for lab %s", lab_id)
+
+    _delete_lab_data(db, lab)
+    db.commit()
+
+    # Send deletion confirmation emails (after commit, best-effort)
+    from datetime import date
+    from app.services.email import send_deletion_confirmation_email
+    deleted_date = date.today().strftime("%B %d, %Y")
+    for email in admin_emails:
+        try:
+            send_deletion_confirmation_email(email, lab_name, deleted_date)
+        except Exception:
+            logger.warning("Failed to send deletion confirmation to %s", email)
+
+    logger.info("Lab deleted: %s (%s) by user %s", lab_name, lab_id, current_user.id)
+    return {"detail": f"Lab '{lab_name}' and all associated data have been permanently deleted."}

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Lab, BillingStatus } from "../api/types";
-import { Building2, LogIn, Shield } from "lucide-react";
+import { Building2, LogIn, Shield, Trash2 } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import CopyButton from "../components/CopyButton";
 import ToggleSwitch from "../components/ToggleSwitch";
@@ -167,6 +167,27 @@ export default function LabsPage() {
       addToast("Invoice billing re-enabled for this lab", "success");
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Failed to clear invoice block", "danger");
+    }
+  };
+
+  const [deletePrompt, setDeletePrompt] = useState<{ id: string; name: string } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleDeleteLab = async () => {
+    if (!deletePrompt) return;
+    setDeleteLoading(true);
+    try {
+      await api.delete(`/labs/${deletePrompt.id}`);
+      setDeletePrompt(null);
+      setDeleteConfirmText("");
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
+      refreshLabs();
+      addToast("Lab permanently deleted", "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to delete lab", "danger");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -448,17 +469,28 @@ export default function LabsPage() {
                 </td>
                 <td>{new Date(l.created_at).toLocaleString()}</td>
                 <td>
-                  {l.is_active && l.settings?.support_access_enabled && (
-                    <button
-                      className="btn-sm"
-                      onClick={() => handleEnterLab(l.id)}
-                      disabled={enteringLabId === l.id}
-                      title="Enter this lab in support mode"
-                    >
-                      <LogIn size={14} style={{ marginRight: 4, verticalAlign: -2 }} />
-                      {enteringLabId === l.id ? "Entering..." : "Enter Lab"}
-                    </button>
-                  )}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {l.is_active && l.settings?.support_access_enabled && (
+                      <button
+                        className="btn-sm"
+                        onClick={() => handleEnterLab(l.id)}
+                        disabled={enteringLabId === l.id}
+                        title="Enter this lab in support mode"
+                      >
+                        <LogIn size={14} style={{ marginRight: 4, verticalAlign: -2 }} />
+                        {enteringLabId === l.id ? "Entering..." : "Enter Lab"}
+                      </button>
+                    )}
+                    {!l.is_demo && l.billing_status === "cancelled" && (
+                      <button
+                        className="btn-sm btn-danger-outline"
+                        onClick={() => { setDeletePrompt({ id: l.id, name: l.name }); setDeleteConfirmText(""); }}
+                        title="Permanently delete this lab and all data"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
         );
@@ -523,6 +555,44 @@ export default function LabsPage() {
               <button
                 className="btn-secondary"
                 onClick={() => setSuspendPrompt(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {deletePrompt && (
+        <Modal onClose={() => setDeletePrompt(null)} ariaLabel="Delete lab">
+          <div className="modal-content">
+            <h2>Permanently delete {deletePrompt.name}?</h2>
+            <p className="page-desc">
+              This action is <strong>irreversible</strong>. All users, inventory data, QC documents,
+              audit logs, and the Stripe customer will be permanently deleted.
+            </p>
+            <p className="page-desc" style={{ marginTop: "var(--space-sm)" }}>
+              Type <strong>{deletePrompt.name}</strong> to confirm:
+            </p>
+            <input
+              type="text"
+              className="input"
+              value={deleteConfirmText}
+              onChange={e => setDeleteConfirmText(e.target.value)}
+              placeholder={deletePrompt.name}
+              autoFocus
+            />
+            <div className="action-btns" style={{ marginTop: "var(--space-lg)" }}>
+              <button
+                className="btn-danger"
+                onClick={handleDeleteLab}
+                disabled={deleteLoading || deleteConfirmText !== deletePrompt.name}
+              >
+                {deleteLoading ? "Deleting..." : "Delete Lab Permanently"}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => setDeletePrompt(null)}
               >
                 Cancel
               </button>
