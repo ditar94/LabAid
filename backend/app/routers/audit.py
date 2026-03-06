@@ -9,6 +9,8 @@ from app.core.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.models import (
     AuditLog,
+    CocktailLot,
+    CocktailLotDocument,
     Lot,
     LotDocument,
     User,
@@ -29,6 +31,8 @@ def _apply_audit_filters(
     lab_id: UUID | None = None,
     antibody_id: UUID | None = None,
     lot_id: UUID | None = None,
+    cocktail_recipe_id: UUID | None = None,
+    cocktail_lot_id: UUID | None = None,
     entity_type: str | None = None,
     entity_id: UUID | None = None,
     action: str | None = None,
@@ -63,6 +67,19 @@ def _apply_audit_filters(
             related_ids.extend(doc_ids)
 
         q = q.filter(AuditLog.entity_id.in_(related_ids))
+    elif cocktail_lot_id:
+        related_ids = [cocktail_lot_id]
+        doc_ids = [r[0] for r in db.query(CocktailLotDocument.id).filter(CocktailLotDocument.cocktail_lot_id == cocktail_lot_id).all()]
+        related_ids.extend(doc_ids)
+        q = q.filter(AuditLog.entity_id.in_(related_ids))
+    elif cocktail_recipe_id:
+        related_ids = [cocktail_recipe_id]
+        cocktail_lot_ids = [r[0] for r in db.query(CocktailLot.id).filter(CocktailLot.recipe_id == cocktail_recipe_id).all()]
+        related_ids.extend(cocktail_lot_ids)
+        if cocktail_lot_ids:
+            doc_ids = [r[0] for r in db.query(CocktailLotDocument.id).filter(CocktailLotDocument.cocktail_lot_id.in_(cocktail_lot_ids)).all()]
+            related_ids.extend(doc_ids)
+        q = q.filter(AuditLog.entity_id.in_(related_ids))
     else:
         if entity_type:
             q = q.filter(AuditLog.entity_type == entity_type)
@@ -94,6 +111,8 @@ def list_audit_logs(
     lab_id: UUID | None = None,
     lot_id: UUID | None = None,
     antibody_id: UUID | None = None,
+    cocktail_recipe_id: UUID | None = None,
+    cocktail_lot_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     limit: int = 100,
@@ -104,6 +123,7 @@ def list_audit_logs(
     q = _apply_audit_filters(
         db.query(AuditLog), db, current_user,
         lab_id=lab_id, antibody_id=antibody_id, lot_id=lot_id,
+        cocktail_recipe_id=cocktail_recipe_id, cocktail_lot_id=cocktail_lot_id,
         entity_type=entity_type, entity_id=entity_id,
         action=action, date_from=date_from, date_to=date_to,
     )
@@ -128,6 +148,8 @@ def list_audit_logs(
         lin = lineage_map.get(log.entity_id, {"lot_id": None, "antibody_id": None})
         out.lot_id = lin["lot_id"]
         out.antibody_id = lin["antibody_id"]
+        out.cocktail_recipe_id = lin.get("cocktail_recipe_id")
+        out.cocktail_lot_id = lin.get("cocktail_lot_id")
         results.append(out)
 
     return results
@@ -139,12 +161,15 @@ def get_audit_log_range(
     lab_id: UUID | None = None,
     lot_id: UUID | None = None,
     antibody_id: UUID | None = None,
+    cocktail_recipe_id: UUID | None = None,
+    cocktail_lot_id: UUID | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     q = _apply_audit_filters(
         db.query(AuditLog), db, current_user,
         lab_id=lab_id, antibody_id=antibody_id, lot_id=lot_id,
+        cocktail_recipe_id=cocktail_recipe_id, cocktail_lot_id=cocktail_lot_id,
         action=action,
     )
 

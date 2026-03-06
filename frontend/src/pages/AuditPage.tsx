@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Antibody, AuditLogEntry, AuditLogRange, Lot } from "../api/types";
+import type { Antibody, AuditLogEntry, AuditLogRange, CocktailLot, CocktailRecipe, Lot } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { useSharedData } from "../context/SharedDataContext";
 import { ClipboardList, Download } from "lucide-react";
@@ -113,9 +113,12 @@ export default function AuditPage() {
   const [selectedLab, setSelectedLab] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
-  // Filter state
-  const [filterAntibody, setFilterAntibody] = useState("");
+  // Filter state — unified scope: "" | "ab:<id>" | "cr:<id>"
+  const [filterScope, setFilterScope] = useState("");
+  const filterAntibody = filterScope.startsWith("ab:") ? filterScope.slice(3) : "";
+  const filterCocktailRecipe = filterScope.startsWith("cr:") ? filterScope.slice(3) : "";
   const [filterLot, setFilterLot] = useState("");
+  const [filterCocktailLot, setFilterCocktailLot] = useState("");
   const [filterActions, setFilterActions] = useState<Set<string>>(new Set());
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [actionDropdownOpen, setActionDropdownOpen] = useState(false);
@@ -152,6 +155,15 @@ export default function AuditPage() {
     },
   });
 
+  const { data: cocktailRecipes = [] } = useQuery<CocktailRecipe[]>({
+    queryKey: ["audit-cocktail-recipes", labParam],
+    queryFn: () => {
+      const params: Record<string, string> = {};
+      if (labParam) params.lab_id = labParam;
+      return api.get("/cocktails/recipes", { params }).then((r) => r.data);
+    },
+  });
+
   const { data: lots = [] } = useQuery<Lot[]>({
     queryKey: ["audit-lots", filterAntibody, labParam],
     queryFn: () => {
@@ -160,6 +172,16 @@ export default function AuditPage() {
       return api.get("/lots/", { params }).then((r) => r.data);
     },
     enabled: !!filterAntibody,
+  });
+
+  const { data: cocktailLots = [] } = useQuery<CocktailLot[]>({
+    queryKey: ["audit-cocktail-lots", filterCocktailRecipe, labParam],
+    queryFn: () => {
+      const params: Record<string, string> = { recipe_id: filterCocktailRecipe, include_archived: "true" };
+      if (labParam) params.lab_id = labParam;
+      return api.get("/cocktails/lots", { params }).then((r) => r.data);
+    },
+    enabled: !!filterCocktailRecipe,
   });
 
   // Build shared query params for audit fetches
@@ -171,7 +193,9 @@ export default function AuditPage() {
     };
     if (labParam) params.lab_id = labParam;
     if (filterAntibody) params.antibody_id = filterAntibody;
+    if (filterCocktailRecipe) params.cocktail_recipe_id = filterCocktailRecipe;
     if (filterLot) params.lot_id = filterLot;
+    if (filterCocktailLot) params.cocktail_lot_id = filterCocktailLot;
     if (filterActions.size > 0) params.action = actionsKey;
     if (dateRange) {
       const dp = dateRangeToParams(dateRange);
@@ -188,7 +212,7 @@ export default function AuditPage() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery<AuditLogEntry[]>({
-    queryKey: ["audit-logs", labParam, filterAntibody, filterLot, actionsKey, dateRange],
+    queryKey: ["audit-logs", labParam, filterScope, filterLot, filterCocktailLot, actionsKey, dateRange],
     queryFn: ({ pageParam }) => {
       const params = buildAuditParams(pageParam as number);
       return api.get("/audit/", { params }).then((r) => r.data);
@@ -203,15 +227,17 @@ export default function AuditPage() {
   const logs = useMemo(() => auditData?.pages.flat() ?? [], [auditData]);
 
   // Range notice query
-  const hasScope = !!filterLot || !!filterAntibody;
+  const hasScope = !!filterLot || !!filterCocktailLot || !!filterAntibody || !!filterCocktailRecipe;
   const { data: rangeNotice } = useQuery<RangeNotice | null>({
-    queryKey: ["audit-range", labParam, filterAntibody, filterLot, actionsKey, dateRange],
+    queryKey: ["audit-range", labParam, filterScope, filterLot, filterCocktailLot, actionsKey, dateRange],
     queryFn: async () => {
       if (!dateRange) return null;
       const params: Record<string, string> = {};
       if (labParam) params.lab_id = labParam;
       if (filterAntibody) params.antibody_id = filterAntibody;
+      if (filterCocktailRecipe) params.cocktail_recipe_id = filterCocktailRecipe;
       if (filterLot) params.lot_id = filterLot;
+      if (filterCocktailLot) params.cocktail_lot_id = filterCocktailLot;
       if (filterActions.size > 0) params.action = actionsKey;
 
       const r = await api.get<AuditLogRange>("/audit/range", { params });
@@ -239,7 +265,7 @@ export default function AuditPage() {
   // Reset range notice dismissed when filters change
   useEffect(() => {
     setRangeNoticeDismissed(false);
-  }, [filterAntibody, filterLot, filterActions, dateRange, selectedLab]);
+  }, [filterScope, filterLot, filterCocktailLot, filterActions, dateRange, selectedLab]);
 
   const toggleAction = (value: string) => {
     setFilterActions((prev) => {
@@ -261,9 +287,24 @@ export default function AuditPage() {
   if (filterAntibody) {
     const ab = antibodies.find((a) => a.id === filterAntibody);
     activeFilters.push({
-      key: "ab",
+      key: "scope",
       label: ab ? `${ab.target} ${ab.fluorochrome}` : "Antibody",
-      onClear: () => { setFilterAntibody(""); setFilterLot(""); },
+      onClear: () => { setFilterScope(""); setFilterLot(""); },
+    });
+  } else if (filterCocktailRecipe) {
+    const cr = cocktailRecipes.find((r) => r.id === filterCocktailRecipe);
+    activeFilters.push({
+      key: "scope",
+      label: cr ? cr.name : "Cocktail",
+      onClear: () => { setFilterScope(""); setFilterCocktailLot(""); },
+    });
+  }
+  if (filterCocktailLot) {
+    const cl = cocktailLots.find((l) => l.id === filterCocktailLot);
+    activeFilters.push({
+      key: "cocktail-lot",
+      label: cl ? `Lot ${cl.lot_number}` : "Cocktail Lot",
+      onClear: () => setFilterCocktailLot(""),
     });
   }
   if (filterLot) {
@@ -296,25 +337,45 @@ export default function AuditPage() {
   const handleScopeLot = (log: AuditLogEntry) => {
     if (!log.lot_id) return;
     if (!filterAntibody && log.antibody_id) {
-      setFilterAntibody(log.antibody_id);
+      setFilterScope(`ab:${log.antibody_id}`);
     }
     setFilterLot(log.lot_id);
   };
 
   const handleScopeAntibody = (log: AuditLogEntry) => {
     if (!log.antibody_id) return;
-    setFilterAntibody(log.antibody_id);
+    setFilterScope(`ab:${log.antibody_id}`);
     setFilterLot("");
   };
 
-  const clearAll = () => {
-    setFilterAntibody("");
+  const handleScopeCocktail = (log: AuditLogEntry) => {
+    if (!log.cocktail_recipe_id) return;
+    setFilterScope(`cr:${log.cocktail_recipe_id}`);
     setFilterLot("");
+    setFilterCocktailLot("");
+  };
+
+  const handleScopeCocktailLot = (log: AuditLogEntry) => {
+    if (!log.cocktail_lot_id) return;
+    if (!filterCocktailRecipe && log.cocktail_recipe_id) {
+      setFilterScope(`cr:${log.cocktail_recipe_id}`);
+    }
+    setFilterCocktailLot(log.cocktail_lot_id);
+  };
+
+  const clearAll = () => {
+    setFilterScope("");
+    setFilterLot("");
+    setFilterCocktailLot("");
     setFilterActions(new Set());
     setDateRange(null);
   };
 
   const scopeLabel = (() => {
+    if (filterCocktailLot) {
+      const cl = cocktailLots.find((l) => l.id === filterCocktailLot);
+      return cl ? `Lot ${cl.lot_number}` : "This cocktail lot";
+    }
     if (filterLot) {
       const lot = lots.find((l) => l.id === filterLot);
       return lot ? `Lot ${lot.lot_number}` : "This lot";
@@ -322,6 +383,10 @@ export default function AuditPage() {
     if (filterAntibody) {
       const ab = antibodies.find((a) => a.id === filterAntibody);
       return ab ? `${ab.target} ${ab.fluorochrome}` : "This antibody";
+    }
+    if (filterCocktailRecipe) {
+      const cr = cocktailRecipes.find((r) => r.id === filterCocktailRecipe);
+      return cr ? cr.name : "This cocktail";
     }
     return "This selection";
   })();
@@ -355,17 +420,45 @@ export default function AuditPage() {
         )}
 
         <select
-          aria-label="Filter by antibody"
-          value={filterAntibody}
-          onChange={(e) => { setFilterAntibody(e.target.value); setFilterLot(""); }}
+          aria-label="Filter by antibody or cocktail"
+          value={filterScope}
+          onChange={(e) => { setFilterScope(e.target.value); setFilterLot(""); setFilterCocktailLot(""); }}
         >
-          <option value="">All antibodies</option>
-          {antibodies.map((ab) => (
-            <option key={ab.id} value={ab.id}>
-              {ab.target} {ab.fluorochrome}
-            </option>
-          ))}
+          <option value="">All antibodies & cocktails</option>
+          {antibodies.length > 0 && (
+            <optgroup label="Antibodies">
+              {antibodies.map((ab) => (
+                <option key={ab.id} value={`ab:${ab.id}`}>
+                  {ab.target} {ab.fluorochrome}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {cocktailRecipes.length > 0 && (
+            <optgroup label="Cocktails">
+              {cocktailRecipes.map((cr) => (
+                <option key={cr.id} value={`cr:${cr.id}`}>
+                  {cr.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
+
+        {filterCocktailRecipe && cocktailLots.length > 0 && (
+          <select
+            aria-label="Filter by cocktail lot"
+            value={filterCocktailLot}
+            onChange={(e) => setFilterCocktailLot(e.target.value)}
+          >
+            <option value="">All lots</option>
+            {cocktailLots.map((cl) => (
+              <option key={cl.id} value={cl.id}>
+                {cl.lot_number}
+              </option>
+            ))}
+          </select>
+        )}
 
         {filterAntibody && lots.length > 0 && (
           <select
@@ -492,8 +585,26 @@ export default function AuditPage() {
                     </span>
                   </span>
                 )}
-                {(log.lot_id || log.antibody_id) && (
+                {(log.lot_id || log.antibody_id || log.cocktail_recipe_id) && (
                   <span className="scope-btns">
+                    {log.antibody_id && (
+                      <button
+                        className="btn-chip btn-chip-primary"
+                        onClick={() => handleScopeAntibody(log)}
+                        title="Filter to this antibody"
+                      >
+                        ab
+                      </button>
+                    )}
+                    {log.cocktail_recipe_id && (
+                      <button
+                        className="btn-chip btn-chip-primary"
+                        onClick={() => handleScopeCocktail(log)}
+                        title="Filter to this cocktail"
+                      >
+                        cocktail
+                      </button>
+                    )}
                     {log.lot_id && (
                       <button
                         className="btn-chip btn-chip-primary"
@@ -503,13 +614,13 @@ export default function AuditPage() {
                         lot
                       </button>
                     )}
-                    {log.antibody_id && (
+                    {log.cocktail_lot_id && (
                       <button
                         className="btn-chip btn-chip-primary"
-                        onClick={() => handleScopeAntibody(log)}
-                        title="Filter to this antibody"
+                        onClick={() => handleScopeCocktailLot(log)}
+                        title="Filter to this cocktail lot"
                       >
-                        ab
+                        lot
                       </button>
                     )}
                   </span>

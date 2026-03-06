@@ -64,7 +64,7 @@ export default function DocumentModal({ lot, qcDocRequired = false, onClose, onU
     setFile(selected);
   };
 
-  const doUpload = async () => {
+  const doUpload = async ({ skipInvalidate = false } = {}) => {
     if (!file) return false;
     setError(null);
     setUploading(true);
@@ -75,7 +75,7 @@ export default function DocumentModal({ lot, qcDocRequired = false, onClose, onU
     try {
       await api.post(`/documents/lots/${lot.id}`, formData);
       await refreshDocuments();
-      onDocumentsChange?.();
+      if (!skipInvalidate) onDocumentsChange?.();
       setFile(null);
       setDescription("");
       setIsQcDocument(false);
@@ -105,7 +105,7 @@ export default function DocumentModal({ lot, qcDocRequired = false, onClose, onU
           setError("Your lab requires a QC document to approve this lot. Check \"This is a lot verification/QC document\" first.");
           return;
         }
-        if (!(await doUpload())) return;
+        if (!(await doUpload({ skipInvalidate: true }))) return;
       } else if (qcDocRequired && !hasExistingQcDoc) {
         setError("A QC document must be uploaded or marked as QC before approval.");
         return;

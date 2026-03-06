@@ -36,34 +36,45 @@ If you forget your password, click "Forgot password?" on the login screen to res
         title: "How to Navigate the App",
         body: `On desktop, use the sidebar on the left to switch between pages. The available sections depend on your role.
 
-On mobile, the sidebar becomes a bottom navigation bar. Swipe between pages or tap the icons.
+On mobile, the sidebar collapses behind a menu button. Tap the menu icon in the top left to open it.
 
 Main sections available to all users:
 • Dashboard — Stats, alerts, and pending items at a glance
 • Scan / Search — Scan barcodes or search to perform actions on lots
 • Inventory — Browse all antibodies and lots
+• Storage — Manage physical storage racks and vial locations (if enabled by an Admin)
+• Cocktails — Manage cocktail recipes and prepared lots (if enabled by an Admin)
 • Audit Log — Review every action taken in your lab
-• Support — This guide and the ticket system
+• Reports — Generate and export compliance reports
 
-Additional sections for Admins:
-• Storage — Manage physical storage racks and vial locations (if enabled)
-• Users — Create and manage team member accounts
-• Dashboard Settings — Configure lab-wide preferences`,
+Additional sections for Supervisors and Admins:
+• Users — View and manage team member accounts
+• Support — This guide, the ticket system, and the support access toggle
+• Fluorochromes — Manage fluorochrome names and colors
+
+Admin-only sections:
+• Settings — Configure lab-wide preferences
+• Billing — Manage your subscription (non-demo labs)
+
+At the bottom of the sidebar you'll find:
+• A theme toggle button — cycles through Light, Dark, and System (matches your device theme)
+• A "More options" button (...) — opens a menu with "Change Password"
+• A Sign Out button`,
       },
       {
         id: "understanding-roles",
         title: "How Roles Work",
         body: `Each user is assigned one role that determines what they can do.
 
-Read Only — Can view the dashboard, inventory, and audit log. Cannot make changes. Good for compliance officers or auditors.
+Read Only — Can view the dashboard, inventory, audit log, and reports. Cannot make changes. Good for compliance officers or auditors.
 
-Tech — The standard daily-use role. Can scan barcodes, receive lots, open and deplete vials, move vials between storage locations, upload documents, and submit lot requests for review.
+Tech — The standard daily-use role. Can scan barcodes, receive lots, open and deplete vials, move vials between storage locations, upload documents, prepare cocktail lots, and submit lot requests for review.
 
-Supervisor — Everything a Tech can do, plus approve or reject lot requests, approve or fail QC on lots, and archive lots.
+Supervisor — Everything a Tech can do, plus approve or reject lot requests, approve QC on lots, archive lots, create and edit cocktails, manage fluorochrome colors, and access the Support page. Supervisors can also see the Users page.
 
 Tech and Supervisor users submit new lot registrations as requests when the matching antibody doesn't exist yet. An Admin or Supervisor reviews and approves them.
 
-Lab Admin — Full control within the lab. Everything a Supervisor can do, plus manage users, adjust lab settings, delete storage units, and deplete entire lots at once.`,
+Lab Admin — Full control within the lab. Everything a Supervisor can do, plus create users, adjust lab settings, manage billing, delete storage units, and deplete entire lots at once.`,
       },
     ],
   },
@@ -77,13 +88,13 @@ Lab Admin — Full control within the lab. Everything a Supervisor can do, plus 
         body: `Go to the Scan / Search page.
 
 Option A — Scan a barcode:
-1. Tap the camera icon to open the barcode scanner.
+1. Tap "Camera Scan" to open the barcode scanner.
 2. Point your camera at the barcode. The scanner reads it automatically.
 3. The lot details appear if the barcode matches an existing lot.
 
 Option B — Search manually:
 1. Type a lot number, vendor barcode, or antibody name into the search field.
-2. Press Enter or tap Search.
+2. Press Enter or tap "Go."
 3. If a single lot matches, its details load directly. If multiple antibodies match, you'll see a list of results to choose from.
 
 After a successful lookup you'll see:
@@ -216,15 +227,15 @@ This is a quick way to rearrange vials without leaving the Scan page. For bulk m
         body: `Go to the Inventory page to see all antibodies and their lots.
 
 Browsing:
-• Toggle between Card view and List view using the icon in the top right.
-• Each antibody shows its target, fluorochrome, clone, vendor, and catalog number.
-• Badges appear for Low Stock (red), Needs QC (yellow), Expiring Soon (yellow), or Expired (red).
+• Toggle between Card view and List view using the buttons in the top right.
+• Each antibody shows its target, fluorochrome, designation, vendor, and catalog number.
+• Badges appear for No Stock / Reorder (red), Needs QC (yellow), Low Stock (red), Expiring Soon (yellow), or Expired (red).
 
-Searching:
-• Type in the search bar to filter by target, fluorochrome, vendor, or catalog number.
+Searching antibodies:
+• Use the Scan / Search page to search by target, fluorochrome, clone, vendor, or catalog number. Matching antibodies are shown as expandable cards.
 
 Filtering:
-• Use the Designation dropdown to filter by RUO, ASR, or IVD.
+• Use the "All Designations" dropdown to filter by RUO, ASR, or IVD.
 • Toggle "Show inactive antibodies" at the bottom to include archived/deactivated items.
 
 Viewing lots:
@@ -346,11 +357,18 @@ All edits are recorded in the audit log.`,
         title: "How to Change a Fluorochrome Color",
         body: `Fluorochrome colors are used throughout the app to color-code antibody cards and storage grid cells, making it easier to visually identify reagents at a glance.
 
+From the Fluorochromes page:
+1. Go to the Fluorochromes page (under the Admin section in the sidebar).
+2. Find the fluorochrome in the table.
+3. Click the color swatch in the Color column to open a color picker.
+4. Choose the new color. The change is saved immediately and applies everywhere that fluorochrome appears.
+5. You can also add new fluorochromes from this page by clicking "+ New Fluorochrome."
+
 From the Inventory page (Card view):
 1. Find the antibody card whose fluorochrome color you want to change.
 2. Hover over the colored circle in the top-left corner of the card — a small pencil icon appears.
 3. Click the circle to open a color picker.
-4. Choose the new color. The change is saved immediately and applies everywhere that fluorochrome appears.
+4. Choose the new color. The change is saved immediately.
 
 This updates the color for the fluorochrome itself, so every antibody using the same fluorochrome will reflect the new color.
 
@@ -452,7 +470,7 @@ The Cocktails page is only visible when the "Cocktails" setting is enabled by a 
         body: `A cocktail definition specifies which antibodies go into the mix and in what amounts.
 
 1. Go to the Cocktails page.
-2. Click "+ New Cocktail."
+2. Click "+ New."
 3. Fill in:
    • Name — A descriptive name (e.g., "T-Cell Panel" or "B-Cell Cocktail")
    • Shelf Life (days) — How long a prepared lot is usable
@@ -472,8 +490,8 @@ The cocktail appears as a card on the Cocktails page. Click it to see its lots a
         role: "supervisor",
         body: `You can update a cocktail's name, shelf life, renewal limit, and components at any time.
 
-1. Go to the Cocktails page and find the cocktail card.
-2. Click the Edit button on the card.
+1. Go to the Cocktails page and click the cocktail card to expand it.
+2. Click "Edit Cocktail" inside the expanded section.
 3. Make your changes — add, remove, or reorder components as needed.
 4. Click "Save."
 
@@ -484,8 +502,8 @@ Editing a cocktail definition does not affect lots that have already been prepar
         title: "How to Prepare a Cocktail Lot",
         body: `Preparing a lot records that you physically mixed a batch of the cocktail.
 
-1. Go to the Cocktails page and find the cocktail.
-2. Click "Prepare" on the cocktail card.
+1. Go to the Cocktails page and click the cocktail card to expand it.
+2. Click "Prepare Lot" inside the expanded section.
 3. Fill in:
    • Lot Number — A unique identifier for this batch
    • Preparation Date — When you mixed it (defaults to today)
@@ -503,12 +521,11 @@ The new lot appears under the cocktail card with a "Pending" QC status.`,
         body: `Newly prepared cocktail lots start with a "Pending" QC status. A Supervisor or Admin must approve them before they're considered validated.
 
 1. Go to the Cocktails page and expand the cocktail.
-2. Find the lot and click the checkmark (Approve) button.
-3. The lot's status changes to "Approved."
+2. Click the lot row to expand its details.
+3. Click "Approve QC." A confirmation dialog appears.
+4. Click "Approve" to confirm. The lot's status changes to "Approved."
 
-To fail QC, click the X (Fail) button instead. Failed lots cannot be renewed.
-
-You can also attach QC documents to a cocktail lot by clicking the document icon on the lot row.`,
+You can also attach QC documents to a cocktail lot by clicking the "Documents" button on the expanded lot.`,
       },
       {
         id: "renew-cocktail-lot",
@@ -516,8 +533,8 @@ You can also attach QC documents to a cocktail lot by clicking the document icon
         role: "supervisor",
         body: `Renewing extends a cocktail lot's expiration date by another shelf-life period. This is used when the cocktail has been re-validated and is still good.
 
-1. Find the approved lot on the Cocktails page.
-2. Click the Renew button (circular arrow icon).
+1. Find the approved lot on the Cocktails page and click it to expand.
+2. Click the "Renew" button.
 3. The expiration date advances by the cocktail's shelf life, and the renewal count increases.
 
 Renewal is only available when:
@@ -529,12 +546,12 @@ Renewal is only available when:
         id: "deplete-archive-cocktail",
         title: "How to Deplete or Archive a Cocktail Lot",
         body: `Deplete: Marks a lot as fully used up.
-1. Find the lot on the Cocktails page.
-2. Click the Deplete button.
+1. Find the lot on the Cocktails page and click it to expand.
+2. Click the "Deplete" button.
 3. The lot status changes to "Depleted."
 
 Archive: Hides a lot from the default view to keep things tidy.
-1. Click the Archive button on the lot row.
+1. Click the lot to expand it and click the "Archive" button.
 2. Optionally enter an archive note.
 3. Confirm.
 
@@ -545,13 +562,13 @@ To see archived lots, toggle "Show inactive" at the bottom of the cocktail's lot
         title: "How to Upload Documents to a Cocktail Lot",
         body: `You can attach documents (validation reports, COAs, etc.) to any cocktail lot.
 
-1. Find the lot on the Cocktails page.
-2. Click the document icon on the lot row.
+1. Find the lot on the Cocktails page and click it to expand.
+2. Click the "Documents" button.
 3. In the modal, click "Choose File" and select your document.
 4. Enter an optional description.
 5. Click "Upload."
 
-Uploaded documents appear in the modal list. Click a document name to download it.`,
+Uploaded documents appear in the modal list. Click a document name to download it. Lots with QC documents show "Documents (QC)" on the button.`,
       },
     ],
   },
@@ -582,10 +599,18 @@ Best practices:
       },
       {
         id: "reset-password",
-        title: "How to Reset a Password",
-        body: `There are several ways to reset a password depending on your situation.
+        title: "How to Reset or Change a Password",
+        body: `There are several ways to reset or change a password depending on your situation.
 
-If you forgot your own password:
+If you want to change your own password (while logged in):
+1. Click the "More options" button (...) at the bottom of the sidebar.
+2. Click "Change Password."
+3. Enter your current password, then choose a new one.
+4. Your new password must be at least 10 characters with an uppercase letter, a lowercase letter, and a number. Validation indicators appear below the field as you type.
+5. Re-enter the new password in the "Confirm Password" field.
+6. Click "Update Password."
+
+If you forgot your password:
 1. On the login screen, click "Forgot password?"
 2. Enter your email address.
 3. Check your inbox for a password reset link and follow the instructions.
@@ -604,24 +629,31 @@ If you're a Lab Admin resetting another user's password:
         role: "admin",
         body: `Lab settings control how your entire lab operates. Only Lab Admins can change them.
 
-1. Go to the Dashboard and scroll to the Settings section at the bottom.
+1. Go to the Settings page (under Admin in the sidebar).
 
 Available settings:
 
-Track sealed counts only
-When ON, the dashboard and inventory only show sealed vial counts — opened and depleted counts are hidden. Useful for labs that only track unopened stock.
+Sealed counts only
+When ON, the dashboard and inventory skip opened/depleted vial tracking and only count sealed inventory. Useful for labs that only track unopened stock.
 
-Require QC document upload before lot approval
+QC document required
 When ON, a QC document must be uploaded to a lot before its QC status can be approved. This enforces documentation compliance.
 
-Expiring lot warning (days)
-Set the number of days before expiration to trigger warnings. Lots within this window appear in the "Expiring Soon" section on the Dashboard. Accepts values from 1 to 365.
+Expiry warning
+Set the number of days before expiration to flag lots as expiring soon. Lots within this window appear in the "Expiring Lots" section on the Dashboard. Accepts values from 1 to 365.
 
-Allow LabAid support to access your lab data
-Controls whether LabAid support staff can view your lab's data for troubleshooting. See "How to Enable Support Access" for full details.
+Storage tracking
+When ON, the Storage page is visible and storage-related options appear in scan workflows. When OFF, all storage features are hidden. Useful for labs that don't track physical vial locations.
 
-Enable storage location tracking
-When ON, the Storage tab is visible and storage-related options appear in scan workflows. When OFF, all storage features are hidden. Useful for labs that don't track physical vial locations.`,
+Cocktail tracking
+When ON, the Cocktails page is visible and cocktail recipe management is enabled. When OFF, all cocktail features are hidden.
+
+Single Sign-On (SSO)
+SSO is available on enterprise plans. If enabled for your lab, a "Configure" button appears to set up Microsoft Entra ID or Google Workspace.
+
+The "Support access" toggle is located on the Support page, not on Settings. See "How to Enable Support Access" for details.
+
+At the bottom of the Settings page, a "Run setup wizard" link lets you re-run the initial lab configuration wizard.`,
       },
       {
         id: "enable-support",
@@ -630,8 +662,8 @@ When ON, the Storage tab is visible and storage-related options appear in scan w
         body: `The support access toggle controls whether LabAid staff can view your lab's data to help troubleshoot issues.
 
 How to turn it on:
-1. Go to the Dashboard and scroll to the Settings section.
-2. Toggle "Allow LabAid support to access your lab data" to ON.
+1. Go to the Support page (under Admin in the sidebar).
+2. Toggle "Support access" to ON at the top of the page.
 
 How to turn it off:
 • Toggle the same setting to OFF at any time.
@@ -678,9 +710,9 @@ Browsing:
 • Entries from LabAid support staff are tagged with a "Support" badge.
 
 Filtering:
-• Antibody dropdown — Show only entries related to a specific antibody.
+• Antibody / Cocktail dropdown — Show only entries related to a specific antibody or cocktail recipe.
 • Lot dropdown — (appears after selecting an antibody) Filter to a specific lot.
-• Actions dropdown — Multi-select specific action types like "Vial Received," "QC Approved," "User Created," etc. Actions are grouped by category.
+• Actions dropdown — Multi-select specific action types like "Received," "Opened," "QC Approved," "User Created," etc. Actions are grouped by category (Vials, Lots, Antibodies, Cocktails, Other, Support).
 • Date range picker — Click to open a month calendar. Click a month to select it, or Shift+click to select a range. Click a year to select the entire year. Click "Clear" to reset.
 
 If your selected date range misses events, a helpful banner appears suggesting a wider range. Click "Include months" to auto-adjust.
@@ -694,6 +726,60 @@ Exporting:
 • Click "Export CSV" to download all currently visible entries as a spreadsheet-compatible CSV file. Useful for compliance reporting.
 
 The log loads 100 entries at a time. Click "Load more" at the bottom to see older entries.`,
+      },
+      {
+        id: "reports",
+        title: "How to Generate Compliance Reports",
+        body: `The Reports page lets you generate and export compliance-ready reports in CSV or PDF format.
+
+1. Go to the Reports page (under Review in the sidebar).
+2. Click a report card to expand it and see filter options.
+3. Optionally filter by antibody, lot, cocktail recipe, or date range depending on the report type.
+4. Click "CSV" or "PDF" to download the report.
+
+Available reports:
+
+Lot Activity — Per-lot milestones: received date, QC approval, opened dates. Filter by antibody, lot, and date range.
+
+Usage by Lot — Consumption analytics per lot: vials received vs consumed, average usage rate per week, and lot status.
+
+Usage by Month — Monthly consumption trend: vials opened, active lots, and average usage rate per week for each month.
+
+Cocktail Lots — Cocktail lot traceability: recipe, source lots, preparation and expiration dates, QC status, and renewals. Filter by cocktail recipe.
+
+Admin Activity — User management, settings changes, support sessions, and other administrative actions.
+
+Audit Trail Export — Full audit log with user, action, entity, and timestamps. Filterable by date range, entity type, and action.
+
+All reports are available to every user in the lab.`,
+      },
+      {
+        id: "billing",
+        title: "How to Manage Billing and Subscriptions",
+        role: "admin",
+        body: `The Billing page lets Lab Admins view and manage the lab's subscription. It is not shown for demo labs.
+
+To open Billing, click "Billing" (or "Subscribe" if you're on a trial or cancelled) in the Admin section of the sidebar.
+
+What you'll see depends on your subscription status:
+
+Trial:
+A pricing card shows the plan details, included features, and a "Subscribe Now" button. A message shows how many days remain in your free trial. Click "Subscribe Now" to choose a payment method (card or invoice).
+
+Active subscription:
+The page shows your plan name and status badge, annual price, a "Manage Billing" button (opens the Stripe customer portal), renewal date, and detail cards for Current Period, Next Payment, Payment Method, Billing Email, and Customer Since. A "What's included" section lists all plan features.
+
+Enterprise plans show SSO/SAML authentication, dedicated onboarding, priority support, and custom integrations. Standard plans can upgrade to Enterprise using the "Upgrade to Enterprise" button that appears at the bottom.
+
+If your payment method is "Card (auto-charge)," a "Switch to invoice" link appears next to it.
+
+Past Due:
+A warning banner explains that your payment is past due. The main button changes to "Update Payment" so you can fix the payment method via the Stripe portal.
+
+Cancelled:
+A message explains the cancellation reason. A "Reactivate Subscription" button lets you re-subscribe.
+
+Non-admin users cannot see or access the Billing page. If your subscription lapses, a banner appears at the top of every page for all users indicating the account status, with an action button visible only to Admins.`,
       },
       {
         id: "submit-ticket",

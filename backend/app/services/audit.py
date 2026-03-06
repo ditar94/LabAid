@@ -239,7 +239,7 @@ def batch_resolve_audit_logs(
         rows = db.query(CocktailRecipe).filter(CocktailRecipe.id.in_(cr_ids)).all()
         for r in rows:
             labels[r.id] = r.name
-            lineage[r.id] = {"lot_id": None, "antibody_id": None}
+            lineage[r.id] = {"lot_id": None, "antibody_id": None, "cocktail_recipe_id": r.id, "cocktail_lot_id": None}
 
     # ── Cocktail lots ──
     cl_ids = ids_by_type.get("cocktail_lot", set())
@@ -263,7 +263,7 @@ def batch_resolve_audit_logs(
                 labels[cl.id] = f"{recipe.name} — Lot {cl.lot_number}"
             else:
                 labels[cl.id] = f"Cocktail Lot {cl.lot_number}"
-            lineage[cl.id] = {"lot_id": None, "antibody_id": None}
+            lineage[cl.id] = {"lot_id": None, "antibody_id": None, "cocktail_recipe_id": cl.recipe_id, "cocktail_lot_id": cl.id}
 
     # ── Cocktail lot documents ──
     cld_ids = ids_by_type.get("cocktail_document", set())
@@ -275,14 +275,19 @@ def batch_resolve_audit_logs(
             extra_cls = db.query(CocktailLot).filter(CocktailLot.id.in_(needed_cl_ids)).all()
         else:
             extra_cls = []
-        cl_map = {c.id: c for c in extra_cls}
+        cl_map_doc = {c.id: c for c in extra_cls}
+        # Also include cocktail lots already loaded above
+        if cl_ids:
+            for cl_row in cl_rows:
+                if cl_row.id not in cl_map_doc:
+                    cl_map_doc[cl_row.id] = cl_row
         for d in cld_rows:
-            cl = cl_map.get(d.cocktail_lot_id)
+            cl = cl_map_doc.get(d.cocktail_lot_id)
             if cl:
                 labels[d.id] = f"Cocktail Lot {cl.lot_number}"
             else:
                 labels[d.id] = d.file_name
-            lineage[d.id] = {"lot_id": None, "antibody_id": None}
+            lineage[d.id] = {"lot_id": None, "antibody_id": None, "cocktail_recipe_id": cl.recipe_id if cl else None, "cocktail_lot_id": d.cocktail_lot_id}
 
     return labels, lineage
 

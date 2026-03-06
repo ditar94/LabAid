@@ -440,6 +440,8 @@ export interface AuditLogEntry {
   entity_label: string | null;
   lot_id: string | null;
   antibody_id: string | null;
+  cocktail_recipe_id: string | null;
+  cocktail_lot_id: string | null;
   is_support_action: boolean;
   before_state: string | null;
   after_state: string | null;

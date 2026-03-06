@@ -694,6 +694,7 @@ def update_qc_status(
         lot.qc_approved_by = None
         lot.qc_approved_at = None
 
+    note = f"Renewal #{lot.renewal_count}" if lot.renewal_count > 0 else "Initial preparation"
     log_audit(
         db,
         lab_id=lot.lab_id,
@@ -703,6 +704,7 @@ def update_qc_status(
         entity_id=lot.id,
         before_state=before,
         after_state=_snapshot_cocktail_lot(lot),
+        note=note,
         is_support_action=getattr(current_user, "_is_impersonating", False),
     )
 

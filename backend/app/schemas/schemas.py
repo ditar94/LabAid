@@ -651,6 +651,8 @@ class AuditLogOut(BaseModel):
     entity_label: str | None = None
     lot_id: UUID | None = None
     antibody_id: UUID | None = None
+    cocktail_recipe_id: UUID | None = None
+    cocktail_lot_id: UUID | None = None
     is_support_action: bool = False
     before_state: str | None
     after_state: str | None

@@ -115,6 +115,10 @@ def upload_cocktail_lot_document(
     note = f"Uploaded: {file.filename}"
     if desc:
         note += f" — {desc}"
+    if lot.renewal_count > 0:
+        note += f" (Renewal #{lot.renewal_count})"
+    else:
+        note += " (Initial preparation)"
 
     log_audit(
         db,
@@ -128,6 +132,7 @@ def upload_cocktail_lot_document(
             "file_name": file.filename,
             "description": desc,
             "is_qc_document": is_qc_document,
+            "renewal_number": lot.renewal_count,
         },
         note=note,
         is_support_action=getattr(current_user, "_is_impersonating", False),
