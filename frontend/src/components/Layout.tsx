@@ -119,12 +119,10 @@ export default function Layout() {
     }
     const billing = labSettings.billing_status;
     const active = labSettings.is_active;
-    if (active === false) {
-      return { variant: "suspended", icon: XCircle, message: "Your lab is suspended. You have read-only access." };
-    }
     if (billing === "cancelled") {
       const reason = labSettings.cancellation_reason;
       const reasonMessages: Record<string, string> = {
+        trial_expired: "Your free trial has expired. Subscribe to continue using LabAid.",
         payment_failed: "Your account was cancelled due to a failed payment.",
         customer_requested: "Your account was cancelled at your request.",
         invoice_uncollectible: "Your account was cancelled due to an unpaid invoice.",
@@ -136,6 +134,9 @@ export default function Layout() {
         message: (reason && reasonMessages[reason]) || "Your account has been cancelled.",
         action: isAdmin ? { text: "Reactivate", type: "checkout" as const } : undefined,
       };
+    }
+    if (active === false) {
+      return { variant: "suspended", icon: XCircle, message: "Your lab is suspended. You have read-only access." };
     }
     if (billing === "past_due") {
       return {

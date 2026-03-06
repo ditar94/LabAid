@@ -1,12 +1,14 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { CreditCard, Calendar, Mail, Clock, Check, ShieldCheck, ExternalLink, AlertTriangle, FileText } from "lucide-react";
+import { CreditCard, Calendar, Mail, Clock, Check, ShieldCheck, ExternalLink, AlertTriangle, FileText, Sparkles } from "lucide-react";
 import api from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 
 const PaymentChoiceModal = lazy(() => import("../components/PaymentChoiceModal"));
+const EnterpriseUpgradeModal = lazy(() => import("../components/EnterpriseUpgradeModal"));
+const SwitchToInvoiceModal = lazy(() => import("../components/SwitchToInvoiceModal"));
 
 interface BillingStatus {
   billing_status: string;
@@ -21,9 +23,11 @@ interface BillingStatus {
   cancel_at_period_end?: boolean;
   latest_invoice_status: string | null;
   cancellation_reason?: string | null;
+  plan_tier?: string;
 }
 
 const CANCELLATION_MESSAGES: Record<string, string> = {
+  trial_expired: "Your free trial has expired. Subscribe to continue using LabAid.",
   payment_failed: "Your subscription was cancelled due to a failed payment. Reactivate to restore full access.",
   customer_requested: "Your subscription was cancelled at your request. You can reactivate anytime.",
   invoice_uncollectible: "Your subscription was cancelled because the invoice was not paid. Reactivate to restore full access.",
@@ -69,6 +73,8 @@ export default function BillingPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showSwitchToInvoice, setShowSwitchToInvoice] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(searchParams.get("billing") === "success");
 
   const { data: billing, isLoading } = useQuery<BillingStatus>({
@@ -137,6 +143,8 @@ export default function BillingPage() {
   const isInvoicePending = billing.billing_status === "invoice_pending";
   const isPastDue = billing.billing_status === "past_due";
   const isCancelled = billing.billing_status === "cancelled";
+  const isEnterprise = billing.plan_tier === "enterprise";
+  const canUpgrade = isActive && !isEnterprise && !billing.cancel_at_period_end;
 
   const trialExpired = isTrial && billing.trial_ends_at && new Date(billing.trial_ends_at) < new Date();
   const trialDaysLeft = isTrial && billing.trial_ends_at
@@ -145,7 +153,7 @@ export default function BillingPage() {
 
   const renewalDays = daysUntil(billing.current_period_end);
 
-  const features = [
+  const standardFeatures = [
     "Barcode scanning on any device",
     "Full vial lifecycle tracking",
     "Expiration tracking & alerts",
@@ -156,6 +164,16 @@ export default function BillingPage() {
     "Role-based access control",
     "Email support",
   ];
+
+  const enterpriseFeatures = [
+    "Everything in Standard",
+    "SSO / SAML authentication",
+    "Dedicated onboarding",
+    "Priority support",
+    "Custom integrations",
+  ];
+
+  const features = isEnterprise ? enterpriseFeatures : standardFeatures;
 
   return (
     <div>
@@ -274,7 +292,7 @@ export default function BillingPage() {
                       {statusLabel(billing.billing_status)}
                     </span>
                   </div>
-                  <div className="billing-plan-billed">$4,200/year &middot; Unlimited users</div>
+                  <div className="billing-plan-billed">{isEnterprise ? "$8,400/year" : "$4,200/year"} &middot; Unlimited users</div>
                 </div>
               </div>
               <button className="btn-primary billing-portal-btn" onClick={handlePortal}>
@@ -316,7 +334,14 @@ export default function BillingPage() {
             <div className="billing-info-card">
               <div className="billing-info-icon"><CreditCard size={18} /></div>
               <div className="billing-info-label">Payment Method</div>
-              <div className="billing-info-value">{paymentMethodLabel(billing.collection_method)}</div>
+              <div className="billing-info-value">
+                {paymentMethodLabel(billing.collection_method)}
+                {isActive && billing.collection_method === "charge_automatically" && !billing.cancel_at_period_end && (
+                  <button className="btn-link" style={{ marginLeft: 8, fontSize: 13 }} onClick={() => setShowSwitchToInvoice(true)}>
+                    Switch to invoice
+                  </button>
+                )}
+              </div>
             </div>
             {billing.billing_email && (
               <div className="billing-info-card">
@@ -346,12 +371,72 @@ export default function BillingPage() {
               ))}
             </ul>
           </div>
+
+          {/* Enterprise upgrade pitch */}
+          {canUpgrade && (
+            <div className="billing-plan-card upgrade-pitch">
+              <div className="billing-plan-header">
+                <div>
+                  <div className="billing-plan-name">
+                    <Sparkles size={18} />
+                    Upgrade to Enterprise
+                  </div>
+                  <div className="billing-plan-price">
+                    <span className="billing-plan-amount">$700</span>
+                    <span className="billing-plan-period">/month</span>
+                  </div>
+                  <div className="billing-plan-billed">$8,400 billed annually &middot; Unlimited users</div>
+                </div>
+              </div>
+              <ul className="billing-plan-features">
+                {enterpriseFeatures.map((f) => (
+                  <li key={f}>
+                    <Check size={16} className="billing-plan-check" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <div className="billing-plan-cta">
+                <button className="btn-primary billing-plan-btn" onClick={() => setShowUpgradeModal(true)}>
+                  Upgrade to Enterprise
+                </button>
+              </div>
+            </div>
+          )}
         </>)}
       </div>
 
       {showModal && (
         <Suspense fallback={null}>
-          <PaymentChoiceModal onClose={() => setShowModal(false)} onSuccess={handleSubscribeSuccess} />
+          <PaymentChoiceModal onClose={() => setShowModal(false)} onSuccess={handleSubscribeSuccess} skipTierSelection={isTrial} />
+        </Suspense>
+      )}
+
+      {showUpgradeModal && (
+        <Suspense fallback={null}>
+          <EnterpriseUpgradeModal
+            onClose={() => setShowUpgradeModal(false)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["billing-status"] });
+              refreshUser();
+              setShowUpgradeModal(false);
+              addToast("Upgrade to Enterprise complete! Your plan has been updated.", "success");
+            }}
+          />
+        </Suspense>
+      )}
+
+      {showSwitchToInvoice && (
+        <Suspense fallback={null}>
+          <SwitchToInvoiceModal
+            onClose={() => setShowSwitchToInvoice(false)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["billing-status"] });
+              refreshUser();
+              setShowSwitchToInvoice(false);
+              addToast("Switched to invoice billing. Future charges will be invoiced.", "success");
+            }}
+          />
         </Suspense>
       )}
     </div>

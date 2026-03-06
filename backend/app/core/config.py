@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str | None = None
     STRIPE_WEBHOOK_SECRET: str | None = None
     STRIPE_PRICE_ID: str | None = None
+    STRIPE_ENTERPRISE_PRICE_ID: str | None = None
     STRIPE_CHECK_ADDRESS: str | None = None
 
     # Demo environment

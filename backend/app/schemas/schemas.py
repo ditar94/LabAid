@@ -145,6 +145,7 @@ class Lab(BaseModel):
     billing_email: str | None = None
     current_period_end: datetime | None = None
     cancellation_reason: str | None = None
+    plan_tier: str = "standard"
     settings: dict = {}
     created_at: datetime
     is_demo: bool = False
@@ -958,6 +959,7 @@ class CocktailRecipeWithLots(CocktailRecipeOut):
 class CheckoutRequest(BaseModel):
     success_url: str
     cancel_url: str
+    plan_tier: str | None = None
 
 
 class CheckoutResponse(BaseModel):
@@ -985,15 +987,39 @@ class BillingStatusResponse(BaseModel):
     cancel_at_period_end: bool = False
     latest_invoice_status: str | None = None
     cancellation_reason: str | None = None
+    plan_tier: str = "standard"
+
+
+class UpgradePreviewResponse(BaseModel):
+    amount_due: int
+    currency: str
+    proration_credit: int
+    proration_charge: int
+    current_tier: str
+    target_tier: str
+
+
+class UpgradeConfirmResponse(BaseModel):
+    status: str
+    message: str
 
 
 class InvoiceSubscriptionRequest(BaseModel):
     billing_email: EmailStr | None = None
+    plan_tier: str | None = None
 
 
 class InvoiceSubscriptionResponse(BaseModel):
     subscription_id: str
     message: str
+
+
+class SwitchPaymentMethodRequest(BaseModel):
+    billing_email: EmailStr | None = None
+
+
+class AdminSubscribeRequest(BaseModel):
+    plan_tier: str = "standard"
 
 
 class SubscriptionDetails(BaseModel):

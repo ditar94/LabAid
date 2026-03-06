@@ -109,6 +109,7 @@ class Lab(Base):
     current_period_end = Column(DateTime(timezone=True), nullable=True)
     cancel_at_period_end = Column(Boolean, nullable=False, default=False, server_default="false")
     cancellation_reason = Column(String(50), nullable=True)
+    plan_tier = Column(String(20), nullable=False, server_default="standard", default="standard")
     settings = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

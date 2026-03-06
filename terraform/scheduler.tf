@@ -33,3 +33,4 @@ resource "google_cloud_scheduler_job" "stripe_cleanup" {
 
   depends_on = [google_project_service.apis]
 }
+

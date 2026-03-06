@@ -19,6 +19,18 @@ from app.services.storage import create_temporary_storage
 
 logger = logging.getLogger("labaid")
 
+_PLAN_NAMES = {
+    "standard": "LabAid Standard",
+    "enterprise": "LabAid Enterprise",
+}
+
+
+def _plan_display_name(lab):
+    if not lab.stripe_subscription_id:
+        return "Free Trial"
+    return _PLAN_NAMES.get(lab.plan_tier, "LabAid Standard")
+
+
 router = APIRouter(
     prefix="/api/labs",
     tags=["labs"],
@@ -313,11 +325,12 @@ def billing_checkout(
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
-    from app.services.stripe_service import create_checkout_session, create_trial_conversion_checkout
+    from app.services.stripe_service import create_checkout_session, create_trial_conversion_checkout, _resolve_price_id
     from stripe._error import StripeError
     if lab.billing_status in ("active", "past_due"):
         raise HTTPException(status_code=409, detail="Please use the billing portal to manage your existing subscription")
     try:
+        price_id = _resolve_price_id(body.plan_tier) if body.plan_tier else None
         if lab.stripe_subscription_id and lab.billing_status == "trial":
             url = create_trial_conversion_checkout(db, lab, body.success_url, body.cancel_url)
         else:
@@ -325,7 +338,7 @@ def billing_checkout(
             if lab.stripe_subscription_id:
                 lab.stripe_subscription_id = None
                 db.flush()
-            url = create_checkout_session(db, lab, body.success_url, body.cancel_url)
+            url = create_checkout_session(db, lab, body.success_url, body.cancel_url, price_id=price_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except StripeError:
@@ -378,7 +391,8 @@ def billing_status(
         "trial_ends_at": lab.trial_ends_at,
         "has_subscription": bool(lab.stripe_subscription_id),
         "billing_email": lab.billing_email,
-        "plan_name": "LabAid Annual" if lab.stripe_subscription_id else "Free Trial",
+        "plan_name": _plan_display_name(lab),
+        "plan_tier": lab.plan_tier or "standard",
     }
     if lab.stripe_subscription_id and app_settings.STRIPE_SECRET_KEY:
         from app.services.stripe_service import get_subscription_details, sync_subscription_status
@@ -394,6 +408,9 @@ def billing_status(
             result["collection_method"] = details["collection_method"]
             result["cancel_at_period_end"] = details.get("cancel_at_period_end", False)
             result["latest_invoice_status"] = details.get("latest_invoice_status")
+            if details.get("plan_tier"):
+                result["plan_tier"] = details["plan_tier"]
+                result["plan_name"] = _PLAN_NAMES.get(details["plan_tier"], result["plan_name"])
     elif lab.stripe_subscription_id and not app_settings.STRIPE_SECRET_KEY:
         # Fallback when Stripe isn't configured (local dev)
         if lab.current_period_end:
@@ -452,13 +469,17 @@ def billing_invoice(
     if not lab.billing_email:
         raise HTTPException(status_code=400, detail="Billing email is required for invoice subscriptions")
 
-    if lab.stripe_subscription_id and lab.billing_status != "trial":
+    if lab.stripe_subscription_id and lab.billing_status not in ("trial", "cancelled"):
         raise HTTPException(status_code=409, detail="Lab already has an active subscription")
 
-    from app.services.stripe_service import create_invoice_subscription, convert_trial_to_invoice, get_stripe_client, _get_item_period
+    if lab.cancellation_reason == "invoice_uncollectible":
+        raise HTTPException(status_code=409, detail="Invoice billing is unavailable because a previous invoice was not paid. Please use card payment.")
+
+    from app.services.stripe_service import create_invoice_subscription, convert_trial_to_invoice, get_stripe_client, _get_item_period, _resolve_price_id
     from app.core.cache import suspension_cache
     from stripe._error import StripeError
     try:
+        price_id = _resolve_price_id(body.plan_tier) if body.plan_tier else None
         if body.billing_email and lab.stripe_customer_id:
             get_stripe_client().customers.update(
                 lab.stripe_customer_id,
@@ -467,7 +488,7 @@ def billing_invoice(
         if lab.stripe_subscription_id and lab.billing_status == "trial":
             subscription_id = convert_trial_to_invoice(db, lab)
         else:
-            subscription_id = create_invoice_subscription(db, lab)
+            subscription_id = create_invoice_subscription(db, lab, price_id=price_id)
 
         client = get_stripe_client()
         sub = client.subscriptions.retrieve(subscription_id)
@@ -478,6 +499,9 @@ def billing_invoice(
         lab.billing_updated_at = datetime.now(timezone.utc)
         lab.is_active = True
         lab.trial_ends_at = None
+        lab.cancellation_reason = None
+        if body.plan_tier:
+            lab.plan_tier = body.plan_tier
         _, period_end = _get_item_period(sub)
         if period_end:
             lab.current_period_end = datetime.fromtimestamp(period_end, tz=timezone.utc)
@@ -487,7 +511,7 @@ def billing_invoice(
             db, lab_id=lab.id, user_id=current_user.id,
             action="lab.billing_updated", entity_type="lab", entity_id=lab.id,
             before_state=before, after_state=snapshot_lab(lab),
-            note="Invoice subscription created: trial → invoice_pending",
+            note=f"Invoice subscription created: {before.get('billing_status', 'unknown')} → invoice_pending",
         )
         suspension_cache.pop(str(lab.id), None)
     except ValueError as e:
@@ -496,6 +520,238 @@ def billing_invoice(
         raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
     db.commit()
     return {"subscription_id": subscription_id, "message": "Invoice subscription created. An invoice will be sent to your billing email."}
+
+
+@router.patch("/billing/payment-method")
+def switch_payment_method(
+    body: schemas.SwitchPaymentMethodRequest = schemas.SwitchPaymentMethodRequest(),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
+    )),
+):
+    if not app_settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Billing is not configured")
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.billing_status not in (BillingStatus.ACTIVE.value, BillingStatus.INVOICE_PENDING.value):
+        raise HTTPException(status_code=409, detail="Can only switch payment method on active subscriptions")
+    if not lab.stripe_subscription_id:
+        raise HTTPException(status_code=400, detail="No active subscription found")
+    if lab.cancellation_reason == "invoice_uncollectible":
+        raise HTTPException(status_code=409, detail="Invoice billing is unavailable because a previous invoice was not paid. Please use card payment.")
+
+    from app.services.stripe_service import get_subscription_details, switch_to_invoice, get_stripe_client
+    from app.core.cache import suspension_cache
+    from stripe._error import StripeError
+
+    details = get_subscription_details(lab)
+    if details and details.get("collection_method") == "send_invoice":
+        raise HTTPException(status_code=409, detail="Already on invoice billing")
+
+    if body.billing_email:
+        lab.billing_email = body.billing_email
+        db.flush()
+    if not lab.billing_email:
+        raise HTTPException(status_code=400, detail="Billing email is required for invoice billing")
+
+    try:
+        if body.billing_email and lab.stripe_customer_id:
+            get_stripe_client().customers.update(
+                lab.stripe_customer_id, params={"email": body.billing_email},
+            )
+        switch_to_invoice(lab)
+        before = snapshot_lab(lab)
+        log_audit(
+            db, lab_id=lab.id, user_id=current_user.id,
+            action="lab.billing_updated", entity_type="lab", entity_id=lab.id,
+            before_state=before, after_state=snapshot_lab(lab),
+            note="Switched payment method: card → invoice",
+        )
+        suspension_cache.pop(str(lab.id), None)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    db.commit()
+    return {"status": "ok", "message": "Switched to invoice billing. Future charges will be invoiced."}
+
+
+@router.post("/billing/upgrade/preview", response_model=schemas.UpgradePreviewResponse)
+def upgrade_preview(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
+    )),
+):
+    if not app_settings.STRIPE_SECRET_KEY or not app_settings.STRIPE_ENTERPRISE_PRICE_ID:
+        raise HTTPException(status_code=501, detail="Enterprise billing is not configured")
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.billing_status not in (BillingStatus.ACTIVE.value, BillingStatus.INVOICE_PENDING.value):
+        raise HTTPException(status_code=409, detail="Upgrade is only available for active subscriptions")
+    if lab.plan_tier == "enterprise":
+        raise HTTPException(status_code=409, detail="Already on Enterprise plan")
+    if lab.cancel_at_period_end:
+        raise HTTPException(status_code=409, detail="Reactivate your subscription before upgrading")
+    if not lab.stripe_subscription_id:
+        raise HTTPException(status_code=400, detail="No active subscription found")
+
+    from app.services.stripe_service import preview_upgrade
+    from stripe._error import StripeError
+    try:
+        return preview_upgrade(lab)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+
+
+@router.post("/billing/upgrade/confirm", response_model=schemas.UpgradeConfirmResponse)
+def upgrade_confirm(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
+    )),
+):
+    if not app_settings.STRIPE_SECRET_KEY or not app_settings.STRIPE_ENTERPRISE_PRICE_ID:
+        raise HTTPException(status_code=501, detail="Enterprise billing is not configured")
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.billing_status not in (BillingStatus.ACTIVE.value, BillingStatus.INVOICE_PENDING.value):
+        raise HTTPException(status_code=409, detail="Upgrade is only available for active subscriptions")
+    if lab.plan_tier == "enterprise":
+        raise HTTPException(status_code=409, detail="Already on Enterprise plan")
+    if lab.cancel_at_period_end:
+        raise HTTPException(status_code=409, detail="Reactivate your subscription before upgrading")
+    if not lab.stripe_subscription_id:
+        raise HTTPException(status_code=400, detail="No active subscription found")
+
+    from app.services.stripe_service import upgrade_plan
+    from stripe._error import StripeError
+    try:
+        upgrade_plan(db, lab, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    db.commit()
+    return {"status": "ok", "message": "Upgrade to Enterprise initiated. Your plan will update shortly."}
+
+
+@router.post("/{lab_id}/upgrade", response_model=schemas.UpgradeConfirmResponse)
+def admin_upgrade_lab(
+    lab_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    if not app_settings.STRIPE_SECRET_KEY or not app_settings.STRIPE_ENTERPRISE_PRICE_ID:
+        raise HTTPException(status_code=501, detail="Enterprise billing is not configured")
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    from app.services.stripe_service import upgrade_plan
+    from stripe._error import StripeError
+    try:
+        upgrade_plan(db, lab, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    db.commit()
+    return {"status": "ok", "message": f"Enterprise upgrade initiated for {lab.name}."}
+
+
+@router.post("/{lab_id}/admin-subscribe")
+def admin_subscribe_lab(
+    lab_id: UUID,
+    body: schemas.AdminSubscribeRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    if not app_settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Billing is not configured")
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.billing_status != BillingStatus.CANCELLED.value:
+        raise HTTPException(status_code=409, detail="Lab is not cancelled")
+
+    from app.services.stripe_service import create_invoice_subscription, get_stripe_client, _resolve_price_id, _get_item_period
+    from app.core.cache import suspension_cache
+    from stripe._error import StripeError
+    try:
+        price_id = _resolve_price_id(body.plan_tier)
+        before = snapshot_lab(lab)
+        lab.cancellation_reason = None
+        if lab.stripe_subscription_id:
+            lab.stripe_subscription_id = None
+            db.flush()
+        subscription_id = create_invoice_subscription(db, lab, price_id=price_id)
+        client = get_stripe_client()
+        sub = client.subscriptions.retrieve(subscription_id)
+        lab.stripe_subscription_id = subscription_id
+        lab.billing_status = BillingStatus.INVOICE_PENDING.value
+        lab.billing_updated_at = datetime.now(timezone.utc)
+        lab.is_active = True
+        lab.plan_tier = body.plan_tier
+        _, period_end = _get_item_period(sub)
+        if period_end:
+            lab.current_period_end = datetime.fromtimestamp(period_end, tz=timezone.utc)
+        log_audit(
+            db, lab_id=lab.id, user_id=current_user.id,
+            action="lab.admin_subscribed", entity_type="lab", entity_id=lab.id,
+            before_state=before, after_state=snapshot_lab(lab),
+            note=f"Admin created {body.plan_tier} invoice subscription for cancelled lab",
+        )
+        suspension_cache.pop(str(lab.id), None)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except StripeError:
+        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    db.commit()
+    tier_label = "Enterprise" if body.plan_tier == "enterprise" else "Standard"
+    return {"status": "ok", "message": f"{tier_label} invoice subscription created for {lab.name}.", "subscription_id": subscription_id}
+
+
+@router.post("/{lab_id}/clear-invoice-block", response_model=schemas.Lab)
+def clear_invoice_block(
+    lab_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.cancellation_reason != "invoice_uncollectible":
+        raise HTTPException(status_code=400, detail="Lab does not have an invoice block")
+
+    before = snapshot_lab(lab)
+    lab.cancellation_reason = None
+    log_audit(
+        db,
+        lab_id=lab.id,
+        user_id=current_user.id,
+        action="lab.invoice_block_cleared",
+        entity_type="lab",
+        entity_id=lab.id,
+        before_state=before,
+        after_state=snapshot_lab(lab),
+        note="Admin cleared invoice_uncollectible block — invoice billing re-enabled",
+    )
+    db.commit()
+    db.refresh(lab)
+    return lab
 
 
 @router.get("/{lab_id}/subscription", response_model=schemas.SubscriptionDetails | None)

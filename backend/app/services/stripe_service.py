@@ -44,6 +44,39 @@ _STATUS_MAP = {
 }
 
 
+def _resolve_plan_tier(price_id: str | None) -> str:
+    if price_id and settings.STRIPE_ENTERPRISE_PRICE_ID and price_id == settings.STRIPE_ENTERPRISE_PRICE_ID:
+        return "enterprise"
+    return "standard"
+
+
+def _resolve_price_id(plan_tier: str | None) -> str:
+    if plan_tier == "enterprise":
+        if not settings.STRIPE_ENTERPRISE_PRICE_ID:
+            raise ValueError("Enterprise billing is not configured")
+        return settings.STRIPE_ENTERPRISE_PRICE_ID
+    return settings.STRIPE_PRICE_ID
+
+
+def _get_subscription_item_and_price(sub) -> tuple[str | None, str | None]:
+    try:
+        items = sub["items"] if not isinstance(sub, dict) else sub.get("items")
+    except (KeyError, TypeError):
+        items = None
+    if items:
+        data = items.data if hasattr(items, "data") else items.get("data", []) if isinstance(items, dict) else []
+        if data and len(data) > 0:
+            item = data[0]
+            item_id = getattr(item, "id", None) if not isinstance(item, dict) else item.get("id")
+            price = getattr(item, "price", None) if not isinstance(item, dict) else item.get("price")
+            if price:
+                price_id = getattr(price, "id", None) if not isinstance(price, dict) else price.get("id")
+            else:
+                price_id = None
+            return item_id, price_id
+    return None, None
+
+
 def get_stripe_client() -> StripeClient:
     global _client
     if not settings.STRIPE_SECRET_KEY:
@@ -60,10 +93,14 @@ def _get_item_period(sub) -> tuple[int | None, int | None]:
     """Extract current_period_start/end from the first subscription item.
 
     Stripe API 2025-03-31+ moved these fields from subscription level to item level.
+    Note: sub.items collides with dict.items(), so we use sub["items"] for SDK objects.
     """
-    items = getattr(sub, "items", None)
+    try:
+        items = sub["items"] if not isinstance(sub, dict) else sub.get("items")
+    except (KeyError, TypeError):
+        items = None
     if items:
-        data = getattr(items, "data", None) or items.get("data", []) if isinstance(items, dict) else items.data
+        data = items.data if hasattr(items, "data") else items.get("data", []) if isinstance(items, dict) else []
         if data and len(data) > 0:
             item = data[0]
             start = getattr(item, "current_period_start", None) if not isinstance(item, dict) else item.get("current_period_start")
@@ -71,9 +108,9 @@ def _get_item_period(sub) -> tuple[int | None, int | None]:
             if start or end:
                 return start, end
     # Fallback to subscription-level fields for older API versions
-    start = getattr(sub, "current_period_start", None) if not isinstance(sub, dict) else sub.get("current_period_start")
-    end = getattr(sub, "current_period_end", None) if not isinstance(sub, dict) else sub.get("current_period_end")
-    return start, end
+    if isinstance(sub, dict):
+        return sub.get("current_period_start"), sub.get("current_period_end")
+    return getattr(sub, "current_period_start", None), getattr(sub, "current_period_end", None)
 
 
 def _finalize_latest_invoice(client: StripeClient, latest_invoice, lab_id) -> None:
@@ -117,7 +154,7 @@ def get_or_create_customer(db: Session, lab: Lab) -> str:
     return customer.id
 
 
-def create_checkout_session(db: Session, lab: Lab, success_url: str, cancel_url: str) -> str:
+def create_checkout_session(db: Session, lab: Lab, success_url: str, cancel_url: str, price_id: str | None = None) -> str:
     validate_redirect_url(success_url)
     validate_redirect_url(cancel_url)
     client = get_stripe_client()
@@ -128,7 +165,7 @@ def create_checkout_session(db: Session, lab: Lab, success_url: str, cancel_url:
             "client_reference_id": str(lab.id),
             "mode": "subscription",
             "currency": "usd",
-            "line_items": [{"price": settings.STRIPE_PRICE_ID, "quantity": 1}],
+            "line_items": [{"price": price_id or settings.STRIPE_PRICE_ID, "quantity": 1}],
             "success_url": success_url,
             "cancel_url": cancel_url,
         },
@@ -149,10 +186,10 @@ def create_portal_session(lab: Lab, return_url: str) -> str:
     return session.url
 
 
-def create_invoice_subscription(db: Session, lab: Lab) -> str:
+def create_invoice_subscription(db: Session, lab: Lab, price_id: str | None = None) -> str:
     client = get_stripe_client()
     customer_id = get_or_create_customer(db, lab)
-    if lab.stripe_subscription_id:
+    if lab.stripe_subscription_id and lab.billing_status not in (BillingStatus.CANCELLED.value,):
         raise ValueError("Lab already has a subscription")
 
     description = "LabAid Annual Subscription"
@@ -164,7 +201,7 @@ def create_invoice_subscription(db: Session, lab: Lab) -> str:
             "customer": customer_id,
             "collection_method": "send_invoice",
             "days_until_due": 30,
-            "items": [{"price": settings.STRIPE_PRICE_ID}],
+            "items": [{"price": price_id or settings.STRIPE_PRICE_ID}],
             "description": description,
             "metadata": {"lab_id": str(lab.id)},
         },
@@ -191,9 +228,16 @@ def get_subscription_details(lab: Lab) -> dict | None:
         cancellation_reason = None
         if sub.cancellation_details:
             raw = getattr(sub.cancellation_details, "reason", None)
-            reason_map = {"payment_failed": "payment_failed", "cancellation_requested": "customer_requested"}
-            cancellation_reason = reason_map.get(raw, raw) if raw else None
+            if raw == "cancellation_requested" and sub.trial_end:
+                canceled_at = getattr(sub, "canceled_at", 0) or 0
+                trial_end = sub.trial_end or 0
+                if canceled_at >= trial_end and trial_end > 0:
+                    cancellation_reason = "trial_expired"
+            if not cancellation_reason and raw:
+                reason_map = {"payment_failed": "payment_failed", "cancellation_requested": "customer_requested"}
+                cancellation_reason = reason_map.get(raw, raw)
         period_start, period_end = _get_item_period(sub)
+        _, price_id = _get_subscription_item_and_price(sub)
         return {
             "status": sub.status,
             "current_period_start": period_start,
@@ -204,6 +248,7 @@ def get_subscription_details(lab: Lab) -> dict | None:
             "latest_invoice_status": latest_invoice_status,
             "trial_end": sub.trial_end,
             "cancellation_reason": cancellation_reason,
+            "plan_tier": _resolve_plan_tier(price_id),
         }
     except Exception as e:
         logger.warning("Could not fetch subscription %s: %s", lab.stripe_subscription_id, type(e).__name__)
@@ -286,6 +331,26 @@ def convert_trial_to_invoice(db: Session, lab: Lab) -> str:
     return lab.stripe_subscription_id
 
 
+def switch_to_invoice(lab: Lab) -> None:
+    if not lab.stripe_subscription_id:
+        raise ValueError("Lab has no subscription")
+    client = get_stripe_client()
+    tier = "Enterprise" if lab.plan_tier == "enterprise" else ""
+    description = f"LabAid Annual Subscription{' — ' + tier if tier else ''}"
+    if settings.STRIPE_CHECK_ADDRESS:
+        description += f"\n\nTo pay by check, please mail to:\n{settings.STRIPE_CHECK_ADDRESS}"
+    client.subscriptions.update(
+        lab.stripe_subscription_id,
+        params={
+            "collection_method": "send_invoice",
+            "days_until_due": 30,
+            "default_payment_method": "",
+            "description": description,
+        },
+        options={"idempotency_key": f"switch_inv_{lab.id}_{int(time.time() // 300)}"},
+    )
+
+
 def extend_trial(db: Session, lab: Lab, new_trial_end: datetime) -> None:
     if not lab.stripe_subscription_id:
         return
@@ -316,8 +381,15 @@ def sync_subscription_status(db: Session, lab: Lab, details: dict) -> bool:
     if lab.billing_status == BillingStatus.INVOICE_PENDING.value and stripe_status == "active":
         return False
     logger.warning(
-        "Read-through correction: lab %s local=%s stripe=%s, fixing",
-        lab.id, lab.billing_status, stripe_status,
+        "Read-through correction: lab %s (%s) local=%s stripe=%s, fixing",
+        lab.id, lab.name, lab.billing_status, stripe_status,
+        extra={
+            "event": "billing_sync_correction",
+            "lab_id": str(lab.id),
+            "lab_name": lab.name,
+            "old_status": lab.billing_status,
+            "new_status": stripe_status,
+        },
     )
     apply_subscription_status(
         db, lab, stripe_status,
@@ -396,3 +468,78 @@ def apply_subscription_status(
 
     # Invalidate suspension cache so middleware picks up new status immediately
     suspension_cache.pop(str(lab.id), None)
+
+
+def preview_upgrade(lab: Lab) -> dict:
+    client = get_stripe_client()
+    sub = client.subscriptions.retrieve(lab.stripe_subscription_id)
+    item_id, current_price_id = _get_subscription_item_and_price(sub)
+    if not item_id:
+        raise ValueError("Could not determine subscription item")
+
+    preview = client.invoices.create_preview(
+        params={
+            "customer": lab.stripe_customer_id,
+            "subscription": lab.stripe_subscription_id,
+            "subscription_details": {
+                "items": [{"id": item_id, "price": settings.STRIPE_ENTERPRISE_PRICE_ID}],
+                "proration_behavior": "create_prorations",
+            },
+        },
+    )
+
+    proration_credit = 0
+    proration_charge = 0
+    for line in (preview.lines.data if preview.lines else []):
+        if line.amount < 0:
+            proration_credit += abs(line.amount)
+        elif line.amount > 0 and "Remaining time" in (line.get("description") or ""):
+            proration_charge += line.amount
+
+    return {
+        "amount_due": proration_charge - proration_credit,
+        "currency": preview.currency,
+        "proration_credit": proration_credit,
+        "proration_charge": proration_charge,
+        "current_tier": _resolve_plan_tier(current_price_id),
+        "target_tier": "enterprise",
+    }
+
+
+def upgrade_plan(db: Session, lab: Lab, user_id: UUID) -> str:
+    if not settings.STRIPE_ENTERPRISE_PRICE_ID:
+        raise ValueError("Enterprise pricing is not configured")
+    if not lab.stripe_subscription_id:
+        raise ValueError("Lab has no subscription")
+    if lab.billing_status not in (BillingStatus.ACTIVE.value, BillingStatus.INVOICE_PENDING.value):
+        raise ValueError("Upgrade is only available for active subscriptions")
+    if lab.plan_tier == "enterprise":
+        raise ValueError("Lab is already on Enterprise")
+    if lab.cancel_at_period_end:
+        raise ValueError("Subscription is scheduled for cancellation. Reactivate before upgrading.")
+
+    client = get_stripe_client()
+    sub = client.subscriptions.retrieve(lab.stripe_subscription_id)
+    item_id, _ = _get_subscription_item_and_price(sub)
+    if not item_id:
+        raise ValueError("Could not determine subscription item")
+
+    client.subscriptions.update(
+        lab.stripe_subscription_id,
+        params={
+            "items": [{"id": item_id, "price": settings.STRIPE_ENTERPRISE_PRICE_ID}],
+            "proration_behavior": "create_prorations",
+            "metadata": {"plan_tier": "enterprise", "lab_id": str(lab.id)},
+        },
+        options={"idempotency_key": f"upgrade_{lab.id}_enterprise_{int(time.time() // 300)}"},
+    )
+
+    # For invoice customers, finalize and send the prorated invoice
+    if sub.collection_method == "send_invoice":
+        updated_sub = client.subscriptions.retrieve(
+            lab.stripe_subscription_id,
+            params={"expand": ["latest_invoice"]},
+        )
+        _finalize_latest_invoice(client, updated_sub.latest_invoice, lab.id)
+
+    return lab.stripe_subscription_id

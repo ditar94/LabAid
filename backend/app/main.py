@@ -71,6 +71,7 @@ _SUSPENSION_EXEMPT = {
     "/api/stripe/webhook",
     "/api/stripe/events/cleanup",
     "/api/internal/stripe-cleanup",
+    "/api/internal/reconcile-subscriptions",
     "/api/labs/billing/checkout",
     "/api/labs/billing/portal",
     "/api/labs/billing/invoice",
@@ -171,7 +172,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-from app.core.cache import suspension_cache as _suspension_cache, SUSPENSION_TTL as _SUSPENSION_TTL
+from app.core.cache import suspension_cache as _suspension_cache, SUSPENSION_TTL as _SUSPENSION_TTL, stripe_verify_cache as _stripe_verify_cache
+
+
+def _stripe_says_active(lab_id_str: str, subscription_id: str) -> bool | None:
+    """Check Stripe to verify a subscription is truly cancelled.
+    Returns True if Stripe says active, False if cancelled, None on error (fail-closed)."""
+    now = time.time()
+    cached = _stripe_verify_cache.get(lab_id_str)
+    if cached and (now - cached[1]) < _SUSPENSION_TTL:
+        return not cached[0]
+    try:
+        from app.services.stripe_service import get_stripe_client
+        client = get_stripe_client()
+        sub = client.subscriptions.retrieve(subscription_id)
+        is_blocked = sub.status in ("canceled", "unpaid", "incomplete_expired")
+        _stripe_verify_cache[lab_id_str] = (is_blocked, now)
+        if not is_blocked:
+            _suspension_cache.pop(lab_id_str, None)
+        return not is_blocked
+    except Exception:
+        return None
 
 
 class LabSuspensionMiddleware(BaseHTTPMiddleware):
@@ -204,6 +225,7 @@ class LabSuspensionMiddleware(BaseHTTPMiddleware):
         cached = _suspension_cache.get(lab_id_str)
         if cached and (now - cached[3]) < _SUSPENSION_TTL:
             is_active, billing_status, trial_ends_at = cached[0], cached[1], cached[2]
+            stripe_subscription_id = cached[4] if len(cached) > 4 else None
         else:
             db = SessionLocal()
             try:
@@ -211,24 +233,27 @@ class LabSuspensionMiddleware(BaseHTTPMiddleware):
                 is_active = lab.is_active if lab else True
                 billing_status = lab.billing_status if lab else None
                 trial_ends_at = lab.trial_ends_at if lab else None
+                stripe_subscription_id = lab.stripe_subscription_id if lab else None
             finally:
                 db.close()
-            _suspension_cache[lab_id_str] = (is_active, billing_status, trial_ends_at, now)
+            _suspension_cache[lab_id_str] = (is_active, billing_status, trial_ends_at, now, stripe_subscription_id)
 
         if not is_active:
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Lab is suspended. Read-only access only."},
-            )
+            if not (stripe_subscription_id and _stripe_says_active(lab_id_str, stripe_subscription_id)):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Lab is suspended. Read-only access only."},
+                )
 
         if billing_status == "trial" and trial_ends_at:
             # SQLite returns naive datetimes; treat as UTC for comparison
             trial_aware = trial_ends_at if trial_ends_at.tzinfo else trial_ends_at.replace(tzinfo=timezone.utc)
             if trial_aware < datetime.now(timezone.utc):
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "Your free trial has expired. Subscribe to continue."},
-                )
+                if not (stripe_subscription_id and _stripe_says_active(lab_id_str, stripe_subscription_id)):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Your free trial has expired. Subscribe to continue."},
+                    )
 
         return await call_next(request)
 

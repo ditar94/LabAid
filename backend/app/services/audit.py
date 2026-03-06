@@ -330,6 +330,7 @@ def snapshot_lab(lab) -> dict:
         "current_period_end": str(lab.current_period_end) if getattr(lab, "current_period_end", None) else None,
         "cancel_at_period_end": getattr(lab, "cancel_at_period_end", False),
         "cancellation_reason": getattr(lab, "cancellation_reason", None),
+        "plan_tier": getattr(lab, "plan_tier", "standard"),
         "settings": lab.settings or {},
     }
 

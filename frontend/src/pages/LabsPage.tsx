@@ -159,6 +159,57 @@ export default function LabsPage() {
     }
   };
 
+  const handleClearInvoiceBlock = async (labId: string) => {
+    try {
+      await api.post(`/labs/${labId}/clear-invoice-block`);
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
+      refreshLabs();
+      addToast("Invoice billing re-enabled for this lab", "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to clear invoice block", "danger");
+    }
+  };
+
+  const [subscribeTarget, setSubscribeTarget] = useState<{ id: string; name: string } | null>(null);
+  const [subscribeTier, setSubscribeTier] = useState<"standard" | "enterprise">("standard");
+  const [subscribeLoading, setSubscribeLoading] = useState(false);
+  const [subscribeError, setSubscribeError] = useState<string | null>(null);
+
+  const handleAdminSubscribe = async () => {
+    if (!subscribeTarget) return;
+    setSubscribeLoading(true);
+    setSubscribeError(null);
+    try {
+      await api.post(`/labs/${subscribeTarget.id}/admin-subscribe`, { plan_tier: subscribeTier });
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
+      refreshLabs();
+      const tierLabel = subscribeTier === "enterprise" ? "Enterprise" : "Standard";
+      addToast(`${tierLabel} invoice subscription created for "${subscribeTarget.name}"`, "success");
+      setSubscribeTarget(null);
+    } catch (err: any) {
+      setSubscribeError(err.response?.data?.detail || "Failed to create subscription");
+    } finally {
+      setSubscribeLoading(false);
+    }
+  };
+
+  const [upgradingLabId, setUpgradingLabId] = useState<string | null>(null);
+
+  const handleUpgradeLab = async (labId: string, labName: string) => {
+    if (!confirm(`Upgrade "${labName}" to Enterprise? Stripe will prorate the charge.`)) return;
+    setUpgradingLabId(labId);
+    try {
+      await api.post(`/labs/${labId}/upgrade`);
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
+      refreshLabs();
+      addToast(`"${labName}" upgraded to Enterprise`, "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to upgrade lab", "danger");
+    } finally {
+      setUpgradingLabId(null);
+    }
+  };
+
   const handleSsoToggle = async (labId: string, current: boolean) => {
     try {
       await api.patch(`/labs/${labId}/settings`, { sso_enabled: !current });
@@ -245,14 +296,35 @@ export default function LabsPage() {
                 </td>
                 <td>
                   {l.stripe_subscription_id ? (
-                    <span className="badge badge-info" title="Managed by Stripe — change status in Stripe Dashboard">
-                      {l.billing_status === "active" ? "Active" : l.billing_status === "invoice_pending" ? "Invoice Pending" : l.billing_status === "past_due" ? "Past Due" : l.billing_status === "cancelled" ? (
-                        l.cancellation_reason === "payment_failed" ? "Cancelled (payment failed)" :
-                        l.cancellation_reason === "customer_requested" ? "Cancelled (requested)" :
-                        l.cancellation_reason === "invoice_uncollectible" ? "Cancelled (invoice unpaid)" :
-                        l.cancellation_reason === "admin_manual" ? "Cancelled (by admin)" : "Cancelled"
-                      ) : l.billing_status === "trial" ? "Trial" : l.billing_status}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="badge badge-info" title="Managed by Stripe — change status in Stripe Dashboard">
+                        {l.billing_status === "active" ? "Active" : l.billing_status === "invoice_pending" ? "Invoice Pending" : l.billing_status === "past_due" ? "Past Due" : l.billing_status === "cancelled" ? (
+                          l.cancellation_reason === "trial_expired" ? "Cancelled (trial expired)" :
+                          l.cancellation_reason === "payment_failed" ? "Cancelled (payment failed)" :
+                          l.cancellation_reason === "customer_requested" ? "Cancelled (requested)" :
+                          l.cancellation_reason === "invoice_uncollectible" ? "Cancelled (invoice unpaid)" :
+                          l.cancellation_reason === "admin_manual" ? "Cancelled (by admin)" : "Cancelled"
+                        ) : l.billing_status === "trial" ? "Trial" : l.billing_status}
+                      </span>
+                      {l.cancellation_reason === "invoice_uncollectible" && (
+                        <button
+                          className="btn-sm btn-secondary"
+                          onClick={() => handleClearInvoiceBlock(l.id)}
+                          title="Re-enable invoice billing for this lab"
+                        >
+                          Allow Invoice
+                        </button>
+                      )}
+                      {l.billing_status === "cancelled" && l.stripe_customer_id && (
+                        <button
+                          className="btn-sm btn-primary"
+                          onClick={() => { setSubscribeTarget({ id: l.id, name: l.name }); setSubscribeTier("standard"); setSubscribeError(null); }}
+                          title="Create a new subscription for this cancelled lab"
+                        >
+                          Subscribe
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <select
                       className="billing-select"
@@ -270,9 +342,24 @@ export default function LabsPage() {
                   )}
                 </td>
                 <td>
+                  <span className={`badge ${l.plan_tier === "enterprise" ? "badge-info" : "badge-muted"}`}>
+                    {l.plan_tier === "enterprise" ? "Enterprise" : "Standard"}
+                  </span>
+                  {l.is_active && (l.billing_status === "active" || l.billing_status === "invoice_pending") && l.plan_tier !== "enterprise" && l.stripe_subscription_id && (
+                    <button
+                      className="btn-sm btn-secondary"
+                      style={{ marginLeft: 6 }}
+                      onClick={() => handleUpgradeLab(l.id, l.name)}
+                      disabled={upgradingLabId === l.id}
+                    >
+                      {upgradingLabId === l.id ? "..." : "Upgrade"}
+                    </button>
+                  )}
+                </td>
+                <td>
                   {sectionKey === "trial" ? (
                     l.stripe_subscription_id ? (
-                      <span className="text-muted">-</span>
+                      l.trial_ends_at ? new Date(l.trial_ends_at).toLocaleDateString() : <span className="text-muted">-</span>
                     ) : editingTrialId === l.id ? (
                       <span className="inline-edit">
                         <input
@@ -389,6 +476,7 @@ export default function LabsPage() {
                   <th>Name</th>
                   <th>Status</th>
                   <th>Billing</th>
+                  <th>Plan</th>
                   <th>{section.key === "trial" ? "Trial Ends" : "Period Ends"}</th>
                   <th>Subscription</th>
                   <th>SSO</th>
@@ -437,6 +525,42 @@ export default function LabsPage() {
                 onClick={() => setSuspendPrompt(null)}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {subscribeTarget && (
+        <Modal onClose={() => setSubscribeTarget(null)} ariaLabel="Subscribe lab">
+          <div className="modal-content" style={{ maxWidth: 480 }}>
+            <h2>Subscribe {subscribeTarget.name}</h2>
+            <p className="text-muted" style={{ margin: "8px 0 16px" }}>
+              Create an invoice subscription for this cancelled lab.
+            </p>
+            <div className="plan-selector">
+              {(["standard", "enterprise"] as const).map((tier) => (
+                <button
+                  key={tier}
+                  type="button"
+                  className={`plan-option${subscribeTier === tier ? " plan-option--selected" : ""}`}
+                  onClick={() => setSubscribeTier(tier)}
+                >
+                  <strong>{tier === "enterprise" ? "Enterprise" : "Standard"}</strong>
+                  <div className="plan-option-price">{tier === "enterprise" ? "$700/mo" : "$350/mo"}</div>
+                  <div className="text-muted" style={{ fontSize: "var(--text-sm)" }}>
+                    {tier === "enterprise" ? "$8,400/year" : "$4,200/year"}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {subscribeError && <div className="form-error" style={{ marginTop: 12 }}>{subscribeError}</div>}
+            <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn-secondary" onClick={() => setSubscribeTarget(null)} disabled={subscribeLoading}>
+                Cancel
+              </button>
+              <button className="btn-primary" onClick={handleAdminSubscribe} disabled={subscribeLoading}>
+                {subscribeLoading ? "Creating..." : `Create ${subscribeTier === "enterprise" ? "Enterprise" : "Standard"} Subscription`}
               </button>
             </div>
           </div>

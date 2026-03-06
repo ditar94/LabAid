@@ -15,7 +15,7 @@ from app.middleware.auth import require_role
 from app.core.cache import suspension_cache
 from app.models.models import BillingStatus, Lab, StripeEvent, User, UserRole
 from app.services.audit import log_audit
-from app.services.stripe_service import apply_subscription_status, get_stripe_client, _get_item_period
+from app.services.stripe_service import apply_subscription_status, get_stripe_client, _get_item_period, _resolve_plan_tier, _get_subscription_item_and_price
 
 logger = logging.getLogger("labaid")
 
@@ -315,6 +315,7 @@ def _fetch_current_subscription(subscription: dict) -> dict:
         client = get_stripe_client()
         sub = client.subscriptions.retrieve(subscription["id"])
         _, period_end = _get_item_period(sub)
+        _, price_id = _get_subscription_item_and_price(sub)
         return {
             "id": sub.id,
             "status": sub.status,
@@ -325,10 +326,31 @@ def _fetch_current_subscription(subscription: dict) -> dict:
             "cancellation_details": {
                 "reason": getattr(sub.cancellation_details, "reason", None),
             } if sub.cancellation_details else None,
+            "price_id": price_id,
         }
     except Exception:
         logger.warning("Could not fetch subscription %s, using event data", subscription.get("id"))
         return subscription
+
+
+def _sync_plan_tier(db: Session, lab: Lab, subscription: dict) -> None:
+    price_id = subscription.get("price_id")
+    if not price_id:
+        return
+    new_tier = _resolve_plan_tier(price_id)
+    if new_tier != lab.plan_tier:
+        old_tier = lab.plan_tier
+        lab.plan_tier = new_tier
+        lab_admin = db.query(User).filter(
+            User.lab_id == lab.id,
+            User.role.in_([UserRole.LAB_ADMIN, UserRole.SUPER_ADMIN]),
+        ).first()
+        if lab_admin:
+            log_audit(
+                db, lab_id=lab.id, user_id=lab_admin.id,
+                action="lab.plan_tier_changed", entity_type="lab", entity_id=lab.id,
+                note=f"Plan tier: {old_tier} → {new_tier}",
+            )
 
 
 def _handle_subscription_created(db: Session, subscription: dict) -> None:
@@ -352,6 +374,7 @@ def _handle_subscription_created(db: Session, subscription: dict) -> None:
     )
     if preserve_invoice_pending:
         lab.billing_status = BillingStatus.INVOICE_PENDING.value
+    _sync_plan_tier(db, lab, subscription)
 
 
 def _handle_subscription_updated(db: Session, subscription: dict) -> None:
@@ -375,6 +398,7 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
     )
     if preserve_invoice_pending:
         lab.billing_status = BillingStatus.INVOICE_PENDING.value
+    _sync_plan_tier(db, lab, subscription)
 
 
 def _extract_cancellation_reason(subscription: dict) -> str | None:
@@ -382,6 +406,15 @@ def _extract_cancellation_reason(subscription: dict) -> str | None:
     if not details:
         return None
     raw = details.get("reason")
+    # Detect trial expiration: Stripe reports "cancellation_requested" for both
+    # user-initiated cancellations and trial expirations with missing_payment_method.
+    # Distinguish by comparing canceled_at with trial_end — if the subscription was
+    # cancelled at or after the trial end, it was a natural expiration.
+    if raw == "cancellation_requested" and subscription.get("trial_end"):
+        canceled_at = subscription.get("canceled_at") or 0
+        trial_end = subscription.get("trial_end") or 0
+        if canceled_at >= trial_end and trial_end > 0:
+            return "trial_expired"
     reason_map = {"payment_failed": "payment_failed", "cancellation_requested": "customer_requested"}
     return reason_map.get(raw, raw)
 

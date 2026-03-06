@@ -8885,6 +8885,38 @@ textarea:focus-visible {
   margin-bottom: 8px;
 }
 
+/* ── Upgrade Preview (Enterprise) ─────────────────────────────────────── */
+
+.upgrade-pitch {
+  border-color: var(--primary-200);
+  background: linear-gradient(135deg, var(--card-bg), color-mix(in srgb, var(--primary-500) 4%, var(--card-bg)));
+}
+
+.upgrade-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.upgrade-preview-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.upgrade-preview-total {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: var(--text-base);
+}
+
 /* ── Payment Choice Modal ──────────────────────────────────────────────── */
 
 .payment-options {
@@ -8933,6 +8965,26 @@ textarea:focus-visible {
   .payment-options {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Plan Selector (tier choice) ──────────────────────────────────────── */
+
+.plan-selector { display: flex; gap: 16px; }
+button.plan-option {
+  flex: 1; padding: 20px; border: 2px solid var(--border); border-radius: var(--radius);
+  cursor: pointer; text-align: left; background: var(--card-bg); color: var(--text-primary);
+  font-weight: 400; transition: border-color 0.15s;
+  display: flex; flex-direction: column;
+}
+button.plan-option:hover:not(:disabled) { border-color: var(--primary-300); background: var(--card-bg); box-shadow: none; }
+button.plan-option.plan-option--selected { border-color: var(--primary-500); background: color-mix(in srgb, var(--primary-500) 4%, var(--card-bg)); }
+button.plan-option:disabled { opacity: 0.5; cursor: not-allowed; background: var(--card-bg); }
+.plan-option-price { font-size: var(--text-lg); font-weight: 600; margin: 8px 0 4px; }
+.plan-option-features { list-style: none; padding: 0; margin: 12px 0 0; font-size: var(--text-sm); color: var(--text-secondary); flex: 1; }
+.plan-option-features li { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+
+@media (max-width: 480px) {
+  .plan-selector { flex-direction: column; }
 }
 
 /* ── Labs Page Table ───────────────────────────────────────────────────── */

@@ -50,6 +50,7 @@ def bootstrap(
                 "trial_ends_at": lab.trial_ends_at.isoformat() if lab.trial_ends_at else None,
                 "is_demo": lab.is_demo,
                 "cancellation_reason": lab.cancellation_reason,
+                "plan_tier": lab.plan_tier or "standard",
             }
 
     if current_user.lab_id:
