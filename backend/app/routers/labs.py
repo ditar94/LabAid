@@ -331,20 +331,21 @@ def billing_checkout(
     if not lab:
         raise HTTPException(status_code=404, detail="Lab not found")
 
-    from app.services.stripe_service import create_checkout_session, create_trial_conversion_checkout, _resolve_price_id
+    from app.services.stripe_service import create_checkout_session, _resolve_price_id
     from stripe._error import StripeError
     if lab.billing_status in ("active", "past_due"):
         raise HTTPException(status_code=409, detail="Please use the billing portal to manage your existing subscription")
     try:
         price_id = _resolve_price_id(body.plan_tier) if body.plan_tier else None
+        # For trial labs, pass old trial sub ID so webhook can cancel it after new sub activates
+        old_trial_sub = None
         if lab.stripe_subscription_id and lab.billing_status == "trial":
-            url = create_trial_conversion_checkout(db, lab, body.success_url, body.cancel_url)
-        else:
+            old_trial_sub = lab.stripe_subscription_id
+        elif lab.stripe_subscription_id:
             # Clear stale subscription ID for cancelled/expired labs resubscribing
-            if lab.stripe_subscription_id:
-                lab.stripe_subscription_id = None
-                db.flush()
-            url = create_checkout_session(db, lab, body.success_url, body.cancel_url, price_id=price_id)
+            lab.stripe_subscription_id = None
+            db.flush()
+        url = create_checkout_session(db, lab, body.success_url, body.cancel_url, price_id=price_id, cancel_trial_sub=old_trial_sub)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except StripeError as e:

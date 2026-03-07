@@ -120,38 +120,16 @@ def _handle_checkout_completed(db: Session, session: dict) -> None:
     if session.get("customer_details", {}).get("email"):
         lab.billing_email = session["customer_details"]["email"]
 
-    # Setup mode: trial conversion — collect payment method and end trial
-    if session.get("mode") == "setup":
-        metadata = session.get("metadata") or {}
-        sub_id = metadata.get("convert_trial_subscription")
-        setup_intent_id = session.get("setup_intent")
-        if sub_id and setup_intent_id:
-            if lab.stripe_subscription_id and sub_id != lab.stripe_subscription_id:
-                logger.warning("Setup mode: subscription mismatch for lab %s (expected %s, got %s)",
-                               lab.id, lab.stripe_subscription_id, sub_id)
-                return
+    # Cancel old trial subscription if this checkout replaces it
+    metadata = session.get("metadata") or {}
+    old_trial_sub = metadata.get("cancel_trial_subscription")
+    if old_trial_sub:
+        try:
             client = get_stripe_client()
-            setup_intent = client.setup_intents.retrieve(setup_intent_id)
-            payment_method = setup_intent.payment_method
-            if payment_method:
-                pm_id = payment_method if isinstance(payment_method, str) else payment_method.id
-                client.payment_methods.attach(pm_id, params={"customer": customer_id})
-                client.customers.update(customer_id, params={
-                    "invoice_settings": {"default_payment_method": pm_id},
-                })
-                client.subscriptions.update(sub_id, params={
-                    "trial_end": "now",
-                    "default_payment_method": pm_id,
-                })
-                # M1+M2: Fetch actual subscription status instead of hardcoding "active"
-                sub = client.subscriptions.retrieve(sub_id)
-                _, period_end = _get_item_period(sub)
-                apply_subscription_status(
-                    db, lab, sub.status, subscription_id=sub_id,
-                    current_period_end=period_end,
-                    cancel_at_period_end=getattr(sub, "cancel_at_period_end", False),
-                )
-        return
+            client.subscriptions.cancel(old_trial_sub)
+            logger.info("Cancelled old trial subscription %s for lab %s", old_trial_sub, lab.id)
+        except Exception:
+            logger.warning("Failed to cancel old trial subscription %s for lab %s", old_trial_sub, lab.id)
 
     # Subscription mode: fetch actual subscription status
     status = "active"

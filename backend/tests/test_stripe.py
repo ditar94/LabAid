@@ -468,16 +468,14 @@ def _make_event(event_type, data, event_id=None):
     }
 
 
-class TestSetupModeCheckout:
+class TestTrialConversionCheckout:
     @patch("app.routers.stripe_webhook.get_stripe_client")
     @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
     @patch("app.routers.stripe_webhook.settings")
-    def test_setup_mode_converts_trial(self, mock_settings, mock_construct,
-                                        mock_get_client, client, db, lab, admin_user):
+    def test_trial_conversion_cancels_old_sub(self, mock_settings, mock_construct,
+                                               mock_get_client, client, db, lab, admin_user):
         mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
-
-        mock_setup_intent = MagicMock()
-        mock_setup_intent.payment_method = "pm_card_visa"
+        mock_settings.STRIPE_SECRET_KEY = "sk_test"
 
         mock_sub = MagicMock()
         mock_sub.status = "active"
@@ -485,12 +483,11 @@ class TestSetupModeCheckout:
         mock_sub.cancel_at_period_end = False
 
         mock_client = MagicMock()
-        mock_client.setup_intents.retrieve.return_value = mock_setup_intent
         mock_client.subscriptions.retrieve.return_value = mock_sub
         mock_get_client.return_value = mock_client
 
         lab.stripe_customer_id = "cus_trial"
-        lab.stripe_subscription_id = "sub_trial"
+        lab.stripe_subscription_id = "sub_trial_old"
         lab.billing_status = "trial"
         lab.is_active = True
         db.commit()
@@ -498,13 +495,11 @@ class TestSetupModeCheckout:
         event = _make_event("checkout.session.completed", {
             "client_reference_id": str(lab.id),
             "customer": "cus_trial",
-            "subscription": None,
-            "mode": "setup",
-            "setup_intent": "seti_123",
+            "subscription": "sub_new",
+            "mode": "subscription",
             "customer_details": {"email": "billing@lab.com"},
             "metadata": {
-                "lab_id": str(lab.id),
-                "convert_trial_subscription": "sub_trial",
+                "cancel_trial_subscription": "sub_trial_old",
             },
         })
         mock_construct.return_value = event
@@ -516,65 +511,12 @@ class TestSetupModeCheckout:
         )
         assert res.status_code == 200
 
-        mock_client.payment_methods.attach.assert_called_once()
-        mock_client.customers.update.assert_called_once()
-        mock_client.subscriptions.update.assert_called_once()
-        mock_client.subscriptions.retrieve.assert_called_once_with("sub_trial")
+        mock_client.subscriptions.cancel.assert_called_once_with("sub_trial_old")
 
         db.refresh(lab)
         assert lab.billing_status == "active"
-        assert lab.stripe_subscription_id == "sub_trial"
+        assert lab.stripe_subscription_id == "sub_new"
         assert lab.current_period_end is not None
-
-    @patch("app.routers.stripe_webhook.get_stripe_client")
-    @patch("app.routers.stripe_webhook.stripe.Webhook.construct_event")
-    @patch("app.routers.stripe_webhook.settings")
-    def test_setup_mode_card_declined(self, mock_settings, mock_construct,
-                                       mock_get_client, client, db, lab, admin_user):
-        mock_settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
-
-        mock_setup_intent = MagicMock()
-        mock_setup_intent.payment_method = "pm_card_declined"
-
-        mock_sub = MagicMock()
-        mock_sub.status = "past_due"
-        mock_sub.current_period_end = 1700000000
-        mock_sub.cancel_at_period_end = False
-
-        mock_client = MagicMock()
-        mock_client.setup_intents.retrieve.return_value = mock_setup_intent
-        mock_client.subscriptions.retrieve.return_value = mock_sub
-        mock_get_client.return_value = mock_client
-
-        lab.stripe_customer_id = "cus_trial2"
-        lab.stripe_subscription_id = "sub_trial2"
-        lab.billing_status = "trial"
-        lab.is_active = True
-        db.commit()
-
-        event = _make_event("checkout.session.completed", {
-            "client_reference_id": str(lab.id),
-            "customer": "cus_trial2",
-            "subscription": None,
-            "mode": "setup",
-            "setup_intent": "seti_456",
-            "customer_details": {},
-            "metadata": {
-                "lab_id": str(lab.id),
-                "convert_trial_subscription": "sub_trial2",
-            },
-        })
-        mock_construct.return_value = event
-
-        res = client.post(
-            "/api/stripe/webhook",
-            content=json.dumps(event).encode(),
-            headers={"stripe-signature": "valid_sig"},
-        )
-        assert res.status_code == 200
-
-        db.refresh(lab)
-        assert lab.billing_status == "past_due"
 
 
 class TestSubscriptionUpdated:

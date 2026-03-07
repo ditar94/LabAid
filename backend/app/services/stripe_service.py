@@ -157,25 +157,28 @@ def get_or_create_customer(db: Session, lab: Lab) -> str:
     return customer.id
 
 
-def create_checkout_session(db: Session, lab: Lab, success_url: str, cancel_url: str, price_id: str | None = None) -> str:
+def create_checkout_session(db: Session, lab: Lab, success_url: str, cancel_url: str, price_id: str | None = None, cancel_trial_sub: str | None = None) -> str:
     validate_redirect_url(success_url)
     validate_redirect_url(cancel_url)
     client = get_stripe_client()
     customer_id = get_or_create_customer(db, lab)
+    params: dict = {
+        "customer": customer_id,
+        "client_reference_id": str(lab.id),
+        "mode": "subscription",
+        "currency": "usd",
+        "line_items": [{"price": price_id or settings.STRIPE_PRICE_ID, "quantity": 1}],
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "billing_address_collection": "required",
+        "phone_number_collection": {"enabled": True},
+        "name_collection": {"business": {"enabled": True}},
+        "customer_update": {"address": "auto", "name": "auto"},
+    }
+    if cancel_trial_sub:
+        params["metadata"] = {"cancel_trial_subscription": cancel_trial_sub}
     session = client.checkout.sessions.create(
-        params={
-            "customer": customer_id,
-            "client_reference_id": str(lab.id),
-            "mode": "subscription",
-            "currency": "usd",
-            "line_items": [{"price": price_id or settings.STRIPE_PRICE_ID, "quantity": 1}],
-            "success_url": success_url,
-            "cancel_url": cancel_url,
-            "billing_address_collection": "required",
-            "phone_number_collection": {"enabled": True},
-            "name_collection": {"business": {"enabled": True}},
-            "customer_update": {"address": "auto", "name": "auto"},
-        },
+        params=params,
         options={"idempotency_key": f"checkout_{lab.id}_{int(time.time() // 300)}"},
     )
     return session.url
@@ -290,28 +293,6 @@ def create_trial_subscription(db: Session, lab: Lab, trial_days: int = 7) -> str
         logger.warning("Failed to create Stripe trial subscription for lab %s: %s", lab.id, type(e).__name__)
         return None
 
-
-def create_trial_conversion_checkout(db: Session, lab: Lab, success_url: str, cancel_url: str) -> str:
-    validate_redirect_url(success_url)
-    validate_redirect_url(cancel_url)
-    client = get_stripe_client()
-    customer_id = get_or_create_customer(db, lab)
-    session = client.checkout.sessions.create(
-        params={
-            "customer": customer_id,
-            "client_reference_id": str(lab.id),
-            "mode": "setup",
-            "success_url": success_url,
-            "cancel_url": cancel_url,
-            "metadata": {
-                "lab_id": str(lab.id),
-                "convert_trial_subscription": lab.stripe_subscription_id,
-            },
-            "customer_update": {"address": "auto", "name": "auto"},
-        },
-        options={"idempotency_key": f"trial_convert_{lab.id}_{int(time.time() // 300)}"},
-    )
-    return session.url
 
 
 def convert_trial_to_invoice(db: Session, lab: Lab) -> str:
