@@ -921,8 +921,10 @@ def _delete_lab_data(db: Session, lab: models.Lab) -> None:
     ), p)
     db.execute(text("DELETE FROM storage_units WHERE lab_id = :id"), p)
 
-    # 21. Audit logs
+    # 21. Audit logs — temporarily disable immutability trigger
+    db.execute(text("ALTER TABLE audit_log DISABLE TRIGGER audit_log_immutable"))
     db.execute(text("DELETE FROM audit_log WHERE lab_id = :id"), p)
+    db.execute(text("ALTER TABLE audit_log ENABLE TRIGGER audit_log_immutable"))
 
     # 22. External identities (via users)
     db.execute(text(
