@@ -148,6 +148,8 @@ class Lab(BaseModel):
     plan_tier: str = "standard"
     settings: dict = {}
     created_at: datetime
+    deleted_at: datetime | None = None
+    deletion_requested_at: datetime | None = None
     is_demo: bool = False
     demo_status: str | None = None
     demo_assigned_email: str | None = None

@@ -94,7 +94,10 @@ def read_labs(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
         )
-    labs = db.query(models.Lab).filter(models.Lab.is_demo.is_(False)).all()
+    labs = db.query(models.Lab).filter(
+        models.Lab.is_demo.is_(False),
+        models.Lab.deleted_at.is_(None),
+    ).all()
     return labs
 
 
@@ -114,6 +117,7 @@ def get_my_lab_settings(
         "is_active": lab.is_active,
         "trial_ends_at": lab.trial_ends_at.isoformat() if lab.trial_ends_at else None,
         "is_demo": lab.is_demo,
+        "deletion_requested_at": lab.deletion_requested_at.isoformat() if lab.deletion_requested_at else None,
     }
 
 
@@ -845,12 +849,8 @@ def get_lab_subscription(
 # ── Lab Deletion ─────────────────────────────────────────────────────────
 
 
-def _delete_lab_data(db: Session, lab: models.Lab) -> None:
-    """Permanently delete all data for a lab. FK-safe ordering.
-
-    Based on wipe_demo_lab() but goes further: deletes users, auth providers,
-    external identities, and the lab row itself.
-    """
+def _soft_delete_lab(db: Session, lab: models.Lab) -> None:
+    """Soft-delete a lab: hard-delete business data, deactivate users, retain audit logs."""
     lab_id = str(lab.id)
     p = {"id": lab_id}
 
@@ -921,10 +921,7 @@ def _delete_lab_data(db: Session, lab: models.Lab) -> None:
     ), p)
     db.execute(text("DELETE FROM storage_units WHERE lab_id = :id"), p)
 
-    # 21. Audit logs — temporarily disable immutability trigger
-    db.execute(text("ALTER TABLE audit_log DISABLE TRIGGER audit_log_immutable"))
-    db.execute(text("DELETE FROM audit_log WHERE lab_id = :id"), p)
-    db.execute(text("ALTER TABLE audit_log ENABLE TRIGGER audit_log_immutable"))
+    # 21. Audit logs — RETAINED for compliance (not deleted)
 
     # 22. External identities (via users)
     db.execute(text(
@@ -935,8 +932,12 @@ def _delete_lab_data(db: Session, lab: models.Lab) -> None:
     # 23. Auth providers
     db.execute(text("DELETE FROM lab_auth_providers WHERE lab_id = :id"), p)
 
-    # 24. Users
-    db.execute(text("DELETE FROM users WHERE lab_id = :id"), p)
+    # 24. Deactivate users (keep rows for audit log FK integrity)
+    db.execute(text(
+        "UPDATE users SET is_active = FALSE, hashed_password = '!deleted', "
+        "invite_token = NULL, invite_token_expires_at = NULL "
+        "WHERE lab_id = :id"
+    ), p)
 
     # 25. Nullify shared references
     db.execute(text("UPDATE demo_leads SET demo_lab_id = NULL WHERE demo_lab_id = :id"), p)
@@ -944,8 +945,10 @@ def _delete_lab_data(db: Session, lab: models.Lab) -> None:
         "UPDATE vendor_catalog SET created_by_lab_id = NULL WHERE created_by_lab_id = :id"
     ), p)
 
-    # 26. Delete the lab row
-    db.execute(text("DELETE FROM labs WHERE id = :id"), p)
+    # 26. Soft-delete the lab row
+    db.execute(text(
+        "UPDATE labs SET deleted_at = now(), is_active = FALSE WHERE id = :id"
+    ), p)
 
     # 27. Clear cache
     suspension_cache.pop(lab_id, None)
@@ -953,58 +956,29 @@ def _delete_lab_data(db: Session, lab: models.Lab) -> None:
     db.flush()
 
 
-@router.delete("/{lab_id}")
-def delete_lab(
-    lab_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
-):
-    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
-    if not lab:
-        raise HTTPException(status_code=404, detail="Lab not found")
+def _cancel_stripe(lab, lab_id):
+    """Cancel Stripe subscription and delete customer. Best-effort."""
+    if not (lab.stripe_subscription_id or lab.stripe_customer_id):
+        return
+    try:
+        from app.services.stripe_service import get_stripe_client
+        client = get_stripe_client()
+        if lab.stripe_subscription_id:
+            try:
+                client.subscriptions.cancel(lab.stripe_subscription_id)
+            except Exception:
+                logger.warning("Could not cancel subscription %s", lab.stripe_subscription_id)
+        if lab.stripe_customer_id:
+            try:
+                client.customers.delete(lab.stripe_customer_id)
+            except Exception:
+                logger.warning("Could not delete Stripe customer %s", lab.stripe_customer_id)
+    except RuntimeError:
+        logger.warning("Stripe not configured, skipping Stripe cleanup for lab %s", lab_id)
 
-    if lab.is_demo:
-        raise HTTPException(status_code=400, detail="Cannot delete demo labs")
 
-    if lab.billing_status != BillingStatus.CANCELLED.value:
-        raise HTTPException(
-            status_code=400,
-            detail="Only cancelled labs can be deleted. Cancel the subscription first.",
-        )
-
-    lab_name = lab.name
-
-    # Collect admin emails before deletion (for confirmation email)
-    admin_emails = [
-        u.email for u in db.query(models.User).filter(
-            models.User.lab_id == lab.id,
-            models.User.role == models.UserRole.LAB_ADMIN,
-            models.User.is_active == True,
-        ).all()
-    ]
-
-    # Cancel Stripe subscription and delete customer
-    if lab.stripe_subscription_id or lab.stripe_customer_id:
-        try:
-            from app.services.stripe_service import get_stripe_client
-            client = get_stripe_client()
-            if lab.stripe_subscription_id:
-                try:
-                    client.subscriptions.cancel(lab.stripe_subscription_id)
-                except Exception:
-                    logger.warning("Could not cancel subscription %s", lab.stripe_subscription_id)
-            if lab.stripe_customer_id:
-                try:
-                    client.customers.delete(lab.stripe_customer_id)
-                except Exception:
-                    logger.warning("Could not delete Stripe customer %s", lab.stripe_customer_id)
-        except RuntimeError:
-            logger.warning("Stripe not configured, skipping Stripe cleanup for lab %s", lab_id)
-
-    _delete_lab_data(db, lab)
-    db.commit()
-
-    # Send deletion confirmation emails (after commit, best-effort)
+def _send_post_deletion_emails(admin_emails: list[str], lab_name: str):
+    """Send post-deletion confirmation emails. Best-effort."""
     from datetime import date
     from app.services.email import send_deletion_confirmation_email
     deleted_date = date.today().strftime("%B %d, %Y")
@@ -1014,5 +988,128 @@ def delete_lab(
         except Exception:
             logger.warning("Failed to send deletion confirmation to %s", email)
 
-    logger.info("Lab deleted: %s (%s) by user %s", lab_name, lab_id, current_user.id)
-    return {"detail": f"Lab '{lab_name}' and all associated data have been permanently deleted."}
+
+def _collect_admin_emails(db: Session, lab_id) -> list[str]:
+    return [
+        u.email for u in db.query(models.User).filter(
+            models.User.lab_id == lab_id,
+            models.User.role == models.UserRole.LAB_ADMIN,
+            models.User.is_active == True,
+        ).all()
+    ]
+
+
+@router.post("/{lab_id}/request-deletion")
+def request_deletion(
+    lab_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.is_demo:
+        raise HTTPException(status_code=400, detail="Cannot delete demo labs")
+    if lab.deleted_at:
+        raise HTTPException(status_code=400, detail="Lab is already deleted")
+    if lab.billing_status != BillingStatus.CANCELLED.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Only cancelled labs can be deleted. Cancel the subscription first.",
+        )
+
+    before = snapshot_lab(lab)
+    lab.deletion_requested_at = datetime.now(timezone.utc)
+    after = snapshot_lab(lab)
+
+    log_audit(
+        db, lab_id=lab.id, user_id=current_user.id,
+        action="lab.deletion_requested", entity_type="lab", entity_id=lab.id,
+        before_state=before, after_state=after,
+    )
+    db.commit()
+
+    admin_emails = _collect_admin_emails(db, lab.id)
+    from app.services.email import send_deletion_request_email
+    for email in admin_emails:
+        try:
+            send_deletion_request_email(email, lab.name)
+        except Exception:
+            logger.warning("Failed to send deletion request email to %s", email)
+
+    logger.info("Deletion requested for lab %s (%s) by user %s", lab.name, lab_id, current_user.id)
+    return {"detail": "Deletion request sent to lab administrators for confirmation"}
+
+
+@router.post("/confirm-deletion")
+def confirm_deletion(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.LAB_ADMIN,
+    )),
+):
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.deleted_at:
+        raise HTTPException(status_code=400, detail="Lab is already deleted")
+    if not lab.deletion_requested_at:
+        raise HTTPException(status_code=400, detail="No pending deletion request for this lab")
+
+    lab_name = lab.name
+    admin_emails = _collect_admin_emails(db, lab.id)
+
+    log_audit(
+        db, lab_id=lab.id, user_id=current_user.id,
+        action="lab.deleted", entity_type="lab", entity_id=lab.id,
+        before_state=snapshot_lab(lab),
+        after_state={"deleted": True, "confirmed_by": str(current_user.id)},
+    )
+
+    _cancel_stripe(lab, lab.id)
+    _soft_delete_lab(db, lab)
+    db.commit()
+
+    _send_post_deletion_emails(admin_emails, lab_name)
+    logger.info("Lab deleted (confirmed): %s (%s) by user %s", lab_name, lab.id, current_user.id)
+    return {"detail": f"Lab '{lab_name}' data has been deleted."}
+
+
+@router.delete("/{lab_id}")
+def force_delete_lab(
+    lab_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(models.UserRole.SUPER_ADMIN)),
+):
+    lab = db.query(models.Lab).filter(models.Lab.id == lab_id).first()
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if lab.is_demo:
+        raise HTTPException(status_code=400, detail="Cannot delete demo labs")
+    if lab.deleted_at:
+        raise HTTPException(status_code=400, detail="Lab is already deleted")
+    if lab.billing_status != BillingStatus.CANCELLED.value:
+        raise HTTPException(
+            status_code=400,
+            detail="Only cancelled labs can be deleted. Cancel the subscription first.",
+        )
+
+    lab_name = lab.name
+    admin_emails = _collect_admin_emails(db, lab.id)
+
+    log_audit(
+        db, lab_id=lab.id, user_id=current_user.id,
+        action="lab.force_deleted", entity_type="lab", entity_id=lab.id,
+        before_state=snapshot_lab(lab),
+        after_state={"deleted": True, "force_deleted_by": str(current_user.id)},
+    )
+
+    _cancel_stripe(lab, lab_id)
+    _soft_delete_lab(db, lab)
+    db.commit()
+
+    _send_post_deletion_emails(admin_emails, lab_name)
+    logger.info("Lab force-deleted: %s (%s) by user %s", lab_name, lab_id, current_user.id)
+    return {"detail": f"Lab '{lab_name}' data has been deleted."}

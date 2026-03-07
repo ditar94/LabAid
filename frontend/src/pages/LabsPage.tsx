@@ -170,11 +170,28 @@ export default function LabsPage() {
     }
   };
 
-  const [deletePrompt, setDeletePrompt] = useState<{ id: string; name: string } | null>(null);
+  const [deletePrompt, setDeletePrompt] = useState<{ id: string; name: string; pending?: boolean } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const handleDeleteLab = async () => {
+  const handleRequestDeletion = async () => {
+    if (!deletePrompt) return;
+    setDeleteLoading(true);
+    try {
+      await api.post(`/labs/${deletePrompt.id}/request-deletion`);
+      setDeletePrompt(null);
+      setDeleteConfirmText("");
+      await queryClient.invalidateQueries({ queryKey: ["labs"] });
+      refreshLabs();
+      addToast("Deletion request sent to lab administrators", "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to request deletion", "danger");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleForceDelete = async () => {
     if (!deletePrompt) return;
     setDeleteLoading(true);
     try {
@@ -183,7 +200,7 @@ export default function LabsPage() {
       setDeleteConfirmText("");
       await queryClient.invalidateQueries({ queryKey: ["labs"] });
       refreshLabs();
-      addToast("Lab permanently deleted", "success");
+      addToast("Lab data permanently deleted", "success");
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Failed to delete lab", "danger");
     } finally {
@@ -482,13 +499,18 @@ export default function LabsPage() {
                       </button>
                     )}
                     {!l.is_demo && l.billing_status === "cancelled" && (
-                      <button
-                        className="btn-sm btn-danger-outline"
-                        onClick={() => { setDeletePrompt({ id: l.id, name: l.name }); setDeleteConfirmText(""); }}
-                        title="Permanently delete this lab and all data"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <>
+                        {l.deletion_requested_at && (
+                          <span className="badge badge-warning" style={{ fontSize: 11 }}>Deletion Pending</span>
+                        )}
+                        <button
+                          className="btn-sm btn-danger-outline"
+                          onClick={() => { setDeletePrompt({ id: l.id, name: l.name, pending: !!l.deletion_requested_at }); setDeleteConfirmText(""); }}
+                          title={l.deletion_requested_at ? "Manage deletion" : "Request lab deletion"}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
                     )}
                   </div>
                 </td>
@@ -566,29 +588,49 @@ export default function LabsPage() {
       {deletePrompt && (
         <Modal onClose={() => setDeletePrompt(null)} ariaLabel="Delete lab">
           <div className="modal-content">
-            <h2>Permanently delete {deletePrompt.name}?</h2>
+            <h2>Delete {deletePrompt.name}?</h2>
             <p className="page-desc">
-              This action is <strong>irreversible</strong>. All users, inventory data, QC documents,
-              audit logs, and the Stripe customer will be permanently deleted.
+              This will send a confirmation email to the lab's administrators.
+              Business data (inventory, documents, storage) will be permanently deleted
+              only after an administrator confirms. Audit logs are retained for compliance.
             </p>
-            <p className="page-desc" style={{ marginTop: "var(--space-sm)" }}>
-              Type <strong>{deletePrompt.name}</strong> to confirm:
-            </p>
-            <input
-              type="text"
-              className="input"
-              value={deleteConfirmText}
-              onChange={e => setDeleteConfirmText(e.target.value)}
-              placeholder={deletePrompt.name}
-              autoFocus
-            />
+            {!deletePrompt.pending && (
+              <>
+                <p className="page-desc" style={{ marginTop: "var(--space-sm)" }}>
+                  Type <strong>{deletePrompt.name}</strong> to request deletion:
+                </p>
+                <input
+                  type="text"
+                  className="input"
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  placeholder={deletePrompt.name}
+                  autoFocus
+                />
+              </>
+            )}
             <div className="action-btns" style={{ marginTop: "var(--space-lg)" }}>
+              {!deletePrompt.pending ? (
+                <button
+                  className="btn-danger"
+                  onClick={handleRequestDeletion}
+                  disabled={deleteLoading || deleteConfirmText !== deletePrompt.name}
+                >
+                  {deleteLoading ? "Sending..." : "Send Deletion Request"}
+                </button>
+              ) : (
+                <p className="page-desc" style={{ color: "#d97706", fontWeight: 500 }}>
+                  A deletion request has already been sent. Waiting for lab admin confirmation.
+                </p>
+              )}
               <button
-                className="btn-danger"
-                onClick={handleDeleteLab}
-                disabled={deleteLoading || deleteConfirmText !== deletePrompt.name}
+                className="btn-sm btn-danger-outline"
+                onClick={handleForceDelete}
+                disabled={deleteLoading}
+                title="Skip confirmation and delete immediately"
+                style={{ marginLeft: deletePrompt.pending ? 0 : "auto" }}
               >
-                {deleteLoading ? "Deleting..." : "Delete Lab Permanently"}
+                {deleteLoading ? "Deleting..." : "Force Delete"}
               </button>
               <button
                 className="btn-secondary"

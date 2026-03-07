@@ -58,6 +58,7 @@ const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
 const DemoPage = lazy(() => import("./pages/DemoPage"));
 const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
 const SSOCallbackPage = lazy(() => import("./pages/SSOCallbackPage"));
+const ConfirmDeletionPage = lazy(() => import("./pages/ConfirmDeletionPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -104,6 +105,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <LabSetupWizardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/confirm-deletion"
+          element={
+            <ProtectedRoute>
+              <ConfirmDeletionPage />
             </ProtectedRoute>
           }
         />

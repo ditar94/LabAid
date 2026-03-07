@@ -336,6 +336,8 @@ def snapshot_lab(lab) -> dict:
         "cancel_at_period_end": getattr(lab, "cancel_at_period_end", False),
         "cancellation_reason": getattr(lab, "cancellation_reason", None),
         "plan_tier": getattr(lab, "plan_tier", "standard"),
+        "deleted_at": str(lab.deleted_at) if getattr(lab, "deleted_at", None) else None,
+        "deletion_requested_at": str(lab.deletion_requested_at) if getattr(lab, "deletion_requested_at", None) else None,
         "settings": lab.settings or {},
     }
 

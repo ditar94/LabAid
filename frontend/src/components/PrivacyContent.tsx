@@ -247,9 +247,10 @@ export default function PrivacyContent() {
           make reasonable efforts to notify the lab administrator via email before deletion.
         </p>
         <p>
-          Audit logs are immutable and are retained even after account deletion in anonymized form.
-          This is necessary to maintain data integrity and traceability for laboratory quality
-          management purposes.
+          Audit logs are immutable and are retained after account deletion in minimal form necessary
+          to maintain audit trail integrity. User names associated with audit entries are preserved
+          for traceability, as permitted under applicable data protection regulations for legitimate
+          compliance interests.
         </p>
         <p>
           Uploaded documents are stored with versioning enabled. Deleted documents are retained in a
@@ -270,8 +271,10 @@ export default function PrivacyContent() {
           <li>Delete all lab inventory data (antibodies, lots, vials, storage configurations).</li>
           <li>Delete all uploaded QC documents.</li>
           <li>
-            <strong>Retain audit logs</strong> — audit log entries will be retained in anonymized
-            form to preserve data integrity.
+            <strong>Retain audit logs</strong> — audit log entries and associated user identifiers
+            (name, email) are retained in minimal form to preserve data integrity and
+            traceability, as permitted under applicable data protection regulations for
+            legitimate compliance interests.
           </li>
         </ul>
         <p>We will process deletion requests within 30 days of verification.</p>

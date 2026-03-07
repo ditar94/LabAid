@@ -211,15 +211,49 @@ def send_demo_ready_email(to: str, login_link: str) -> bool:
     return _send_invite_or_reset(to, "Your LabAid Demo Is Ready", html)
 
 
+def _deletion_request_html(lab_name: str) -> str:
+    confirm_link = f"{settings.APP_URL}/confirm-deletion"
+    return (
+        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">'
+        f"<h2>Action Required: Confirm Data Deletion</h2>"
+        f"<p>A deletion request has been submitted for your lab <strong>{lab_name}</strong>.</p>"
+        "<p><strong>The following data will be permanently deleted:</strong></p>"
+        '<ul style="color:#374151;line-height:1.8">'
+        "<li>Antibody catalog and inventory records</li>"
+        "<li>Lot tracking data and vial records</li>"
+        "<li>Uploaded QC documents and files</li>"
+        "<li>Storage configurations</li>"
+        "<li>Stripe billing customer and subscription data</li>"
+        "<li>User login credentials (access will be revoked)</li>"
+        "</ul>"
+        "<p><strong>The following will be retained for compliance:</strong></p>"
+        '<ul style="color:#374151;line-height:1.8">'
+        "<li>Audit log entries (with user names for traceability)</li>"
+        "</ul>"
+        f'<p style="text-align:center;margin:32px 0">'
+        f'<a href="{confirm_link}" style="background:#dc2626;color:#fff;padding:12px 28px;'
+        'border-radius:6px;text-decoration:none;font-weight:600">Review &amp; Confirm Deletion</a></p>'
+        '<p style="color:#666;font-size:13px">You will need to log in and type your lab name '
+        "to confirm. If you did not request this, contact us immediately at "
+        '<a href="mailto:support@labaid.io">support@labaid.io</a>.</p>'
+        "</div>"
+    )
+
+
+def send_deletion_request_email(to: str, lab_name: str) -> bool:
+    html = _deletion_request_html(lab_name)
+    return _send_invite_or_reset(to, f"LabAid — Action Required: Confirm Data Deletion for {lab_name}", html)
+
+
 def _deletion_confirmation_html(lab_name: str, deleted_date: str) -> str:
     return (
         '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">'
-        f"<h2>Your LabAid Account Has Been Deleted</h2>"
-        f"<p>This confirms that all data associated with <strong>{lab_name}</strong> "
+        f"<h2>Your LabAid Account Data Has Been Deleted</h2>"
+        f"<p>This confirms that business data associated with <strong>{lab_name}</strong> "
         f"has been permanently deleted from LabAid as of {deleted_date}.</p>"
         "<p><strong>The following data has been removed:</strong></p>"
         '<ul style="color:#374151;line-height:1.8">'
-        "<li>All user accounts and credentials</li>"
+        "<li>User login credentials (access revoked)</li>"
         "<li>Antibody catalog and inventory records</li>"
         "<li>Lot tracking data and vial records</li>"
         "<li>Uploaded QC documents and files</li>"
@@ -228,7 +262,8 @@ def _deletion_confirmation_html(lab_name: str, deleted_date: str) -> str:
         "</ul>"
         '<p style="color:#666;font-size:13px">Per our '
         '<a href="https://labaid.io/privacy">Privacy Policy</a>, '
-        "anonymized audit log entries are retained for data integrity purposes.</p>"
+        "user names and audit log entries are retained in minimal form "
+        "to maintain data integrity and traceability.</p>"
         '<p style="color:#666;font-size:13px">If you have any questions, contact us at '
         '<a href="mailto:support@labaid.io">support@labaid.io</a>.</p>'
         "</div>"

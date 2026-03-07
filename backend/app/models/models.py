@@ -112,6 +112,8 @@ class Lab(Base):
     plan_tier = Column(String(20), nullable=False, server_default="standard", default="standard")
     settings = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deletion_requested_at = Column(DateTime(timezone=True), nullable=True)
 
     is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
     demo_status = Column(String(20), nullable=True)

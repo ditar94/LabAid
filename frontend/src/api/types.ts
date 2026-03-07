@@ -39,6 +39,7 @@ export interface LabSettings {
   password_enabled?: boolean;
   cancellation_reason?: string | null;
   plan_tier?: string;
+  deletion_requested_at?: string | null;
 }
 
 export type BillingStatus = "trial" | "active" | "past_due" | "cancelled" | "invoice_pending";
@@ -70,6 +71,8 @@ export interface Lab {
   plan_tier?: string;
   settings: LabSettings;
   created_at: string;
+  deleted_at?: string | null;
+  deletion_requested_at?: string | null;
   is_demo?: boolean;
   demo_status?: string | null;
   demo_assigned_email?: string | null;
