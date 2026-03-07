@@ -182,6 +182,15 @@ resource "google_cloud_run_v2_service" "backend" {
           }
         }
       }
+      env {
+        name = "STRIPE_ENTERPRISE_PRICE_ID"
+        value_source {
+          secret_key_ref {
+            secret  = var.stripe_enterprise_price_id_name
+            version = "latest"
+          }
+        }
+      }
 
       volume_mounts {
         name       = "cloudsql"

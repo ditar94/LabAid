@@ -343,8 +343,9 @@ def billing_checkout(
             url = create_checkout_session(db, lab, body.success_url, body.cancel_url, price_id=price_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
     db.commit()
     return {"url": url}
 
@@ -373,8 +374,9 @@ def billing_portal(
         url = create_portal_session(lab, body.return_url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
     return {"url": url}
 
 
@@ -424,6 +426,42 @@ def billing_status(
     return result
 
 
+@router.get("/billing/customer-info", response_model=schemas.CustomerBillingInfo)
+def billing_customer_info(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role(
+        models.UserRole.SUPER_ADMIN, models.UserRole.LAB_ADMIN
+    )),
+):
+    if not app_settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=501, detail="Billing is not configured")
+    if not current_user.lab_id:
+        raise HTTPException(status_code=400, detail="User has no lab")
+    lab = db.query(models.Lab).filter(models.Lab.id == current_user.lab_id).first()
+    if not lab or not lab.stripe_customer_id:
+        return schemas.CustomerBillingInfo()
+
+    from app.services.stripe_service import get_stripe_client
+    from stripe._error import StripeError
+    try:
+        customer = get_stripe_client().customers.retrieve(lab.stripe_customer_id)
+    except StripeError:
+        return schemas.CustomerBillingInfo(billing_email=lab.billing_email)
+
+    addr = customer.address or {}
+    return schemas.CustomerBillingInfo(
+        billing_email=customer.email or lab.billing_email,
+        business_name=customer.name,
+        phone=customer.phone,
+        address_line1=addr.get("line1"),
+        address_line2=addr.get("line2"),
+        city=addr.get("city"),
+        state=addr.get("state"),
+        postal_code=addr.get("postal_code"),
+        country=addr.get("country"),
+    )
+
+
 @router.post("/{lab_id}/stripe-customer", response_model=schemas.Lab)
 def create_stripe_customer(
     lab_id: UUID,
@@ -442,8 +480,9 @@ def create_stripe_customer(
     from stripe._error import StripeError
     try:
         get_or_create_customer(db, lab)
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
     db.commit()
     db.refresh(lab)
     return lab
@@ -540,8 +579,9 @@ def billing_invoice(
         suspension_cache.pop(str(lab.id), None)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
     db.commit()
     return {"subscription_id": subscription_id, "message": "Invoice subscription created. An invoice will be sent to your billing email."}
 
@@ -598,8 +638,9 @@ def switch_payment_method(
         suspension_cache.pop(str(lab.id), None)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
     db.commit()
     return {"status": "ok", "message": "Switched to invoice billing. Future charges will be invoiced."}
 
@@ -633,8 +674,9 @@ def upgrade_preview(
         return preview_upgrade(lab)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
 
 
 @router.post("/billing/upgrade/confirm", response_model=schemas.UpgradeConfirmResponse)
@@ -666,8 +708,9 @@ def upgrade_confirm(
         upgrade_plan(db, lab, current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
     db.commit()
     return {"status": "ok", "message": "Upgrade to Enterprise initiated. Your plan will update shortly."}
 
@@ -690,8 +733,9 @@ def admin_upgrade_lab(
         upgrade_plan(db, lab, current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
     db.commit()
     return {"status": "ok", "message": f"Enterprise upgrade initiated for {lab.name}."}
 
@@ -741,8 +785,9 @@ def admin_subscribe_lab(
         suspension_cache.pop(str(lab.id), None)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except StripeError:
-        raise HTTPException(status_code=502, detail="Payment service temporarily unavailable")
+    except StripeError as e:
+        logger.error("Stripe error: %s", e)
+        raise HTTPException(status_code=502, detail=str(getattr(e, "user_message", None) or "Payment service temporarily unavailable"))
     db.commit()
     tier_label = "Enterprise" if body.plan_tier == "enterprise" else "Standard"
     return {"status": "ok", "message": f"{tier_label} invoice subscription created for {lab.name}.", "subscription_id": subscription_id}

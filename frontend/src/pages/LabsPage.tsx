@@ -331,18 +331,18 @@ export default function LabsPage() {
                         <button
                           className="btn-sm btn-secondary"
                           onClick={() => handleClearInvoiceBlock(l.id)}
-                          title="Re-enable invoice billing for this lab"
+                          title="Clears the invoice block so the customer can re-subscribe via invoice billing"
                         >
-                          Allow Invoice
+                          Unblock Invoice
                         </button>
                       )}
                       {l.billing_status === "cancelled" && l.stripe_customer_id && (
                         <button
                           className="btn-sm btn-primary"
                           onClick={() => { setSubscribeTarget({ id: l.id, name: l.name }); setSubscribeTier("standard"); setSubscribeError(null); }}
-                          title="Create a new subscription for this cancelled lab"
+                          title="Creates a new invoice subscription and sends an invoice immediately"
                         >
-                          Subscribe
+                          Re-subscribe
                         </button>
                       )}
                     </div>

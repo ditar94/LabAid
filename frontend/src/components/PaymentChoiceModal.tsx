@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CreditCard, FileText, ArrowLeft, Check } from "lucide-react";
 import { Modal } from "./Modal";
 import { useAuth } from "../context/AuthContext";
@@ -60,6 +60,25 @@ export default function PaymentChoiceModal({ onClose, onSuccess, skipTierSelecti
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("US");
   const [phone, setPhone] = useState("");
+  const [prefillLoaded, setPrefillLoaded] = useState(false);
+
+  useEffect(() => {
+    if (prefillLoaded) return;
+    let cancelled = false;
+    api.get("/labs/billing/customer-info").then(({ data }) => {
+      if (cancelled) return;
+      if (data.billing_email) setInvoiceEmail(data.billing_email);
+      if (data.business_name) setBusinessName(data.business_name);
+      if (data.address_line1) setAddressLine1(data.address_line1);
+      if (data.address_line2) setAddressLine2(data.address_line2);
+      if (data.city) setCity(data.city);
+      if (data.state) setState(data.state);
+      if (data.postal_code) setPostalCode(data.postal_code);
+      if (data.country) setCountry(data.country);
+      if (data.phone) setPhone(data.phone);
+    }).catch(() => {}).finally(() => { if (!cancelled) setPrefillLoaded(true); });
+    return () => { cancelled = true; };
+  }, [prefillLoaded]);
 
   const handleCard = async () => {
     setLoading("card");

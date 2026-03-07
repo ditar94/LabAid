@@ -98,6 +98,12 @@ variable "stripe_price_id_name" {
   default     = "STRIPE_PRICE_ID"
 }
 
+variable "stripe_enterprise_price_id_name" {
+  description = "Secret Manager secret name for STRIPE_ENTERPRISE_PRICE_ID"
+  type        = string
+  default     = "STRIPE_ENTERPRISE_PRICE_ID"
+}
+
 variable "alert_email" {
   description = "Email address for monitoring alerts"
   type        = string
