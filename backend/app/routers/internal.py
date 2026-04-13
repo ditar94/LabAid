@@ -78,7 +78,15 @@ def reconcile_subscriptions(request: Request, db: Session = Depends(get_db)):
             expected = _STRIPE_STATUS_MAP.get(sub.status)
             if not expected:
                 continue
-            is_invoice_pending = lab.billing_status == "invoice_pending" and sub.status == "active"
+            latest_inv = sub.latest_invoice if hasattr(sub, "latest_invoice") else None
+            inv_paid = False
+            if latest_inv and isinstance(latest_inv, str):
+                try:
+                    inv_obj = client.invoices.retrieve(latest_inv)
+                    inv_paid = inv_obj.status == "paid"
+                except Exception:
+                    pass
+            is_invoice_pending = lab.billing_status == "invoice_pending" and sub.status == "active" and not inv_paid
             if lab.billing_status != expected and not is_invoice_pending:
                 logger.info(
                     "Reconciliation fix: lab %s (%s) local=%s stripe=%s",

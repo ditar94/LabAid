@@ -374,9 +374,11 @@ def sync_subscription_status(db: Session, lab: Lab, details: dict) -> bool:
     expected_local, _ = mapping
     if lab.billing_status == expected_local:
         return False
-    # Preserve invoice_pending when Stripe says active (invoice sent, awaiting payment)
+    # Preserve invoice_pending when Stripe says active but the invoice hasn't been paid yet
     if lab.billing_status == BillingStatus.INVOICE_PENDING.value and stripe_status == "active":
-        return False
+        latest_status = details.get("latest_invoice_status")
+        if latest_status != "paid":
+            return False
     logger.warning(
         "Read-through correction: lab %s (%s) local=%s stripe=%s, fixing",
         lab.id, lab.name, lab.billing_status, stripe_status,
