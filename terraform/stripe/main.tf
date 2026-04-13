@@ -3,8 +3,8 @@ terraform {
 
   required_providers {
     stripe = {
-      source  = "stripe/stripe"
-      version = "~> 1.0"
+      source  = "lukasaron/stripe"
+      version = "~> 3.4"
     }
   }
 
