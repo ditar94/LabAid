@@ -16,7 +16,7 @@ slowapi==0.1.9
 resend==2.23.0
 fpdf2==2.8.3
 pypdf==6.10.0
-Pillow==12.1.1
+Pillow==12.2.0
 protobuf==6.33.6
 google-cloud-error-reporting==1.15.0
 google-cloud-secret-manager==2.27.0
