@@ -311,6 +311,20 @@ def _fetch_current_subscription(subscription: dict) -> dict:
         return subscription
 
 
+def _latest_invoice_paid(subscription_id: str | None) -> bool:
+    """Check if the latest invoice on a subscription is paid."""
+    if not subscription_id or not settings.STRIPE_SECRET_KEY:
+        return False
+    try:
+        client = get_stripe_client()
+        invoices = client.invoices.list(params={"subscription": subscription_id, "limit": 1})
+        if invoices.data:
+            return invoices.data[0].status == "paid"
+    except Exception:
+        logger.warning("Could not check latest invoice for subscription %s", subscription_id)
+    return False
+
+
 def _sync_plan_tier(db: Session, lab: Lab, subscription: dict) -> None:
     price_id = subscription.get("price_id")
     if not price_id:
@@ -342,6 +356,7 @@ def _handle_subscription_created(db: Session, subscription: dict) -> None:
     preserve_invoice_pending = (
         lab.billing_status == BillingStatus.INVOICE_PENDING.value
         and subscription["status"] == "active"
+        and not _latest_invoice_paid(subscription.get("id"))
     )
     apply_subscription_status(
         db, lab, subscription["status"], subscription_id=subscription["id"],
@@ -366,6 +381,7 @@ def _handle_subscription_updated(db: Session, subscription: dict) -> None:
     preserve_invoice_pending = (
         lab.billing_status == BillingStatus.INVOICE_PENDING.value
         and subscription["status"] == "active"
+        and not _latest_invoice_paid(subscription.get("id"))
     )
     apply_subscription_status(
         db, lab, subscription["status"], subscription_id=subscription["id"],
