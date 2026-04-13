@@ -18,8 +18,8 @@ fpdf2==2.8.3
 pypdf==6.10.0
 Pillow==12.1.1
 protobuf==6.33.6
-google-cloud-error-reporting==1.14.0
-google-cloud-secret-manager==2.20.0
+google-cloud-error-reporting==1.15.0
+google-cloud-secret-manager==2.27.0
 stripe==14.4.0
 cryptography==46.0.7
 pyasn1==0.6.3
