@@ -1061,6 +1061,15 @@ export default function ScanSearchPage() {
                 </>
               )}
             </p>
+            {(result.antibody.vendor || result.antibody.catalog_number || result.antibody.clone) && (
+              <p style={{ fontSize: "0.85em", color: "var(--text-muted)", margin: "0.25rem 0" }}>
+                {result.antibody.vendor}
+                {result.antibody.vendor && result.antibody.catalog_number && " — "}
+                {result.antibody.catalog_number && <>Cat#: {result.antibody.catalog_number}</>}
+                {(result.antibody.vendor || result.antibody.catalog_number) && result.antibody.clone && " · "}
+                {result.antibody.clone && <>Clone: {result.antibody.clone}</>}
+              </p>
+            )}
             {result.qc_warning && (
               <div className="qc-warning">
                 {result.qc_warning}
