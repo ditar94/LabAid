@@ -186,7 +186,7 @@ resource "google_sql_database" "prod" {
 resource "google_sql_user" "app_nonprod" {
   name     = "labaid_app"
   instance = google_sql_database_instance.nonprod.name
-  password = "Temp-Pw-1!" # Set real password via: gcloud sql users set-password
+  password = "CHANGE-VIA-GCLOUD" # Placeholder — real password set via: gcloud sql users set-password
 
   lifecycle { ignore_changes = [password] }
 }
@@ -194,7 +194,7 @@ resource "google_sql_user" "app_nonprod" {
 resource "google_sql_user" "app_prod" {
   name     = "labaid_app"
   instance = google_sql_database_instance.prod.name
-  password = "Temp-Pw-2!"
+  password = "CHANGE-VIA-GCLOUD"
 
   lifecycle { ignore_changes = [password] }
 }
@@ -203,7 +203,7 @@ resource "google_sql_user" "app_prod" {
 resource "google_sql_user" "migrate_nonprod" {
   name     = "labaid_migrate"
   instance = google_sql_database_instance.nonprod.name
-  password = "Temp-Pw-3!"
+  password = "CHANGE-VIA-GCLOUD"
 
   lifecycle { ignore_changes = [password] }
 }
@@ -211,7 +211,7 @@ resource "google_sql_user" "migrate_nonprod" {
 resource "google_sql_user" "migrate_prod" {
   name     = "labaid_migrate"
   instance = google_sql_database_instance.prod.name
-  password = "Temp-Pw-4!"
+  password = "CHANGE-VIA-GCLOUD"
 
   lifecycle { ignore_changes = [password] }
 }
@@ -220,7 +220,7 @@ resource "google_sql_user" "migrate_prod" {
 resource "google_sql_user" "readonly_nonprod" {
   name     = "labaid_readonly"
   instance = google_sql_database_instance.nonprod.name
-  password = "Temp-Pw-5!"
+  password = "CHANGE-VIA-GCLOUD"
 
   lifecycle { ignore_changes = [password] }
 }
@@ -228,7 +228,7 @@ resource "google_sql_user" "readonly_nonprod" {
 resource "google_sql_user" "readonly_prod" {
   name     = "labaid_readonly"
   instance = google_sql_database_instance.prod.name
-  password = "Temp-Pw-6!"
+  password = "CHANGE-VIA-GCLOUD"
 
   lifecycle { ignore_changes = [password] }
 }

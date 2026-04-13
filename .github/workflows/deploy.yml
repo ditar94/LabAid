@@ -47,17 +47,34 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install Python dependencies
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
       - name: Check Python dependencies for vulnerabilities
         run: |
           pip install pip-audit
           echo "Scanning Python dependencies for vulnerabilities..."
-          pip-audit --strict --vulnerability-service osv || {
-            echo "::warning::Python dependency vulnerabilities found. Review and update requirements.txt"
-            # Don't fail on vulnerabilities without fixes available
-            pip-audit --vulnerability-service osv || true
-          }
+          pip-audit --vulnerability-service osv -f json -o /tmp/pip-audit.json || true
+          python3 -c "
+          import json, sys
+          with open('/tmp/pip-audit.json') as f:
+              data = json.load(f)
+          vulns = data.get('dependencies', [])
+          high_crit = []
+          for dep in vulns:
+              for v in dep.get('vulns', []):
+                  desc = v.get('description', '').upper()
+                  fix = v.get('fix_versions', [])
+                  aliases = v.get('aliases', [])
+                  name = dep.get('name', '')
+                  vid = v.get('id', '')
+                  high_crit.append(f'{name}: {vid}')
+          if high_crit:
+              print('Python dependency vulnerabilities found:')
+              for item in high_crit:
+                  print(f'  - {item}')
+              sys.exit(1)
+          print('No Python dependency vulnerabilities found.')
+          "
 
       - name: Check for destructive migrations
         run: |
@@ -171,17 +188,76 @@ jobs:
         run: |
           cd frontend
           echo "Scanning Node dependencies for vulnerabilities..."
-          npm audit --audit-level=high || {
-            echo "::warning::Node dependency vulnerabilities found. Run 'npm audit fix' to resolve."
-          }
+          npm audit --audit-level=high
 
       - name: TypeScript check
         run: cd frontend && npx tsc --noEmit -p tsconfig.app.json
 
+  # ── Stripe webhooks (IaC — ensures staging mirrors production) ──────────────
+  stripe-staging:
+    name: Configure Stripe Webhook (Staging)
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Verify webhook event parity
+        run: |
+          # Ensure terraform webhook events match what the backend actually handles
+          TF_EVENTS=$(grep -oP '"[a-z]+\.[a-z_.]+' terraform/stripe/webhook.tf | tr -d '"' | sort)
+          PY_EVENTS=$(grep -oP 'event_type == "\K[^"]+' backend/app/routers/stripe_webhook.py | sort -u)
+          MISSING=$(comm -23 <(echo "$PY_EVENTS") <(echo "$TF_EVENTS"))
+          if [ -n "$MISSING" ]; then
+            echo "::error::Backend handles events not registered in Stripe webhook terraform:"
+            echo "$MISSING"
+            exit 1
+          fi
+          echo "Webhook event parity verified — all backend events registered in Terraform."
+
+      - name: Apply Stripe webhook config
+        run: |
+          STRIPE_KEY=$(gcloud secrets versions access latest --secret="STRIPE_SECRET_KEY_BETA" --project=${GCP_PROJECT})
+          echo "::add-mask::$STRIPE_KEY"
+          cd terraform/stripe
+          terraform init -backend-config="prefix=stripe/staging"
+          terraform plan \
+            -var="stripe_api_key=${STRIPE_KEY}" \
+            -var="webhook_url=https://staging.labaid.io/api/stripe/webhook" \
+            -out=tfplan
+          echo "--- Applying Stripe webhook config (Staging) ---"
+          terraform apply tfplan
+
+      - name: Store webhook secret in Secret Manager
+        run: |
+          cd terraform/stripe
+          SECRET=$(terraform output -raw webhook_signing_secret)
+          echo "::add-mask::$SECRET"
+          # Only update if the secret has changed
+          CURRENT=$(gcloud secrets versions access latest --secret="STRIPE_WEBHOOK_SECRET_BETA" --project=${GCP_PROJECT} 2>/dev/null || echo "")
+          if [ "$SECRET" != "$CURRENT" ]; then
+            echo -n "$SECRET" | gcloud secrets versions add STRIPE_WEBHOOK_SECRET_BETA \
+              --data-file=- --project=${GCP_PROJECT}
+            echo "Webhook secret updated in Secret Manager."
+          else
+            echo "Webhook secret unchanged — skipping Secret Manager update."
+          fi
+
   # ── Staging (auto after tests pass) ─────────────────────────────────────────
   staging-backend:
     name: Deploy Backend (Staging)
-    needs: [test]
+    needs: [test, stripe-staging]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -287,9 +363,56 @@ jobs:
         run: npx firebase-tools deploy --only hosting:labaid-staging --project ${GCP_PROJECT}
 
   # ── Production (requires approval) ──────────────────────────────────────────
+  stripe-prod:
+    name: Configure Stripe Webhook (Production)
+    needs: [staging-backend, staging-frontend]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Apply Stripe webhook config
+        run: |
+          STRIPE_KEY=$(gcloud secrets versions access latest --secret="STRIPE_SECRET_KEY" --project=${GCP_PROJECT})
+          echo "::add-mask::$STRIPE_KEY"
+          cd terraform/stripe
+          terraform init -backend-config="prefix=stripe/prod"
+          terraform plan \
+            -var="stripe_api_key=${STRIPE_KEY}" \
+            -var="webhook_url=https://labaid.io/api/stripe/webhook" \
+            -out=tfplan
+          echo "--- Applying Stripe webhook config (Production) ---"
+          terraform apply tfplan
+
+      - name: Store webhook secret in Secret Manager
+        run: |
+          cd terraform/stripe
+          SECRET=$(terraform output -raw webhook_signing_secret)
+          echo "::add-mask::$SECRET"
+          CURRENT=$(gcloud secrets versions access latest --secret="STRIPE_WEBHOOK_SECRET" --project=${GCP_PROJECT} 2>/dev/null || echo "")
+          if [ "$SECRET" != "$CURRENT" ]; then
+            echo -n "$SECRET" | gcloud secrets versions add STRIPE_WEBHOOK_SECRET \
+              --data-file=- --project=${GCP_PROJECT}
+            echo "Webhook secret updated in Secret Manager."
+          else
+            echo "Webhook secret unchanged — skipping Secret Manager update."
+          fi
+
   prod-backend:
     name: Deploy Backend (Production)
-    needs: [staging-backend, staging-frontend]
+    needs: [stripe-prod]
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -374,7 +497,7 @@ jobs:
 
   prod-frontend:
     name: Deploy Frontend (Production)
-    needs: [staging-backend, staging-frontend]
+    needs: [stripe-prod]
     runs-on: ubuntu-latest
     environment: production
     permissions:

@@ -218,7 +218,8 @@ def get_me(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/setup", response_model=UserOut)
-def initial_setup(body: SetupRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def initial_setup(request: Request, body: SetupRequest, response: Response, db: Session = Depends(get_db)):
     """One-time setup: create the platform super admin. Only works if no super admin exists."""
     existing = db.query(User).filter(User.role == UserRole.SUPER_ADMIN).first()
     if existing:

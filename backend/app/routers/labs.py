@@ -531,7 +531,7 @@ def billing_invoice(
             if body.billing_email:
                 customer_params["email"] = body.billing_email
             if body.business_name:
-                customer_params["business_name"] = body.business_name
+                customer_params["name"] = body.business_name
             if body.phone:
                 customer_params["phone"] = body.phone
             address: dict = {}

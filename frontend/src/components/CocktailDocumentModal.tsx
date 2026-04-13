@@ -236,7 +236,7 @@ export function CocktailDocumentModal({ cocktailLotId, renewalCount, isOpen, onC
               </span>
             )}
           </h3>
-          <input key={inputKey} type="file" onChange={handleFileChange} />
+          <input key={inputKey} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.csv,.xlsx,.xls,.doc,.docx" onChange={handleFileChange} />
           <input
             type="text"
             placeholder="What is this document? (e.g. QC report, CoA)"

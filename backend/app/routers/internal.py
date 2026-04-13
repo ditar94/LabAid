@@ -26,7 +26,8 @@ def _verify_oidc_token(request: Request) -> None:
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
 
-        claims = id_token.verify_oauth2_token(token, google_requests.Request())
+        audience = settings.INTERNAL_OIDC_AUDIENCE
+        claims = id_token.verify_oauth2_token(token, google_requests.Request(), audience=audience)
         email = claims.get("email", "")
         if not email.endswith(".iam.gserviceaccount.com"):
             raise ValueError(f"Not a service account: {email}")

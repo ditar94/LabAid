@@ -123,6 +123,14 @@ def _finalize_latest_invoice(client: StripeClient, latest_invoice, lab_id) -> No
             return
         invoice_id = latest_invoice.id
     try:
+        footer = "LabAid is a product of LabWorx LLC. https://labaid.io"
+        footer += "\n\nIf paying by check, please mail this invoice with your check."
+        if settings.STRIPE_CHECK_ADDRESS:
+            footer += f"\nMail to: {settings.STRIPE_CHECK_ADDRESS}"
+        client.invoices.update(invoice_id, params={"footer": footer})
+    except Exception:
+        logger.warning("Could not set invoice footer for %s (lab %s)", invoice_id, lab_id)
+    try:
         client.invoices.finalize_invoice(invoice_id)
     except Exception:
         logger.warning("Could not auto-finalize invoice %s for lab %s", invoice_id, lab_id)
@@ -145,7 +153,7 @@ def get_or_create_customer(db: Session, lab: Lab) -> str:
         params={
             "name": lab.name,
             "email": lab.billing_email,
-            "metadata": {"lab_id": str(lab.id)},
+            "metadata": {"lab_id": str(lab.id), "lab_name": lab.name},
             "invoice_settings": {
                 "footer": "LabAid is a product of LabWorx LLC. https://labaid.io",
             },
@@ -213,7 +221,7 @@ def create_invoice_subscription(db: Session, lab: Lab, price_id: str | None = No
             "days_until_due": 30,
             "items": [{"price": price_id or settings.STRIPE_PRICE_ID}],
             "description": description,
-            "metadata": {"lab_id": str(lab.id)},
+            "metadata": {"lab_id": str(lab.id), "lab_name": lab.name},
         },
         options={"idempotency_key": f"invsub_{lab.id}_{int(time.time() // 300)}"},
     )
@@ -280,7 +288,7 @@ def create_trial_subscription(db: Session, lab: Lab, trial_days: int = 7) -> str
                 "payment_settings": {
                     "save_default_payment_method": "on_subscription",
                 },
-                "metadata": {"lab_id": str(lab.id)},
+                "metadata": {"lab_id": str(lab.id), "lab_name": lab.name},
             },
             options={"idempotency_key": f"trialsub_{lab.id}"},
         )
@@ -433,14 +441,15 @@ def apply_subscription_status(
     elif new_billing == BillingStatus.TRIAL.value and trial_end:
         lab.trial_ends_at = datetime.fromtimestamp(trial_end, tz=timezone.utc)
 
-    # For webhook-driven updates, find a lab admin to attribute the audit entry to
     audit_user_id = user_id
+    note = f"Stripe: {old_status} → {new_billing}"
     if not audit_user_id:
         lab_admin = db.query(User).filter(
             User.lab_id == lab.id,
             User.role.in_([UserRole.LAB_ADMIN, UserRole.SUPER_ADMIN]),
         ).first()
         audit_user_id = lab_admin.id if lab_admin else None
+        note += " (system/webhook)"
 
     if audit_user_id:
         log_audit(
@@ -452,7 +461,7 @@ def apply_subscription_status(
             entity_id=lab.id,
             before_state=before,
             after_state=snapshot_lab(lab),
-            note=f"Stripe: {old_status} → {new_billing}",
+            note=note,
         )
 
     # Invalidate suspension cache so middleware picks up new status immediately

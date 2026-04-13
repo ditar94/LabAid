@@ -89,7 +89,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository" = "assertion.repository"
   }
 
-  attribute_condition = "assertion.repository_owner == 'ditar94'"
+  attribute_condition = "assertion.repository == 'ditar94/LabAid'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

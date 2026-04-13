@@ -154,7 +154,7 @@ async def exchange_code(
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(endpoints["token"], data=data)
         if resp.status_code != 200:
-            logger.error("Token exchange failed: %s %s", resp.status_code, resp.text)
+            logger.error("Token exchange failed: %s", resp.status_code)
             raise ValueError(f"Token exchange failed: {resp.status_code}")
         return resp.json()
 

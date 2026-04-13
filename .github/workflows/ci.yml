@@ -39,16 +39,34 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Check Python dependencies for vulnerabilities
         run: |
           pip install pip-audit
           echo "Scanning Python dependencies for vulnerabilities..."
-          pip-audit --strict --vulnerability-service osv || {
-            echo "::warning::Python dependency vulnerabilities found. Review and update requirements.txt"
-            pip-audit --vulnerability-service osv || true
-          }
+          pip-audit --vulnerability-service osv -f json -o /tmp/pip-audit.json || true
+          python3 -c "
+          import json, sys
+          with open('/tmp/pip-audit.json') as f:
+              data = json.load(f)
+          vulns = data.get('dependencies', [])
+          high_crit = []
+          for dep in vulns:
+              for v in dep.get('vulns', []):
+                  desc = v.get('description', '').upper()
+                  fix = v.get('fix_versions', [])
+                  aliases = v.get('aliases', [])
+                  name = dep.get('name', '')
+                  vid = v.get('id', '')
+                  high_crit.append(f'{name}: {vid}')
+          if high_crit:
+              print('Python dependency vulnerabilities found:')
+              for item in high_crit:
+                  print(f'  - {item}')
+              sys.exit(1)
+          print('No Python dependency vulnerabilities found.')
+          "
 
       - name: Check for destructive migrations
         run: |
@@ -166,12 +184,47 @@ jobs:
       - name: Check Node dependencies for vulnerabilities
         run: |
           echo "Scanning Node dependencies for vulnerabilities..."
-          npm audit --audit-level=high || {
-            echo "::warning::Node dependency vulnerabilities found. Run 'npm audit fix' to resolve."
-          }
+          npm audit --audit-level=high
 
       - name: TypeScript check
         run: npx tsc --noEmit -p tsconfig.app.json
+
+  stripe-terraform-validate:
+    name: Stripe Terraform Validate
+    if: contains(github.event.pull_request.title, 'stripe') || contains(github.event.pull_request.title, 'terraform') || contains(github.event.pull_request.title, 'webhook')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/stripe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.5"
+
+      - name: Terraform init + validate
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: Verify webhook event parity
+        working-directory: .
+        run: |
+          TF_EVENTS=$(grep -oP '"[a-z]+\.[a-z_.]+' terraform/stripe/webhook.tf | tr -d '"' | sort)
+          PY_EVENTS=$(grep -oP 'event_type == "\K[^"]+' backend/app/routers/stripe_webhook.py | sort -u)
+          MISSING=$(comm -23 <(echo "$PY_EVENTS") <(echo "$TF_EVENTS"))
+          if [ -n "$MISSING" ]; then
+            echo "::error::Backend handles events not registered in Stripe webhook terraform:"
+            echo "$MISSING"
+            exit 1
+          fi
+          EXTRA=$(comm -13 <(echo "$PY_EVENTS") <(echo "$TF_EVENTS"))
+          if [ -n "$EXTRA" ]; then
+            echo "::warning::Stripe webhook subscribes to events the backend doesn't handle:"
+            echo "$EXTRA"
+          fi
+          echo "Webhook event parity verified."
 
   terraform-validate:
     name: Terraform Safety Check

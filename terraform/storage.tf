@@ -1,5 +1,5 @@
 resource "google_storage_bucket" "documents" {
-  name          = "labaid-documents-prod"
+  name          = var.s3_bucket
   location      = var.region
   force_destroy = false
 

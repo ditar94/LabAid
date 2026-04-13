@@ -17,8 +17,6 @@ resend==2.23.0
 fpdf2==2.8.3
 pypdf==6.7.2
 Pillow==12.1.1
-google-cloud-error-reporting>=1.14.0
-google-cloud-secret-manager>=2.20.0
+google-cloud-error-reporting==1.14.0
+google-cloud-secret-manager==2.20.0
 stripe==14.4.0
-pytest==7.4.4
-pytest-asyncio==0.23.3

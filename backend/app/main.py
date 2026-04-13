@@ -127,15 +127,20 @@ class SlidingWindowMiddleware(BaseHTTPMiddleware):
                 db = SessionLocal()
                 try:
                     user = db.query(User).filter(User.id == UUID(user_id)).first()
-                    if user and not user.is_active:
+                    if not user or not user.is_active:
                         return response
+                    fresh_role = user.role.value if user.role else payload.get("role")
+                    fresh_lab_id = str(user.lab_id) if user.lab_id else payload.get("lab_id")
                 finally:
                     db.close()
+            else:
+                fresh_role = payload.get("role")
+                fresh_lab_id = payload.get("lab_id")
 
             new_token = create_access_token({
                 "sub": payload["sub"],
-                "lab_id": payload.get("lab_id"),
-                "role": payload.get("role"),
+                "lab_id": fresh_lab_id,
+                "role": fresh_role,
                 "impersonating": payload.get("impersonating"),
             })
             _set_auth_cookies(response, new_token)
@@ -157,6 +162,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
         if settings.COOKIE_SECURE:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
@@ -227,9 +233,13 @@ class LabSuspensionMiddleware(BaseHTTPMiddleware):
             is_active, billing_status, trial_ends_at = cached[0], cached[1], cached[2]
             stripe_subscription_id = cached[4] if len(cached) > 4 else None
         else:
+            try:
+                lab_uuid = UUID(lab_id_str)
+            except (ValueError, AttributeError):
+                return await call_next(request)
             db = SessionLocal()
             try:
-                lab = db.query(Lab).filter(Lab.id == UUID(lab_id_str)).first()
+                lab = db.query(Lab).filter(Lab.id == lab_uuid).first()
                 is_active = lab.is_active if lab else True
                 billing_status = lab.billing_status if lab else None
                 trial_ends_at = lab.trial_ends_at if lab else None
@@ -264,7 +274,10 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.routers.auth import limiter
 
-app = FastAPI(title="LabAid - Flow Cytometry Inventory", version="1.0.0")
+_docs_kwargs = {}
+if settings.GCP_PROJECT:
+    _docs_kwargs = {"docs_url": None, "redoc_url": None, "openapi_url": None}
+app = FastAPI(title="LabAid - Flow Cytometry Inventory", version="1.0.0", **_docs_kwargs)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

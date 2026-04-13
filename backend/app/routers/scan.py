@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, require_role
 from app.models.models import (
     Antibody, CocktailLot, CocktailLotSource, CocktailLotStatus, CocktailRecipe,
     CocktailRecipeComponent, Lot, QCStatus, StorageCell, StorageUnit, User, UserRole,
@@ -122,7 +122,7 @@ def scan_lookup(
     body: ScanLookupRequest,
     lab_id: UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
 ):
     """
     Core workflow: scan a vendor barcode, find the lot, its vials, and their
@@ -130,6 +130,8 @@ def scan_lookup(
     """
     if current_user.role == UserRole.SUPER_ADMIN:
         target_lab_id = lab_id
+        if not target_lab_id:
+            raise HTTPException(status_code=400, detail="lab_id is required for super admin scan")
     else:
         target_lab_id = current_user.lab_id
 
@@ -393,7 +395,7 @@ def scan_lookup(
 async def scan_enrich(
     body: ScanEnrichRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR, UserRole.TECH)),
 ):
     """
     Parse barcode and enrich with product data from GUDID or shared catalog.

@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     STRIPE_ENTERPRISE_PRICE_ID: str | None = None
     STRIPE_CHECK_ADDRESS: str | None = None
 
+    # Internal endpoints (Cloud Scheduler OIDC audience = Cloud Run service URI)
+    INTERNAL_OIDC_AUDIENCE: str | None = None
+
     # Demo environment
     DEMO_SEND_EMAIL: bool = False  # True on staging/prod to email magic links
 
@@ -69,8 +72,14 @@ class Settings(BaseSettings):
 settings = Settings()
 
 _DEFAULT_SECRET = "change-me-in-production-use-a-real-secret"
-if settings.GCP_PROJECT and settings.SECRET_KEY == _DEFAULT_SECRET:
-    raise RuntimeError(
-        "SECRET_KEY is still the default value. "
-        "Set a real secret via environment variable or GCP Secret Manager."
-    )
+if settings.GCP_PROJECT:
+    if settings.SECRET_KEY == _DEFAULT_SECRET:
+        raise RuntimeError(
+            "SECRET_KEY is still the default value. "
+            "Set a real secret via environment variable or GCP Secret Manager."
+        )
+    if not settings.COOKIE_SECURE:
+        raise RuntimeError(
+            "COOKIE_SECURE must be True in production (GCP_PROJECT is set). "
+            "Set COOKIE_SECURE=True via environment variable."
+        )

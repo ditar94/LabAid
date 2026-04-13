@@ -62,7 +62,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             _handle_checkout_completed(db, data)
         elif event_type == "checkout.session.async_payment_failed":
             _handle_async_payment_failed(db, data)
-        elif event_type == "invoice.paid":
+        elif event_type in ("invoice.paid", "invoice.payment_succeeded"):
             _handle_invoice_paid(db, data)
         elif event_type == "invoice.payment_failed":
             _handle_invoice_payment_failed(db, data)
@@ -267,7 +267,7 @@ def _handle_invoice_sent(db: Session, invoice: dict) -> None:
     lab = _find_lab_by_customer(db, customer_id)
     if not lab:
         return
-    if lab.billing_status != BillingStatus.ACTIVE.value:
+    if lab.billing_status != BillingStatus.INVOICE_PENDING.value:
         old_status = lab.billing_status
         lab.billing_status = BillingStatus.INVOICE_PENDING.value
         lab.billing_updated_at = datetime.now(timezone.utc)

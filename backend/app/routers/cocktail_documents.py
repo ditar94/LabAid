@@ -76,8 +76,10 @@ def upload_cocktail_lot_document(
     doc_id = uuid_mod.uuid4()
     mime = _normalize_content_type(file.filename, file.content_type)
 
+    safe_filename = os.path.basename(file.filename or "upload")
+
     if object_storage.enabled:
-        key = f"{lot.lab_id}/cocktails/{lot.id}/{doc_id}_{file.filename}"
+        key = f"{lot.lab_id}/cocktails/{lot.id}/{doc_id}_{safe_filename}"
         file_data = io.BytesIO(file_bytes)
         try:
             object_storage.upload(
@@ -90,7 +92,7 @@ def upload_cocktail_lot_document(
         stored_path = key
     else:
         os.makedirs(UPLOAD_DIR, exist_ok=True)
-        stored_path = os.path.join(UPLOAD_DIR, f"cocktail_{lot.id}_{file.filename}")
+        stored_path = os.path.join(UPLOAD_DIR, f"cocktail_{lot.id}_{safe_filename}")
         with open(stored_path, "wb") as buffer:
             buffer.write(file_bytes)
 

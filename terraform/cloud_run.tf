@@ -80,6 +80,9 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "DEMO_SEND_EMAIL"
         value = var.email_backend == "resend" ? "True" : "False"
       }
+      # INTERNAL_OIDC_AUDIENCE must be set after deploy via:
+      #   gcloud run services update <svc> --set-env-vars INTERNAL_OIDC_AUDIENCE=$(gcloud run services describe <svc> --format 'value(uri)')
+      # Cannot self-reference service URI within its own resource definition.
 
       # Secrets
       env {
