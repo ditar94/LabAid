@@ -88,7 +88,7 @@ export default function EnterpriseUpgradeModal({ onClose, onSuccess }: Enterpris
             </div>
 
             <p className="text-muted" style={{ fontSize: "0.85em", marginTop: 12 }}>
-              At your next renewal, you'll be billed $8,400/year for LabAid Enterprise.
+              At your next renewal, you'll be billed $5,400/year for LabAid Enterprise.
             </p>
 
             {error && <div className="form-error" style={{ marginTop: 12 }}>{error}</div>}

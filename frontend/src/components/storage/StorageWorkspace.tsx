@@ -386,6 +386,11 @@ export default forwardRef(function StorageWorkspace(
         </div>
       )}
 
+      {/* ── Empty state when no grids (e.g. lot with no stored vials) ── */}
+      {displayGrids.length === 0 && (
+        <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "var(--space-lg) 0" }}>No stored vials</p>
+      )}
+
       {/* ── browse / lot / scan: grid panels with popouts ── */}
       {(workspaceMode === "browse" || workspaceMode === "lot" || workspaceMode === "scan") && !workspaceContext.isCellPicker && displayGrids.map((grid) => (
         <StorageGrid

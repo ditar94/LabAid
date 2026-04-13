@@ -190,16 +190,25 @@ export default memo(function AntibodyCard({
         )}
       </div>
 
-      {/* ── Vendor + catalog + clone + lot count ── */}
+      {/* ── Clone ── */}
+      {antibody.clone && (
+        <div className="inventory-vendor" style={{ marginBottom: -2 }}>
+          <span style={{ fontSize: "0.8em" }}>Clone: {antibody.clone}</span>
+        </div>
+      )}
+      {/* ── Vendor + lot count ── */}
       <div className="inventory-vendor">
-        <span>
-          {antibody.vendor || ""}
-          {antibody.vendor && antibody.catalog_number && " — "}
-          {antibody.catalog_number && <>Catalog #: {antibody.catalog_number} <CopyButton value={antibody.catalog_number} /></>}
-          {antibody.clone && <>{antibody.vendor || antibody.catalog_number ? " · " : ""}Clone: {antibody.clone}</>}
-        </span>
-        <span>{counts.lots} lot{counts.lots === 1 ? "" : "s"}</span>
+        <span>{antibody.vendor || ""}</span>
+        <span style={{ fontSize: "0.75em", padding: "2px 10px", border: "1px solid var(--border-light)", borderRadius: "999px", color: "var(--text-muted)" }}>{counts.lots} lot{counts.lots === 1 ? "" : "s"}</span>
       </div>
+      {/* ── Catalog number ── */}
+      {antibody.catalog_number && (
+        <div className="inventory-vendor" style={{ marginTop: -2 }}>
+          <span style={{ fontSize: "0.8em" }}>
+            Catalog #: {antibody.catalog_number} <CopyButton value={antibody.catalog_number} />
+          </span>
+        </div>
+      )}
 
       {/* ── Alert badges ── */}
       {badges && badges.length > 0 && (

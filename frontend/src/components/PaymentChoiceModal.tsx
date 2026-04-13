@@ -16,8 +16,8 @@ interface PaymentChoiceModalProps {
 const PLAN_INFO: Record<PlanTier, { name: string; price: string; annual: string; features: string[] }> = {
   standard: {
     name: "LabAid Standard",
-    price: "$350/mo",
-    annual: "$4,200/year",
+    price: "$150/mo",
+    annual: "$1,800/year",
     features: [
       "Barcode scanning on any device",
       "Full vial lifecycle tracking",
@@ -31,8 +31,8 @@ const PLAN_INFO: Record<PlanTier, { name: string; price: string; annual: string;
   },
   enterprise: {
     name: "LabAid Enterprise",
-    price: "$700/mo",
-    annual: "$8,400/year",
+    price: "$450/mo",
+    annual: "$5,400/year",
     features: [
       "Everything in Standard",
       "SSO / SAML authentication",

@@ -1284,7 +1284,7 @@ export default function ScanSearchPage() {
           )}
 
           {/* Always-visible storage grid(s) with move support */}
-          {storageEnabled && result.storage_grids && result.storage_grids.length > 0 && (
+          {storageEnabled && result.storage_grids && result.storage_grids.length > 0 ? (
             <div className="scan-storage-section">
               <StorageView
                 grids={result.storage_grids}
@@ -1294,7 +1294,9 @@ export default function ScanSearchPage() {
                 onMoveChange={(moving) => setScanMoveMode(moving)}
               />
             </div>
-          )}
+          ) : storageEnabled && result.vials.length === 0 && (result.opened_vials?.length ?? 0) === 0 ? (
+            <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "var(--space-lg) 0" }}>No stored vials</p>
+          ) : null}
         </div>
       )}
 

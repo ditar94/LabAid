@@ -201,10 +201,10 @@ export default function BillingPage() {
                   </span>
                 </div>
                 <div className="billing-plan-price">
-                  <span className="billing-plan-amount">$350</span>
+                  <span className="billing-plan-amount">$150</span>
                   <span className="billing-plan-period">/month</span>
                 </div>
-                <div className="billing-plan-billed">$4,200 billed annually &middot; Unlimited users</div>
+                <div className="billing-plan-billed">$1,800 billed annually &middot; Unlimited users</div>
               </div>
             </div>
 
@@ -292,7 +292,7 @@ export default function BillingPage() {
                       {statusLabel(billing.billing_status)}
                     </span>
                   </div>
-                  <div className="billing-plan-billed">{isEnterprise ? "$8,400/year" : "$4,200/year"} &middot; Unlimited users</div>
+                  <div className="billing-plan-billed">{isEnterprise ? "$5,400/year" : "$1,800/year"} &middot; Unlimited users</div>
                 </div>
               </div>
               <button className="btn-primary billing-portal-btn" onClick={handlePortal}>
@@ -382,10 +382,10 @@ export default function BillingPage() {
                     Upgrade to Enterprise
                   </div>
                   <div className="billing-plan-price">
-                    <span className="billing-plan-amount">$700</span>
+                    <span className="billing-plan-amount">$450</span>
                     <span className="billing-plan-period">/month</span>
                   </div>
-                  <div className="billing-plan-billed">$8,400 billed annually &middot; Unlimited users</div>
+                  <div className="billing-plan-billed">$5,400 billed annually &middot; Unlimited users</div>
                 </div>
               </div>
               <ul className="billing-plan-features">

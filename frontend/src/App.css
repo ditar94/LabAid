@@ -5760,7 +5760,7 @@ h2 .temp-badge {
 
 .inventory-counts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(70px, 100%), 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 1px;
   margin-top: var(--space-xs);
   background: var(--border-light);
@@ -5770,21 +5770,21 @@ h2 .temp-badge {
 
 .inventory-counts > div {
   background: var(--card-bg);
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-xs) var(--space-sm);
   text-align: center;
 }
 
 .count-label {
-  font-size: 0.6rem;
+  font-size: 0.55rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 600;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .count-value {
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
   font-weight: 700;
   line-height: var(--lh-tight);
 }

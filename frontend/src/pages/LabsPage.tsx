@@ -659,9 +659,9 @@ export default function LabsPage() {
                   onClick={() => setSubscribeTier(tier)}
                 >
                   <strong>{tier === "enterprise" ? "Enterprise" : "Standard"}</strong>
-                  <div className="plan-option-price">{tier === "enterprise" ? "$700/mo" : "$350/mo"}</div>
+                  <div className="plan-option-price">{tier === "enterprise" ? "$450/mo" : "$150/mo"}</div>
                   <div className="text-muted" style={{ fontSize: "var(--text-sm)" }}>
-                    {tier === "enterprise" ? "$8,400/year" : "$4,200/year"}
+                    {tier === "enterprise" ? "$5,400/year" : "$1,800/year"}
                   </div>
                 </button>
               ))}
