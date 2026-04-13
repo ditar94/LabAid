@@ -149,7 +149,7 @@ def revert_open(
     body: VialCorrectionRequest,
     restore_cell_id: UUID | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
     return correct_vial(
         db,
@@ -166,7 +166,7 @@ def revert_deplete(
     vial_id: UUID,
     body: VialCorrectionRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN)),
+    current_user: User = Depends(require_role(UserRole.SUPER_ADMIN, UserRole.LAB_ADMIN, UserRole.SUPERVISOR)),
 ):
     return correct_vial(
         db,
