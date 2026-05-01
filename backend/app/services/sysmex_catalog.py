@@ -7,8 +7,8 @@ Maps catalog numbers to product details (target, fluorochrome, clone).
 DO NOT EDIT MANUALLY - regenerate with:
     python scripts/sync_sysmex_catalog.py
 
-Last updated: 2026-02-21
-Products: 1457
+Last updated: 2026-05-01
+Products: 1452
 """
 
 from __future__ import annotations
@@ -49,7 +49,6 @@ SYSMEX_CATALOG: dict[str, SysmexProduct] = {
     "AA664263": SysmexProduct("AA664263", "CyFlow CD72 PE", "CD72", "PE", None),
     "AA886096": SysmexProduct("AA886096", "CyFlow CD41 PerCP", "CD41", "PerCP", None),
     "AA887536": SysmexProduct("AA887536", "CyFlow CD45R0 Purified", "CD45R0", None, None),
-    "AA909034": SysmexProduct("AA909034", "CyFlow CD4 Low Endotoxin", "CD4 Low Endotoxin", None, None),
     "AB042675": SysmexProduct("AB042675", "CyFlow CD205 PE", "CD205", "PE", None),
     "AB107492": SysmexProduct("AB107492", "CyFlow CD42b Purified", "CD42b", None, None),
     "AB183853": SysmexProduct("AB183853", "CyFlow CD24 PerCP-Cy5.5", "CD24", "PerCP-Cy5.5", None),
@@ -621,7 +620,6 @@ SYSMEX_CATALOG: dict[str, SysmexProduct] = {
     "BF601587": SysmexProduct("BF601587", "CyFlow CD28 Low Endotoxin", "CD28 Low Endotoxin", None, None),
     "BF605953": SysmexProduct("BF605953", "CyFlow Kappa-LC Pacific Blue", "Kappa-LC", "Pacific Blue", None),
     "BF646167": SysmexProduct("BF646167", "CyFlow CD56 PerCP-Cy5.5", "CD56", "PerCP-Cy5.5", None),
-    "BF694972": SysmexProduct("BF694972", "CyFlow HLA-G PE", "HLA-G", "PE", None),
     "BF742790": SysmexProduct("BF742790", "CyFlow IgG2b Biotin", "IgG2b", None, None),
     "BF824641": SysmexProduct("BF824641", "CyFlow CK-19 Alexa Fluor 488", "CK-19", "Alexa Fluor 488", None),
     "BF828567": SysmexProduct("BF828567", "CyFlow CD20 PE-Cy5", "CD20", "PE-Cy5", None),
@@ -1263,7 +1261,6 @@ SYSMEX_CATALOG: dict[str, SysmexProduct] = {
     "CP234283": SysmexProduct("CP234283", "CyFlow CD262 Purified", "CD262", None, None),
     "CP264261": SysmexProduct("CP264261", "CyFlow CD46 PE", "CD46", "PE", None),
     "CP273104": SysmexProduct("CP273104", "CyFlow CD64 APC-Cy7", "CD64", "APC-Cy7", None),
-    "CP273179": SysmexProduct("CP273179", "CyFlow HLA-G Purified", "HLA-G", None, None),
     "CP366249": SysmexProduct("CP366249", "CyFlow IgG2a PerCP", "IgG2a", "PerCP", None),
     "CP382992": SysmexProduct("CP382992", "CyFlow CD19 FITC", "CD19", "FITC", None),
     "CP389435": SysmexProduct("CP389435", "CyFlow CD180 Low Endotoxin", "CD180 Low Endotoxin", None, None),
@@ -1420,7 +1417,6 @@ SYSMEX_CATALOG: dict[str, SysmexProduct] = {
     "CW596095": SysmexProduct("CW596095", "CyFlow CD18 Low Endotoxin", "CD18 Low Endotoxin", None, None),
     "CW604703": SysmexProduct("CW604703", "CyFlow CD1a FITC", "CD1a", "FITC", None),
     "CW776518": SysmexProduct("CW776518", "CyFlow CD41 PE-Cy5", "CD41", "PE-Cy5", None),
-    "CW832508": SysmexProduct("CW832508", "CyFlow HLA-G Alexa Fluor 488", "HLA-G", "Alexa Fluor 488", None),
     "CW883509": SysmexProduct("CW883509", "CyFlow CD71 PE", "CD71", "PE", None),
     "CX012682": SysmexProduct("CX012682", "CyFlow IgE PE", "IgE", "PE", None),
     "CX097139": SysmexProduct("CX097139", "CyFlow CD106 Biotin", "CD106", None, None),
@@ -1452,7 +1448,6 @@ SYSMEX_CATALOG: dict[str, SysmexProduct] = {
     "CY207774": SysmexProduct("CY207774", "CyFlow CD28 Alexa Fluor 700", "CD28", "Alexa Fluor 700", None),
     "CY292936": SysmexProduct("CY292936", "CyFlow CD264 PE", "CD264", "PE", None),
     "CY310106": SysmexProduct("CY310106", "CyFlow CD103 APC", "CD103", "APC", None),
-    "CY419228": SysmexProduct("CY419228", "CyFlow HLA-G Low Endotoxin", "HLA-G Low Endotoxin", None, None),
     "CY474758": SysmexProduct("CY474758", "CyFlow CD1a PE", "CD1a", "PE", None),
     "CY521476": SysmexProduct("CY521476", "CyFlow CD326 PE", "CD326", "PE", None),
     "CY718879": SysmexProduct("CY718879", "CyFlow CD36 APC", "CD36", "APC", None),
